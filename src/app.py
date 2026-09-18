@@ -314,9 +314,6 @@ active_pose = _model_checkboxes("POSE ESTIMATION", models.pose_nets)
 active_face_landmarks = _model_checkboxes("FACE LANDMARKS", models.face_landmarks_nets)
 active_hands = _model_checkboxes("HAND LANDMARKS", models.hand_nets)
 active_gaze = _model_checkboxes("GAZE", models.gaze_nets)
-active_body_composition = _model_checkboxes("BMI / BODY-FAT ESTIMATE", models.body_composition_nets)
-if models.body_composition_nets:
-    st.sidebar.caption("Experimental relative facial-adiposity proxy for research/data triage only; not clinical BMI or body-fat measurement.")
 
 
 def _reset_adjustments(prefixes: tuple[str, ...]) -> None:
@@ -402,7 +399,6 @@ def _target_card_html(face: dict) -> str:
         ("EXPR", face["expression"]), ("GAZE", face["gaze"]), ("EYE CONTACT", face["eye_contact"]), ("HEAD POSE", face["head_pose"]), ("IDENTITY", face["identity"]), ("FACIAL HAIR", face["facial_hair"]),
         ("SKIN TONE", face["skin_tone"]), ("GLASSES", face["glasses"]), ("MASK", face["mask"]),
         ("HAIR COLOR", face["hair_color"]), ("EYE COLOR", face["eye_color"]),
-        ("BMI / BODY-FAT", face["body_composition"]),
         ("LIVENESS", face["liveness"]),
     ):
         if values:
@@ -471,7 +467,6 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
         active_facial_hair, active_skin_tone, active_glasses, active_mask, active_hair_color, active_eye_color,
         active_pose, active_face_landmarks, active_hands, active_gaze, global_adjustments, face_adjustments, face_detector=active_face_detector,
         active_liveness=active_liveness,
-        active_body_composition=active_body_composition,
     )
 
     if was_colorized:
@@ -809,7 +804,6 @@ with tab_webcam:
                 face_detector=active_face_detector, metrics=metrics, tracker=face_tracker,
                 liveness_tracker=liveness_tracker,
                 active_liveness=active_liveness,
-                active_body_composition=active_body_composition if run_classifiers else _NO_MODELS,
             )
             metrics["frame_ms"] = (time.perf_counter() - frame_started) * 1000
             metrics["timestamp"] = time.monotonic()
