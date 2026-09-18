@@ -32,6 +32,7 @@ EMOTION_MODEL = MODEL_DIR / "dan_affecnet7.pth"
 SSRNET_MODEL = MODEL_DIR / "ssrnet_morph2.pth"
 INSIGHTFACE_MODEL = MODEL_DIR / "insightface_genderage.onnx"
 EFFICIENTNET_EMOTION_MODEL = MODEL_DIR / "efficientnet_b0_fer.onnx"
+FAIRFACE_MODEL = MODEL_DIR / "fairface_7class.onnx"
 
 MODEL_MEAN_VALUES = (78.4263377603, 87.768914374, 114.895847746)
 AGE_LIST = ['(0-2)', '(4-6)', '(8-12)', '(15-20)', '(25-32)', '(38-43)', '(48-53)', '(60-100)']
@@ -43,6 +44,8 @@ EMOTION_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 SSRNET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 SSRNET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 MIN_EYES_OPEN = 2
+RACE_LABELS_FAIRFACE = ['White', 'Black', 'Latino_Hispanic', 'East Asian', 'Southeast Asian', 'Indian', 'Middle Eastern']
+RACE_CLOSE_MARGIN = 0.10  # show top-2 race classes together if within this probability margin
 
 # Model keys per feature, in quickest-to-build order (first = default).
 # Must match the numbered options in build-and-run.sh and the Dockerfile ARGs.
@@ -50,6 +53,7 @@ AGE_MODEL_OPTIONS = ["caffe", "insightface", "ssrnet"]
 GENDER_MODEL_OPTIONS = ["caffe", "insightface"]
 EMOTION_MODEL_OPTIONS = ["efficientnet", "dan"]
 DROWSINESS_MODEL_OPTIONS = ["haarcascade"]
+RACE_MODEL_OPTIONS = ["fairface"]
 
 
 @dataclass
@@ -59,6 +63,7 @@ class Models:
     gender_nets: dict = field(default_factory=dict)
     emotion_nets: dict = field(default_factory=dict)
     drowsiness_nets: dict = field(default_factory=dict)
+    race_nets: dict = field(default_factory=dict)
 
     @property
     def offline_features(self) -> list[str]:
@@ -66,6 +71,7 @@ class Models:
             name for name, nets in [
                 ("AGE", self.age_nets), ("GENDER", self.gender_nets),
                 ("EMOTION", self.emotion_nets), ("DROWSINESS", self.drowsiness_nets),
+                ("RACE", self.race_nets),
             ] if not nets
         ]
 
@@ -113,7 +119,11 @@ def load_models() -> Models:
     if EYE_CASCADE_FILE.exists():
         drowsiness_nets["haarcascade"] = cv2.CascadeClassifier(str(EYE_CASCADE_FILE))
 
-    return Models(face_net, age_nets, gender_nets, emotion_nets, drowsiness_nets)
+    race_nets = {}
+    if FAIRFACE_MODEL.exists():
+        race_nets["fairface"] = cv2.dnn.readNetFromONNX(str(FAIRFACE_MODEL))
+
+    return Models(face_net, age_nets, gender_nets, emotion_nets, drowsiness_nets, race_nets)
 
 
 def detect_faces(net: cv2.dnn.Net, frame: np.ndarray, conf_threshold: float = 0.7) -> list[list[int]]:
@@ -198,6 +208,29 @@ def detect_drowsiness_haarcascade(eye_cascade, face_bgr: np.ndarray) -> bool:
     return len(eyes) < MIN_EYES_OPEN
 
 
+def _softmax(x: np.ndarray) -> np.ndarray:
+    exp = np.exp(x - np.max(x))
+    return exp / exp.sum()
+
+
+def _format_race_label(probs: np.ndarray, labels: list[str]) -> str:
+    """Format the top race prediction, showing the top-2 together if their probabilities are close."""
+    order = np.argsort(probs)[::-1]
+    top1, top2 = order[0], order[1]
+    if probs[top1] - probs[top2] < RACE_CLOSE_MARGIN:
+        return f"{labels[top1]} ({probs[top1] * 100:.0f}%)/{labels[top2]} ({probs[top2] * 100:.0f}%)"
+    return labels[top1]
+
+
+def predict_race_fairface(net, face_bgr: np.ndarray) -> str:
+    face_rgb = cv2.cvtColor(cv2.resize(face_bgr, (224, 224)), cv2.COLOR_BGR2RGB)
+    face_norm = (face_rgb.astype(np.float32) / 255.0 - SSRNET_MEAN) / SSRNET_STD
+    blob = face_norm.transpose(2, 0, 1)[np.newaxis, ...].astype(np.float32)
+    net.setInput(blob)
+    logits = net.forward().flatten()
+    return _format_race_label(_softmax(logits), RACE_LABELS_FAIRFACE)
+
+
 def draw_outlined_text(frame: np.ndarray, text: str, org: tuple[int, int], color: tuple[int, int, int]) -> None:
     """Draw text with a black outline so it stays readable over any background. Clamps origin so text stays inside the frame."""
     font, scale, thickness = cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2
@@ -221,6 +254,7 @@ def analyze_frame(
     active_gender: set,
     active_emotion: set,
     active_drowsiness: set,
+    active_race: set,
 ):
     """Detect faces and run inference for whichever model keys are active per feature.
     Multiple active models for the same feature (e.g. active_age = {"caffe", "ssrnet"})
@@ -276,6 +310,14 @@ def analyze_frame(
             value = predict_emotion_dan(net, face) if key == "dan" else predict_emotion_efficientnet(net, face)
             emotion_parts.append(f"{key}={value}")
 
+        race_parts = []
+        for key in active_race:
+            net = models.race_nets.get(key)
+            if net is None:
+                continue
+            value = predict_race_fairface(net, face)
+            race_parts.append(f"{key}={value}")
+
         drowsy_parts = []
         face_drowsy = False
         for key in active_drowsiness:
@@ -287,7 +329,7 @@ def analyze_frame(
             drowsy_parts.append(f"{key}={'DROWSY' if drowsy else 'ALERT'}")
         any_drowsy = any_drowsy or face_drowsy
 
-        label_parts = age_parts + gender_parts + emotion_parts
+        label_parts = age_parts + gender_parts + race_parts + emotion_parts
         label = ", ".join(label_parts) if label_parts else "Face"
 
         # Draw green box and cyan overlay text with black outline for readability
