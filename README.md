@@ -6,25 +6,23 @@
 ![Streamlit](https://img.shields.io/badge/Streamlit-UI-00ff66?style=flat-square&logo=streamlit&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Ready-00ff66?style=flat-square&logo=docker&logoColor=white)
 
-> Computer vision pipeline for face detection with age, gender, race, emotion, expression (blendshapes), and drowsiness inference. Terminal CLI and a containerized Streamlit web app share the same detection pipeline.
+> Computer vision pipeline for face detection with age, gender, race, emotion, expression (blendshapes), and drowsiness inference. A containerized Streamlit web app.
 
 ---
 
 ## Key Features
 
 - **Multi-model face analysis:** face detection, age, gender, race, emotion, expression (blendshapes), and drowsiness -- most features have 2+ selectable model backends.
-- **Dual deployment:** terminal CLI (`detect.py`, age/gender/emotion/drowsiness only) or Docker-packaged Streamlit app (`src/app.py`, all features including race and expression).
+- **Docker-packaged Streamlit app:** `src/app.py`, all features including race and expression.
 - **Build-time feature toggles:** disable any model at Docker build time to shrink the image (see [Docker](#docker-web-app)).
 - **Graceful degradation:** any model missing at runtime (file or dependency not present) is skipped, not a crash -- the rest of the pipeline keeps working.
-- **Batch processing:** single image files or entire directories.
-- **Headless friendly:** full CLI support for non-GUI environments (WSL2, remote SSH, headless CI/CD).
 - **Cyberpunk web interface:** terminal-styled drag-and-drop Streamlit UI, plus snapshot/live webcam tabs.
 
 ---
 
 ## Models
 
-Face detection is required; age, gender, race, emotion, expression, and drowsiness are each independently optional -- if a model's file(s) or dependencies aren't present, that feature is skipped and the rest still runs. Race and expression are web-app-only (no CLI equivalents).
+Face detection is required; age, gender, race, emotion, expression, and drowsiness are each independently optional -- if a model's file(s) or dependencies aren't present, that feature is skipped and the rest still runs.
 
 ### Face Detection
 
@@ -43,7 +41,7 @@ Face detection is required; age, gender, race, emotion, expression, and drowsine
 | `dex`         | Caffe (cv2.dnn)   | continuous age, e.g. `31` (expected value over 101 classes) |
 | `mivolo`      | PyTorch/timm ViT  | continuous age, e.g. `31`      |
 
-CLI: `--age-model` (`caffe` or `ssrnet` only). Web app: checkbox per built model. Default: `caffe`.
+Checkbox per built model in the web app sidebar. Default: `caffe`.
 
 `dex` (Deep EXpectation, Rothe et al. ICCV 2015) is a VGG-16 trained on IMDB-WIKI, a heavy age option (513MB caffemodel). **Research/academic-use license** (ETH Zurich, IMDB-WIKI-derived) -- not for commercial deployments without independent licensing.
 
@@ -89,7 +87,7 @@ Note the class label order (and count) differs between backends -- each is track
 | -------------- | --------- | ------------------------------------------------------------------ |
 | `blendshapes`  | MediaPipe | Top 3 facial muscle coefficients, e.g. `mouthSmileLeft 0.82, jawOpen 0.15, browDownRight 0.09` |
 
-Raw output of Google's MediaPipe Face Landmarker (Apache 2.0), a separate feature from Emotion. BlendShapes outputs 52 continuous facial-muscle-movement coefficients (e.g. mouthSmileLeft, browDownRight, jawOpen, eyeBlinkLeft, etc.) tracking individual facial movements, whereas Emotion backends predict discrete emotion classes (angry, happy, sad, etc.). There is no validated mapping from blendshapes to emotion labels, so Expression surfaces the raw top-N-scoring blendshape coefficients as-is. Web app only (no CLI equivalent).
+Raw output of Google's MediaPipe Face Landmarker (Apache 2.0), a separate feature from Emotion. BlendShapes outputs 52 continuous facial-muscle-movement coefficients (e.g. mouthSmileLeft, browDownRight, jawOpen, eyeBlinkLeft, etc.) tracking individual facial movements, whereas Emotion backends predict discrete emotion classes (angry, happy, sad, etc.). There is no validated mapping from blendshapes to emotion labels, so Expression surfaces the raw top-N-scoring blendshape coefficients as-is.
 
 ### Drowsiness
 
@@ -108,7 +106,6 @@ multimodal-face-analyzer/
 ├── Dockerfile              # Container build (per-feature toggles, see below)
 ├── .dockerignore
 ├── build-and-run.sh        # Interactive build+run wrapper
-├── detect.py               # CLI entry point
 ├── requirements.txt        # Base dependencies (opencv/streamlit/etc.)
 │
 ├── models/                 # Pre-trained weights & configs (data, not code)
@@ -149,8 +146,6 @@ multimodal-face-analyzer/
             └── LICENSE_MIVOLO
 ```
 
-`detect.py` (CLI) and `src/app.py`+`src/inference.py` (web app) intentionally duplicate the detection pipeline rather than sharing one module.
-
 ---
 
 ## Local Setup
@@ -168,41 +163,6 @@ pip install tensorflow-cpu tf-keras
 ```
 
 Without torch/tensorflow installed, the corresponding models are automatically skipped (not an error).
-
----
-
-## CLI Usage (`detect.py`)
-
-```bash
-# Basic single-image detection
-python detect.py path/to/image.jpg
-
-# Process an entire folder and save annotated outputs
-python detect.py path/to/folder/ --save
-
-# Run headlessly (WSL/SSH) and save cropped face targets only
-python detect.py path/to/folder/ --crop --save --no-show
-
-# Use the SSR-Net continuous age model instead of the default bucketed Caffe model
-python detect.py path/to/image.jpg --age-model ssrnet
-
-# Custom output path and confidence threshold
-python detect.py path/to/image.jpg --save --out-dir ./custom_results --conf 0.8
-```
-
-### CLI Flags
-
-| Flag          | Description                                                                       |
-| ------------- | --------------------------------------------------------------------------------- |
-| `path`        | Path to target image file or directory                                            |
-| `--crop`      | Display/save cropped face targets instead of full annotated frames                |
-| `--save`      | Export processed images to disk                                                   |
-| `--no-show`   | Disable GUI display pop-ups (required for headless environments)                  |
-| `--out-dir`   | Target directory for saved images (default: `output`)                             |
-| `--conf`      | Minimum face detection confidence score (default: `0.7`)                          |
-| `--age-model` | Age backend: `caffe` (bucketed ranges) or `ssrnet` (continuous, default: `caffe`) |
-
-The CLI does not have `insightface`, `efficientnet`, or race classification -- those are web-app-only (see Models above).
 
 ---
 
