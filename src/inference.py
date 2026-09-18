@@ -147,6 +147,9 @@ RACE_MODEL_OPTIONS = ["fairface", "deepface"]
 EXPRESSION_MODEL_OPTIONS = ["blendshapes"]
 RECOGNITION_MODEL_OPTIONS = ["vggface", "lbph"]
 FACE_DETECTOR_OPTIONS = ["ssd", "yolo"]  # ssd is the original required detector, always on
+IOU_TRACKING_THRESHOLD = 0.3  # greedy-match a track to a detection only above this IoU
+TRACKING_MAX_MISSED_FRAMES = 10  # frames a track survives with zero matching detections
+# (brief occlusion) before its ID is dropped and freed for reuse
 YOLO_FACE_INPUT_SIZE = 640
 YOLO_FACE_STRIDES = (8, 16, 32)
 YOLO_FACE_IOU_THRESHOLD = 0.45
@@ -547,6 +550,102 @@ def detect_faces(net: cv2.dnn.Net, frame: np.ndarray, conf_threshold: float = 0.
             y2 = int(detections[0, 0, i, 6] * frame_height)
             face_boxes.append([x1, y1, x2, y2])
     return face_boxes
+
+
+def _box_iou(box_a: tuple[int, int, int, int], box_b: tuple[int, int, int, int]) -> float:
+    """Standard intersection-over-union for two (x1, y1, x2, y2) boxes."""
+    ax1, ay1, ax2, ay2 = box_a
+    bx1, by1, bx2, by2 = box_b
+    ix1, iy1 = max(ax1, bx1), max(ay1, by1)
+    ix2, iy2 = min(ax2, bx2), min(ay2, by2)
+    intersection = max(0, ix2 - ix1) * max(0, iy2 - iy1)
+    area_a = max(0, ax2 - ax1) * max(0, ay2 - ay1)
+    area_b = max(0, bx2 - bx1) * max(0, by2 - by1)
+    union = area_a + area_b - intersection
+    return intersection / union if union > 0 else 0.0
+
+
+@dataclass
+class _Track:
+    box: tuple[int, int, int, int]
+    missed_frames: int = 0
+
+
+class FaceTracker:
+    """#2: greedy IoU-based multi-face tracker. Assigns a stable integer ID to each detected
+    face box across consecutive analyze_frame() calls on the SAME video stream, so a face
+    keeps its identity as it moves instead of every frame renumbering faces 1..N by detection
+    order (which is what analyze_frame() does on its own, per-frame, with no tracker passed).
+
+    Matching is frame-to-frame only, no motion prediction: each track's last known box is
+    compared by IoU against this frame's detections, and the highest-IoU pairs at or above
+    IOU_TRACKING_THRESHOLD are greedily accepted one-to-one (highest IoU first, each track and
+    each detection used at most once). A track that matches no detection this frame is kept,
+    not dropped immediately -- only after TRACKING_MAX_MISSED_FRAMES consecutive unmatched
+    frames is it deleted and its ID freed. This is what "survives brief occlusion" means here:
+    a face that's blocked (or missed by the detector) for a few frames keeps its ID as long as
+    it reappears close to where it was last seen within that window.
+
+    One instance tracks one video stream. Safe to call update()/reset() from a different
+    thread than the one that created it (e.g. streamlit-webrtc's own callback thread) via an
+    internal lock -- this is the ONLY per-frame state analyze_frame() has ever needed, so the
+    lock is scoped tightly to this class rather than adding any shared mutable state to
+    analyze_frame() itself, which stays otherwise stateless."""
+
+    def __init__(self, iou_threshold: float = IOU_TRACKING_THRESHOLD, max_missed_frames: int = TRACKING_MAX_MISSED_FRAMES):
+        self._lock = threading.Lock()
+        self._iou_threshold = iou_threshold
+        self._max_missed_frames = max_missed_frames
+        self._tracks: dict[int, _Track] = {}
+        self._next_id = 1
+
+    def update(self, boxes: list[tuple[int, int, int, int]]) -> list[int]:
+        """Match this frame's detections against existing tracks. Returns one stable track ID
+        per box, in the same order as `boxes`."""
+        with self._lock:
+            candidates = []  # (iou, track_id, detection_index)
+            for track_id, track in self._tracks.items():
+                for det_index, box in enumerate(boxes):
+                    iou = _box_iou(track.box, tuple(box))
+                    if iou >= self._iou_threshold:
+                        candidates.append((iou, track_id, det_index))
+            candidates.sort(key=lambda c: c[0], reverse=True)
+
+            track_for_detection: dict[int, int] = {}
+            used_tracks: set[int] = set()
+            for iou, track_id, det_index in candidates:
+                if track_id in used_tracks or det_index in track_for_detection:
+                    continue
+                track_for_detection[det_index] = track_id
+                used_tracks.add(track_id)
+
+            result_ids = []
+            for det_index, box in enumerate(boxes):
+                track_id = track_for_detection.get(det_index)
+                if track_id is None:
+                    track_id = self._next_id
+                    self._next_id += 1
+                self._tracks[track_id] = _Track(box=tuple(box), missed_frames=0)
+                result_ids.append(track_id)
+
+            handled_this_frame = set(result_ids)
+            for track_id in list(self._tracks):
+                if track_id in handled_this_frame:
+                    continue
+                track = self._tracks[track_id]
+                track.missed_frames += 1
+                if track.missed_frames > self._max_missed_frames:
+                    del self._tracks[track_id]
+
+            return result_ids
+
+    def reset(self) -> None:
+        """Drop every tracked face and restart ID numbering from 1. Call this when a video
+        stream (re)starts -- a new stream has no relationship to the previous one's faces, so
+        continuing the old numbering (or keeping stale tracks alive) would be misleading."""
+        with self._lock:
+            self._tracks.clear()
+            self._next_id = 1
 
 
 def is_grayscale_frame(frame_bgr: np.ndarray) -> bool:
@@ -1853,6 +1952,7 @@ def analyze_frame(
     face_adjustments: dict,
     face_detector: str = "ssd",
     metrics: dict | None = None,
+    tracker: "FaceTracker | None" = None,
 ):
     """Detect faces and run inference for whichever model keys are active per feature.
     Multiple active models for the same feature (e.g. active_age = {"caffe", "ssrnet"})
@@ -1867,7 +1967,13 @@ def analyze_frame(
     face_detector picks which face detection backend runs (unlike every other feature,
     exactly one runs per frame -- running two detectors and merging their boxes would just
     produce duplicate/overlapping faces, not a meaningfully combined result). "yolo" falls
-    back to "ssd" (the always-required detector) if the YOLO model isn't loaded."""
+    back to "ssd" (the always-required detector) if the YOLO model isn't loaded.
+
+    tracker (#2) is optional and stays None for single-image callers (upload/snapshot have no
+    "next frame" for an ID to persist into). When a FaceTracker is passed -- video/webcam LIVE
+    mode only -- each face's dict also carries a stable "track_id" (see FaceTracker), and the
+    number burned into the annotated frame is that track_id instead of this frame's
+    detection-order position, so tracking is visible, not just data the caller ignores."""
     if global_adjustments and any(global_adjustments.values()):
         frame = apply_image_adjustments(frame, global_adjustments)
 
@@ -1877,6 +1983,7 @@ def analyze_frame(
         face_boxes = detect_faces_yolo(yolo_net, frame, conf_threshold)
     else:
         face_boxes = detect_faces(models.face_net, frame, conf_threshold)
+    track_ids = tracker.update(face_boxes) if tracker is not None else [None] * len(face_boxes)
     cropped_faces = []
     any_drowsy = False
 
@@ -1905,7 +2012,7 @@ def analyze_frame(
     # face would multiply an already-nontrivial cost by the face count for no benefit.
     lbph_trained = train_lbph_recognizer() if "lbph" in active_recognition and models.recognition_nets.get("lbph") else None
 
-    for idx, (x1, y1, x2, y2) in enumerate(face_boxes, 1):
+    for idx, ((x1, y1, x2, y2), track_id) in enumerate(zip(face_boxes, track_ids), 1):
         # Correct in-plane roll (tilted head) before cropping/classifying, using the same
         # eye cascade as drowsiness detection -- no new model/dependency. crop_frame/cx*/cy*
         # are the rotation-corrected region+box; x1..y2 stay untouched for the box overlay
@@ -2207,7 +2314,8 @@ def analyze_frame(
         # the caller to render as separate per-face UI (see src/app.py's target cards).
         box_thickness = int(round(frame.shape[0] / 150)) or 1
         cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), (0, 255, 0), box_thickness, 8)
-        draw_outlined_text(annotated_frame, str(idx), (x1, max(20, y1 - 10)), (0, 255, 255))
+        display_id = track_id if track_id is not None else idx
+        draw_outlined_text(annotated_frame, str(display_id), (x1, max(20, y1 - 10)), (0, 255, 255))
 
         landmarks_net = models.face_landmarks_nets.get("blendshapes")
         if landmarks_net is not None and "blendshapes" in active_face_landmarks:
@@ -2242,6 +2350,7 @@ def analyze_frame(
 
         cropped_faces.append({
             "idx": idx,
+            "track_id": track_id,
             "box": (x1, y1, x2, y2),
             "image": cv2.cvtColor(face, cv2.COLOR_BGR2RGB),
             "age": _format_results(age_pairs),

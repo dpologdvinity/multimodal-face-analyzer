@@ -235,6 +235,14 @@ st.markdown(
 
 load_models = st.cache_resource(inference.load_models)
 
+
+@st.cache_resource
+def _get_face_tracker() -> inference.FaceTracker:
+    """#2: one FaceTracker instance for the live webcam stream, cached (not session_state) so
+    it's the same object across Streamlit reruns and reachable from streamlit-webrtc's own
+    callback thread -- same reasoning as load_models() above, see FaceTracker's docstring."""
+    return inference.FaceTracker()
+
 try:
     models = load_models()
 except Exception as e:
@@ -672,7 +680,7 @@ with tab_webcam:
             frame = cv2.imdecode(file_bytes, 1)
             process_and_display(frame, "WEBCAM_CAPTURE", conf_threshold)
     else:
-        st.caption("Live analysis updates as people enter or leave view.")
+        st.caption("Live analysis updates as people enter or leave view. Each face keeps a stable ID as it moves.")
         frame_skip = st.slider(
             "CLASSIFIER FRAME SKIP", 1, 10, 1,
             help="Run age/gender/emotion/race/recognition/etc. classifiers every Nth frame "
@@ -684,6 +692,9 @@ with tab_webcam:
         )
         frame_counter = {"n": 0}
         _NO_MODELS: set = set()
+        face_tracker = _get_face_tracker()
+        if st.button("RESET TRACKING IDS", key="reset_tracking_ids"):
+            face_tracker.reset()
 
         def _video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
             frame_started = time.perf_counter()
@@ -710,7 +721,7 @@ with tab_webcam:
                 active_pose, active_face_landmarks, active_hands,
                 active_gaze if run_classifiers else _NO_MODELS,
                 global_adjustments, face_adjustments,
-                face_detector=active_face_detector, metrics=metrics,
+                face_detector=active_face_detector, metrics=metrics, tracker=face_tracker,
             )
             metrics["frame_ms"] = (time.perf_counter() - frame_started) * 1000
             metrics["timestamp"] = time.monotonic()
