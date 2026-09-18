@@ -455,19 +455,53 @@ pip install tensorflow-cpu tf-keras
 
 Without torch/tensorflow installed, the corresponding models are automatically skipped (not an error).
 
-For a guided native install and launch, run `./install-and-run.sh`. It groups related model choices,
-creates or reuses `.venv`, installs only the selected optional dependency groups, and starts the app at
-`http://localhost:8501`. In normal mode, model choices are colored: green means the choice adds no
-new package, while orange means it introduces an additional install not already selected earlier. Add
-`-v` or `--verbose` to show the package tree under every choice; verbose mode leaves model rows plain,
-colors packages from `requirements.txt` green, and colors additional packages orange. Add `-h` or
-`--hidden` to hide choices that would add a new optional package; in hidden mode, `9) all` selects only
-the remaining choices. Use `-p` or `--package` with a comma-separated package list (for example,
-`--package onnxruntime,tensorflow-cpu`) to mark packages you will provide yourself as already available;
-the installer still installs packages required by selected backends. It accepts `onxruntime` as an alias
-for `onnxruntime`. It requires `apt-get` and `sudo` on Debian/Ubuntu to install the OpenCV and MediaPipe runtime
-libraries; on other systems, install the equivalent `libgl1`, `libglib2.0-0`,
-`libegl1`, and `libgles2` packages yourself.
+## Guided run scripts
+
+Both run scripts use the same grouped prompts: FACE DETECTION, AGE, GENDER, RACE, EMOTION,
+RECOGNITION, ADDITIONAL CLASSIFICATIONS, and ADDITIONAL FEATURES. In every group except FACE
+DETECTION, `0) none` disables the group; FACE DETECTION uses `0) ssd` as the required fallback.
+`9) all` selects every listed option. The default is marked with `*`. Multiple options may be entered as concatenated
+digits (`1234`), space-separated digits (`1 2 3 4`), or comma-separated digits (`1,2,3,4`).
+
+Headers are bold blue. Bold green options need no additional optional install; bold orange options
+need an additional package. `none` and `all` are intentionally uncolored. The options are ordered
+with green choices before orange choices where applicable.
+
+### Native install and run
+
+Run `./install-and-run.sh` for a guided native setup. It creates or reuses `.venv`, installs the
+selected dependency groups, and starts the app at `http://localhost:8501`.
+
+```bash
+./install-and-run.sh
+```
+
+Useful flags:
+
+- `-v` or `--verbose` shows up to two dependency lines beneath each model. Models retain their
+  bold green/orange colors; package lines use regular-weight green/orange text.
+- `-h` or `--hidden` hides choices that would add a new optional package. In hidden mode, `9) all`
+  selects only the remaining visible choices.
+- `-p` or `--package PACKAGE[,PACKAGE...]` marks packages you will provide yourself as already
+  available for prompt coloring and hidden filtering. For example:
+
+  ```bash
+  ./install-and-run.sh --package onnxruntime,tensorflow-cpu
+  ```
+
+  The installer still installs packages required by selected backends. It accepts `onxruntime` as
+  an alias for `onnxruntime`.
+
+The native script requires `apt-get` and `sudo` on Debian/Ubuntu to install the OpenCV and MediaPipe
+runtime libraries. On other systems, install the equivalent `libgl1`, `libglib2.0-0`, `libegl1`, and
+`libgles2` packages yourself.
+
+### Docker build and run
+
+Run `./build-and-run.sh` for the equivalent grouped prompts followed by a Docker build and launch.
+It builds the selected model files into the image, asks whether to live-mount `src/` for testing,
+and then starts the container. While the container is running, enter `q` to stop it or `d` to stop
+it and remove the image and build cache.
 
 ---
 
@@ -476,20 +510,22 @@ libraries; on other systems, install the equivalent `libgl1`, `libglib2.0-0`,
 ### Build
 
 ```bash
-# guided prompt -- numbered options per feature, comma-separated multi-select
+# guided prompt -- grouped numbered options; multi-select as 1234, 1 2 3 4, or 1,2,3,4
 ./build-and-run.sh
 
-# or manually, default: quickest-to-build option per feature
+# or manually, selecting the model keys to bake into the image
 docker build -t face-analyzer .
 ```
 
-Each build ARG takes a comma-separated list of model keys for that feature, or empty string for none (each defaults to its quickest-to-build option):
+Each build ARG takes a comma-separated list of model keys for that feature, or an empty string for
+none. The guided prompt defaults to the first option in each group; SSD remains the required face
+detector fallback while YOLO, SCRFD, and RetinaFace are additive choices:
 
 ```bash
 docker build \
-  --build-arg AGE_MODEL=caffe,insightface,ssrnet,fairface,dex,mivolo \
-  --build-arg GENDER_MODEL=caffe,insightface,deepface,fairface,mivolo \
-  --build-arg EMOTION_MODEL=efficientnet,ferplus,mini_xception,dan,hsemotion \
+  --build-arg AGE_MODEL=caffe,insightface,fairface,dex,ssrnet,mivolo \
+  --build-arg GENDER_MODEL=caffe,insightface,fairface,deepface,mivolo \
+  --build-arg EMOTION_MODEL=efficientnet,ferplus,hsemotion,mini_xception,dan \
   --build-arg DROWSINESS_MODEL=haarcascade \
   --build-arg RACE_MODEL=fairface,deepface \
   --build-arg EXPRESSION_MODEL=blendshapes \
@@ -511,9 +547,9 @@ docker build \
 
 | Build arg           | Options (default first)          |
 | -------------------- | -------------------------------- |
-| `AGE_MODEL`        | `caffe`, `insightface`, `ssrnet`, `fairface`, `dex`, `mivolo` |
-| `GENDER_MODEL`     | `caffe`, `insightface`, `deepface`, `fairface`, `mivolo` |
-| `EMOTION_MODEL`    | `efficientnet`, `ferplus`, `mini_xception`, `dan`, `hsemotion` |
+| `AGE_MODEL`        | `caffe`, `insightface`, `fairface`, `dex`, `ssrnet`, `mivolo` |
+| `GENDER_MODEL`     | `caffe`, `insightface`, `fairface`, `deepface`, `mivolo` |
+| `EMOTION_MODEL`    | `efficientnet`, `ferplus`, `hsemotion`, `mini_xception`, `dan` |
 | `DROWSINESS_MODEL` | `haarcascade`                            |
 | `RACE_MODEL`       | `fairface`, `deepface`                   |
 | `EXPRESSION_MODEL` | `blendshapes`                            |
