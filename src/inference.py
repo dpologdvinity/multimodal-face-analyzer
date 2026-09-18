@@ -1,8 +1,7 @@
 """Model loading and per-face prediction logic for the Streamlit app (src/app.py).
 
-Deliberately not shared with detect.py -- the CLI and the app duplicate the
-pipeline on purpose (see CLAUDE.md); this module only exists to keep app.py
-itself from growing unbounded as more model backends are added.
+This module only exists to keep app.py itself from growing unbounded as
+more model backends are added.
 """
 from __future__ import annotations
 
