@@ -7,10 +7,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import random
 import sqlite3
+import threading
 import time
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -202,6 +206,41 @@ HAIR_COLOR_LABELS = ["black", "brown", "blonde", "red", "grey", "white"]
 EYE_COLOR_LABELS = ["brown", "blue", "green", "hazel", "grey", "amber"]
 GLASSES_THRESHOLD = 0.5
 FACIAL_HAIR_COVERAGE_THRESHOLD = 0.15  # fraction of lower-face pixels in BiSeNet's hair/beard class to call it "beard"
+
+
+# --- Thread safety for shared model instances (#19, #B) -----------------------------------
+# cv2.dnn.Net, cv2.CascadeClassifier, Keras/TF models, and the MediaPipe Tasks API are not
+# documented as safe for concurrent setInput/forward/predict/detect calls on the SAME cached
+# instance -- st.cache_resource shares one Models instance across every face, frame, and
+# Streamlit session. analyze_frame() runs each face's per-feature predictions concurrently
+# (see _run_feature_tasks below); this lock, keyed by the shared net object's identity, is
+# what makes concurrent calls onto the same net safe (they serialize) while calls onto
+# DIFFERENT nets still run in true parallel. Torch nn.Module.forward (ssrnet/dan) and
+# onnxruntime InferenceSession.run (glasses, yolo face detector) are both documented safe for
+# concurrent inference on one instance, so those are intentionally left unlocked.
+_NET_LOCKS: dict[int, threading.Lock] = {}
+_NET_LOCKS_GUARD = threading.Lock()
+
+
+def _lock_for(net) -> threading.Lock | "nullcontext[None]":
+    """Return a lock keyed by net's identity, or a no-op if net is just a boolean presence
+    marker (e.g. hair_color's "colorimetric" / recognition's "lbph" entries in Models, which
+    aren't a real shared native object)."""
+    if net is None or isinstance(net, bool):
+        return nullcontext()
+    key = id(net)
+    lock = _NET_LOCKS.get(key)
+    if lock is None:
+        with _NET_LOCKS_GUARD:
+            lock = _NET_LOCKS.setdefault(key, threading.Lock())
+    return lock
+
+
+# Shared across the process (and every Streamlit session) -- per-feature tasks are short-lived
+# native calls (cv2.dnn/TF/torch all release the GIL during their own compute), so a modest
+# pool sized off the CPU count lets independent features (different nets) genuinely overlap
+# without oversubscribing a CPU-only deployment.
+_INFERENCE_EXECUTOR = ThreadPoolExecutor(max_workers=max(4, (os.cpu_count() or 4)), thread_name_prefix="inference")
 
 
 @dataclass
@@ -494,8 +533,9 @@ def detect_faces(net: cv2.dnn.Net, frame: np.ndarray, conf_threshold: float = 0.
     """Detect faces and return bounding box limits."""
     frame_height, frame_width = frame.shape[:2]
     blob = cv2.dnn.blobFromImage(frame, 1.0, (300, 300), [104, 117, 123], False, False)
-    net.setInput(blob)
-    detections = net.forward()
+    with _lock_for(net):
+        net.setInput(blob)
+        detections = net.forward()
     face_boxes = []
 
     for i in range(detections.shape[2]):
@@ -531,8 +571,9 @@ def colorize_frame(net, frame_bgr: np.ndarray) -> np.ndarray:
     L = cv2.split(resized)[0]
     L -= 50
 
-    net.setInput(cv2.dnn.blobFromImage(L))
-    ab_channel = net.forward()[0, :, :, :].transpose((1, 2, 0))
+    with _lock_for(net):
+        net.setInput(cv2.dnn.blobFromImage(L))
+        ab_channel = net.forward()[0, :, :, :].transpose((1, 2, 0))
     ab_channel = cv2.resize(ab_channel, (frame_bgr.shape[1], frame_bgr.shape[0]))
 
     L_full = cv2.split(lab_img)[0]
@@ -559,8 +600,9 @@ def detect_pose_mpi(net, frame_bgr: np.ndarray) -> list[tuple[int, int] | None]:
     doesn't clear POSE_CONFIDENCE_THRESHOLD."""
     frame_h, frame_w = frame_bgr.shape[:2]
     blob = cv2.dnn.blobFromImage(frame_bgr, 1.0 / 255, (POSE_INPUT_SIZE, POSE_INPUT_SIZE), (0, 0, 0), swapRB=False, crop=False)
-    net.setInput(blob)
-    output = net.forward()
+    with _lock_for(net):
+        net.setInput(blob)
+        output = net.forward()
 
     out_h, out_w = output.shape[2], output.shape[3]
     points: list[tuple[int, int] | None] = []
@@ -871,13 +913,15 @@ def apply_image_op(face_bgr: np.ndarray, op: str, **params) -> np.ndarray:
 
 
 def predict_gender_caffe(net, blob: np.ndarray) -> str:
-    net.setInput(blob)
-    return GENDER_LIST[net.forward()[0].argmax()]
+    with _lock_for(net):
+        net.setInput(blob)
+        return GENDER_LIST[net.forward()[0].argmax()]
 
 
 def predict_age_caffe(net, blob: np.ndarray) -> str:
-    net.setInput(blob)
-    return AGE_LIST[net.forward()[0].argmax()]
+    with _lock_for(net):
+        net.setInput(blob)
+        return AGE_LIST[net.forward()[0].argmax()]
 
 
 def predict_age_ssrnet(net, face_bgr: np.ndarray) -> str:
@@ -894,8 +938,9 @@ def predict_age_dex(net, face_bgr: np.ndarray) -> str:
     """Predict a continuous age with DEX (Deep EXpectation): 101-class softmax over ages 0-100,
     decoded as an expected value (weighted sum of class centers), not argmax."""
     blob = cv2.dnn.blobFromImage(face_bgr, 1.0, (224, 224), DEX_MEAN_VALUES, swapRB=False, crop=False)
-    net.setInput(blob)
-    probs = net.forward().flatten()
+    with _lock_for(net):
+        net.setInput(blob)
+        probs = net.forward().flatten()
     age = sum(p * i for i, p in enumerate(probs))
     return f"{age:.0f}"
 
@@ -927,7 +972,8 @@ def _estimate_roll_angle(face_bgr: np.ndarray, eye_cascade) -> float | None:
     """Detect two eyes via Haar cascade and return the roll angle (degrees) needed to
     level them, or None if fewer than 2 eyes found or the angle looks like noise."""
     face_gray = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2GRAY)
-    eyes = eye_cascade.detectMultiScale(face_gray, scaleFactor=1.1, minNeighbors=6, minSize=(20, 20))
+    with _lock_for(eye_cascade):
+        eyes = eye_cascade.detectMultiScale(face_gray, scaleFactor=1.1, minNeighbors=6, minSize=(20, 20))
     if len(eyes) < 2:
         return None
     # take the two largest detections (most confident), left-to-right by x center
@@ -962,8 +1008,9 @@ def _insightface_forward(net, frame_bgr: np.ndarray, box: tuple[int, int, int, i
     aligned = _margin_align(frame_bgr, box, INSIGHTFACE_INPUT_SIZE, margin=1.5)
     # This export starts with Sub/Mul normalization nodes, so feed raw pixels.
     blob = cv2.dnn.blobFromImage(aligned, 1.0, (INSIGHTFACE_INPUT_SIZE, INSIGHTFACE_INPUT_SIZE), (0, 0, 0), swapRB=True)
-    net.setInput(blob)
-    return net.forward().flatten()
+    with _lock_for(net):
+        net.setInput(blob)
+        return net.forward().flatten()
 
 
 def predict_gender_insightface(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int]) -> str:
@@ -978,13 +1025,15 @@ def predict_age_insightface(net, frame_bgr: np.ndarray, box: tuple[int, int, int
 
 def predict_age_mivolo(net: MiVOLOInference, face_bgr: np.ndarray) -> str:
     """Predict age with MiVOLO on a face crop (face-only mode)."""
-    age, _, _ = net.predict_face(face_bgr)
+    with _lock_for(net):
+        age, _, _ = net.predict_face(face_bgr)
     return f"{int(round(age))}"
 
 
 def predict_gender_mivolo(net: MiVOLOInference, face_bgr: np.ndarray) -> str:
     """Predict gender with MiVOLO on a face crop (face-only mode)."""
-    _, gender, _ = net.predict_face(face_bgr)
+    with _lock_for(net):
+        _, gender, _ = net.predict_face(face_bgr)
     # MiVOLO returns 'male'/'female' (lowercase); normalize to "Male"/"Female"
     return "Male" if gender == "male" else "Female"
 
@@ -1004,8 +1053,9 @@ def predict_emotion_efficientnet(net, face_bgr: np.ndarray) -> str:
     face_rgb = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2RGB)
     blob = cv2.dnn.blobFromImage(face_rgb, 1.0 / 255.0, (224, 224), (0, 0, 0), swapRB=False, crop=False)
     blob = (blob - EMOTION_MEAN.reshape(1, 3, 1, 1)) / EMOTION_STD.reshape(1, 3, 1, 1)
-    net.setInput(blob.astype(np.float32))
-    logits = net.forward().flatten()
+    with _lock_for(net):
+        net.setInput(blob.astype(np.float32))
+        logits = net.forward().flatten()
     return EMOTION_LABELS_EFFICIENTNET[int(np.argmax(logits))]
 
 
@@ -1014,7 +1064,8 @@ def predict_emotion_mini_xception(net, face_bgr: np.ndarray) -> str:
     face_gray = cv2.cvtColor(cv2.resize(face_bgr, (64, 64)), cv2.COLOR_BGR2GRAY).astype(np.float32)
     face_norm = (face_gray / 255.0 - 0.5) * 2.0
     tensor = face_norm[np.newaxis, ..., np.newaxis]
-    probs = net.predict(tensor, verbose=0).flatten()
+    with _lock_for(net):
+        probs = net.predict(tensor, verbose=0).flatten()
     return EMOTION_LABELS_MINI_XCEPTION[int(np.argmax(probs))]
 
 
@@ -1022,15 +1073,17 @@ def predict_emotion_ferplus(net, face_bgr: np.ndarray) -> str:
     """Classify facial expression into one of EMOTION_LABELS_FERPLUS."""
     face_gray = cv2.cvtColor(cv2.resize(face_bgr, (64, 64)), cv2.COLOR_BGR2GRAY).astype(np.float32)
     blob = face_gray[np.newaxis, np.newaxis, ...]
-    net.setInput(blob)
-    logits = net.forward().flatten()
+    with _lock_for(net):
+        net.setInput(blob)
+        logits = net.forward().flatten()
     return EMOTION_LABELS_FERPLUS[int(np.argmax(logits))]
 
 
 def detect_drowsiness_haarcascade(eye_cascade, face_bgr: np.ndarray) -> bool:
     """Return True if fewer than MIN_EYES_OPEN eyes are visible (eyes likely closed)."""
     face_gray = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2GRAY)
-    eyes = eye_cascade.detectMultiScale(face_gray, scaleFactor=1.1, minNeighbors=6, minSize=(20, 20))
+    with _lock_for(eye_cascade):
+        eyes = eye_cascade.detectMultiScale(face_gray, scaleFactor=1.1, minNeighbors=6, minSize=(20, 20))
     return len(eyes) < MIN_EYES_OPEN
 
 
@@ -1061,8 +1114,9 @@ def _fairface_forward(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int]
     face_rgb = cv2.cvtColor(aligned, cv2.COLOR_BGR2RGB)
     face_norm = (face_rgb.astype(np.float32) / 255.0 - SSRNET_MEAN) / SSRNET_STD
     blob = face_norm.transpose(2, 0, 1)[np.newaxis, ...].astype(np.float32)
-    net.setInput(blob)
-    return net.forward(output_name).flatten()
+    with _lock_for(net):
+        net.setInput(blob)
+        return net.forward(output_name).flatten()
 
 
 def predict_race_fairface(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int]) -> str:
@@ -1085,14 +1139,16 @@ def predict_age_fairface(net, frame_bgr: np.ndarray, box: tuple[int, int, int, i
 
 def predict_race_deepface(net, face_bgr: np.ndarray) -> str:
     face_resized = cv2.resize(face_bgr, (224, 224)).astype(np.float32)
-    probs = net.predict(face_resized[np.newaxis, ...], verbose=0).flatten()
+    with _lock_for(net):
+        probs = net.predict(face_resized[np.newaxis, ...], verbose=0).flatten()
     return _format_race_label(probs, RACE_LABELS_DEEPFACE)
 
 
 def predict_gender_deepface(net, face_bgr: np.ndarray) -> str:
     # Same VGGFace-backbone preprocessing as predict_race_deepface: 224x224 BGR, unnormalized [0,255].
     face_resized = cv2.resize(face_bgr, (224, 224)).astype(np.float32)
-    probs = net.predict(face_resized[np.newaxis, ...], verbose=0).flatten()
+    with _lock_for(net):
+        probs = net.predict(face_resized[np.newaxis, ...], verbose=0).flatten()
     # deepface's GENDER_LABELS = ["Woman", "Man"]; normalize to this repo's Male/Female convention.
     return "Male" if np.argmax(probs) == 1 else "Female"
 
@@ -1101,7 +1157,8 @@ def compute_face_embedding(net, face_bgr: np.ndarray) -> np.ndarray:
     # Same VGGFace-backbone preprocessing as predict_race_deepface/predict_gender_deepface:
     # 224x224 BGR, unnormalized [0,255].
     face_resized = cv2.resize(face_bgr, (224, 224)).astype(np.float32)
-    emb = net.predict(face_resized[np.newaxis, ...], verbose=0).flatten()
+    with _lock_for(net):
+        emb = net.predict(face_resized[np.newaxis, ...], verbose=0).flatten()
     norm = np.linalg.norm(emb)
     return emb / norm if norm > 0 else emb
 
@@ -1178,7 +1235,8 @@ def train_lbph_recognizer():
 def predict_identity_lbph(recognizer, label_names: list[str], face_bgr: np.ndarray) -> tuple[str, float] | None:
     """LOWER LBPH confidence is a better match (opposite convention from vggface's cosine
     similarity) -- accept only below LBPH_CONFIDENCE_THRESHOLD."""
-    label, confidence = recognizer.predict(_lbph_preprocess(face_bgr))
+    with _lock_for(recognizer):
+        label, confidence = recognizer.predict(_lbph_preprocess(face_bgr))
     return (label_names[label], confidence) if confidence < LBPH_CONFIDENCE_THRESHOLD else None
 
 
@@ -1420,7 +1478,8 @@ def predict_expression_blendshapes(landmarker, face_bgr: np.ndarray) -> str:
     face_rgb = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2RGB)
     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=face_rgb)
 
-    result = landmarker.detect(mp_image)
+    with _lock_for(landmarker):
+        result = landmarker.detect(mp_image)
 
     if not result.face_blendshapes or len(result.face_blendshapes) == 0:
         return "no landmarks"
@@ -1459,8 +1518,9 @@ def predict_facial_hair_bisenet(net, face_bgr: np.ndarray) -> str:
     face_rgb = cv2.cvtColor(cv2.resize(face_bgr, (512, 512)), cv2.COLOR_BGR2RGB)
     face_norm = (face_rgb.astype(np.float32) / 255.0 - SSRNET_MEAN) / SSRNET_STD
     blob = face_norm.transpose(2, 0, 1)[np.newaxis, ...].astype(np.float32)
-    net.setInput(blob)
-    output = net.forward()  # (1, 19, H, W)
+    with _lock_for(net):
+        net.setInput(blob)
+        output = net.forward()  # (1, 19, H, W)
     class_map = output[0].argmax(axis=0)
 
     h = class_map.shape[0]
@@ -1477,7 +1537,8 @@ def predict_skin_tone_vgg16(net, face_bgr: np.ndarray) -> str:
     keras.applications.mobilenet_v2.preprocess_input scaling."""
     face_rgb = cv2.cvtColor(cv2.resize(face_bgr, SKIN_TONE_INPUT_SIZE), cv2.COLOR_BGR2RGB).astype(np.float32)
     face_norm = face_rgb / 127.5 - 1.0
-    probs = net.predict(face_norm[np.newaxis, ...], verbose=0).flatten()
+    with _lock_for(net):
+        probs = net.predict(face_norm[np.newaxis, ...], verbose=0).flatten()
     return SKIN_TONE_LABELS[int(np.argmax(probs))]
 
 
@@ -1499,7 +1560,8 @@ def predict_mask_mobilenetv2(net, face_bgr: np.ndarray) -> str:
     Class order (sklearn LabelBinarizer, alphabetical) is MASK_LABELS = ['with_mask', 'without_mask']."""
     face_rgb = cv2.cvtColor(cv2.resize(face_bgr, (224, 224)), cv2.COLOR_BGR2RGB).astype(np.float32)
     face_norm = face_rgb / 127.5 - 1.0
-    probs = net.predict(face_norm[np.newaxis, ...], verbose=0).flatten()
+    with _lock_for(net):
+        probs = net.predict(face_norm[np.newaxis, ...], verbose=0).flatten()
     return MASK_LABELS[int(np.argmax(probs))]
 
 
@@ -1549,7 +1611,8 @@ def predict_eye_color_colorimetric(eye_cascade, face_bgr: np.ndarray) -> str:
     cascade, sample the center 40% of its box (avoiding sclera/eyelid), and bucket
     the median HSV into EYE_COLOR_LABELS. Rough by nature -- lighting/pose-sensitive."""
     face_gray = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2GRAY)
-    eyes = eye_cascade.detectMultiScale(face_gray, scaleFactor=1.1, minNeighbors=6, minSize=(20, 20))
+    with _lock_for(eye_cascade):
+        eyes = eye_cascade.detectMultiScale(face_gray, scaleFactor=1.1, minNeighbors=6, minSize=(20, 20))
     if len(eyes) == 0:
         return "unknown"
 
@@ -1588,7 +1651,8 @@ def predict_face_landmarks_mediapipe(landmarker, face_bgr: np.ndarray) -> list[t
     Returns 468 (x, y) points normalized to [0, 1] within face_bgr, or None if no face found."""
     face_rgb = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2RGB)
     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=face_rgb)
-    result = landmarker.detect(mp_image)
+    with _lock_for(landmarker):
+        result = landmarker.detect(mp_image)
     if not result.face_landmarks:
         return None
     return [(lm.x, lm.y) for lm in result.face_landmarks[0]]
@@ -1712,7 +1776,8 @@ def detect_hand_landmarks_mediapipe(landmarker, frame_bgr: np.ndarray) -> list[l
     frame_h, frame_w = frame_bgr.shape[:2]
     frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
-    result = landmarker.detect(mp_image)
+    with _lock_for(landmarker):
+        result = landmarker.detect(mp_image)
     return [
         [(int(lm.x * frame_w), int(lm.y * frame_h)) for lm in hand]
         for hand in result.hand_landmarks
@@ -1868,196 +1933,272 @@ def analyze_frame(
         if need_blob227:
             blob227 = cv2.dnn.blobFromImage(face, 1.0, (227, 227), MODEL_MEAN_VALUES, swapRB=False)
 
-        age_pairs = []
-        for key in active_age:
-            net = models.age_nets.get(key)
-            if net is None:
-                continue
-            started = time.perf_counter()
-            if key == "caffe":
-                value = _cached_face_predict("age", key, face, predict_age_caffe, net, blob227)
-            elif key == "ssrnet":
-                value = _cached_face_predict("age", key, face, predict_age_ssrnet, net, face)
-            elif key == "fairface":
-                value = predict_age_fairface(net, crop_frame, (cx1, cy1, cx2, cy2))
-            elif key == "dex":
-                value = _cached_face_predict("age", key, face, predict_age_dex, net, face)
-            elif key == "mivolo":
-                value = _cached_face_predict("age", key, face, predict_age_mivolo, net, face)
-            else:
-                value = predict_age_insightface(net, crop_frame, (cx1, cy1, cx2, cy2))
-            age_pairs.append((key, value))
-            _record_model_latency(metrics, "age", key, started)
+        # #19: each feature below is independent of every other feature for this face (they
+        # read the same face/crop_frame/blob227 but never share mutable state with each
+        # other -- _cached_face_predict's cache and _record_model_latency's metrics dict are
+        # both documented/verified safe for this, see their own docstrings/comments), so they
+        # run concurrently on _INFERENCE_EXECUTOR instead of one after another. Shared model
+        # instances (e.g. one fairface/insightface net backing both age and gender, or one
+        # MediaPipe landmarker backing expression/gaze/face_landmarks) are made safe for this
+        # by _lock_for(), applied at each net's actual setInput/forward/predict/detect call
+        # site (see the top of this file) -- concurrent calls onto the SAME net serialize
+        # there, while calls onto DIFFERENT nets still overlap for real.
+        def _age_task():
+            pairs = []
+            for key in active_age:
+                net = models.age_nets.get(key)
+                if net is None:
+                    continue
+                started = time.perf_counter()
+                if key == "caffe":
+                    value = _cached_face_predict("age", key, face, predict_age_caffe, net, blob227)
+                elif key == "ssrnet":
+                    value = _cached_face_predict("age", key, face, predict_age_ssrnet, net, face)
+                elif key == "fairface":
+                    value = predict_age_fairface(net, crop_frame, (cx1, cy1, cx2, cy2))
+                elif key == "dex":
+                    value = _cached_face_predict("age", key, face, predict_age_dex, net, face)
+                elif key == "mivolo":
+                    value = _cached_face_predict("age", key, face, predict_age_mivolo, net, face)
+                else:
+                    value = predict_age_insightface(net, crop_frame, (cx1, cy1, cx2, cy2))
+                pairs.append((key, value))
+                _record_model_latency(metrics, "age", key, started)
+            return pairs
 
-        gender_pairs = []
-        for key in active_gender:
-            net = models.gender_nets.get(key)
-            if net is None:
-                continue
-            started = time.perf_counter()
-            if key == "caffe":
-                value = _cached_face_predict("gender", key, face, predict_gender_caffe, net, blob227)
-            elif key == "deepface":
-                value = _cached_face_predict("gender", key, face, predict_gender_deepface, net, face)
-            elif key == "fairface":
-                value = predict_gender_fairface(net, crop_frame, (cx1, cy1, cx2, cy2))
-            elif key == "mivolo":
-                value = _cached_face_predict("gender", key, face, predict_gender_mivolo, net, face)
-            else:
-                value = predict_gender_insightface(net, crop_frame, (cx1, cy1, cx2, cy2))
-            gender_pairs.append((key, value))
-            _record_model_latency(metrics, "gender", key, started)
+        def _gender_task():
+            pairs = []
+            for key in active_gender:
+                net = models.gender_nets.get(key)
+                if net is None:
+                    continue
+                started = time.perf_counter()
+                if key == "caffe":
+                    value = _cached_face_predict("gender", key, face, predict_gender_caffe, net, blob227)
+                elif key == "deepface":
+                    value = _cached_face_predict("gender", key, face, predict_gender_deepface, net, face)
+                elif key == "fairface":
+                    value = predict_gender_fairface(net, crop_frame, (cx1, cy1, cx2, cy2))
+                elif key == "mivolo":
+                    value = _cached_face_predict("gender", key, face, predict_gender_mivolo, net, face)
+                else:
+                    value = predict_gender_insightface(net, crop_frame, (cx1, cy1, cx2, cy2))
+                pairs.append((key, value))
+                _record_model_latency(metrics, "gender", key, started)
+            return pairs
 
-        emotion_pairs = []
-        for key in active_emotion:
-            net = models.emotion_nets.get(key)
-            if net is None:
-                continue
-            started = time.perf_counter()
-            if key == "dan":
-                value = _cached_face_predict("emotion", key, face, predict_emotion_dan, net, face)
-            elif key == "mini_xception":
-                value = _cached_face_predict("emotion", key, face, predict_emotion_mini_xception, net, face)
-            elif key == "ferplus":
-                value = _cached_face_predict("emotion", key, face, predict_emotion_ferplus, net, face)
-            else:
-                value = _cached_face_predict("emotion", key, face, predict_emotion_efficientnet, net, face)
-            emotion_pairs.append((key, value))
-            _record_model_latency(metrics, "emotion", key, started)
+        def _emotion_task():
+            pairs = []
+            for key in active_emotion:
+                net = models.emotion_nets.get(key)
+                if net is None:
+                    continue
+                started = time.perf_counter()
+                if key == "dan":
+                    value = _cached_face_predict("emotion", key, face, predict_emotion_dan, net, face)
+                elif key == "mini_xception":
+                    value = _cached_face_predict("emotion", key, face, predict_emotion_mini_xception, net, face)
+                elif key == "ferplus":
+                    value = _cached_face_predict("emotion", key, face, predict_emotion_ferplus, net, face)
+                else:
+                    value = _cached_face_predict("emotion", key, face, predict_emotion_efficientnet, net, face)
+                pairs.append((key, value))
+                _record_model_latency(metrics, "emotion", key, started)
+            return pairs
+
+        def _race_task():
+            pairs = []
+            for key in active_race:
+                net = models.race_nets.get(key)
+                if net is None:
+                    continue
+                started = time.perf_counter()
+                value = predict_race_fairface(net, crop_frame, (cx1, cy1, cx2, cy2)) if key == "fairface" else _cached_face_predict("race", key, face, predict_race_deepface, net, face)
+                pairs.append((key, value))
+                _record_model_latency(metrics, "race", key, started)
+            return pairs
+
+        def _expression_task():
+            pairs = []
+            for key in active_expression:
+                net = models.expression_nets.get(key)
+                if net is None:
+                    continue
+                started = time.perf_counter()
+                value = _cached_face_predict("expression", key, face, predict_expression_blendshapes, net, face)
+                pairs.append((key, value))
+                _record_model_latency(metrics, "expression", key, started)
+            return pairs
+
+        def _gaze_task():
+            pairs = []
+            for key in active_gaze:
+                net = models.gaze_nets.get(key)
+                if net is None:
+                    continue
+                started = time.perf_counter()
+                value = predict_gaze_mediapipe(net, face)
+                pairs.append((key, value))
+                _record_model_latency(metrics, "gaze", key, started)
+            return pairs
+
+        def _head_pose_task():
+            pairs = []
+            for key in active_gaze:
+                net = models.gaze_nets.get(key)
+                if net is not None:
+                    pairs.append((key, predict_head_pose_mediapipe(net, face)))
+            return pairs
+
+        def _recognition_task():
+            pairs = []
+            embedding = None
+            for key in active_recognition:
+                net = models.recognition_nets.get(key)
+                if net is None:
+                    continue
+                started = time.perf_counter()
+                if key == "lbph":
+                    if lbph_trained is None:
+                        value = "UNKNOWN"
+                    else:
+                        recognizer, label_names = lbph_trained
+                        match = predict_identity_lbph(recognizer, label_names, face)
+                        value = f"{match[0]} ({match[1]:.0f})" if match else "UNKNOWN"
+                else:
+                    # Only the embedding step is cached, not the match -- the gallery can
+                    # change (enrollment/deletion) between calls with the same face bytes,
+                    # and a stale cached match result would silently ignore that.
+                    embedding = _cached_face_predict("embedding", key, face, compute_face_embedding, net, face)
+                    match = match_face_identity(embedding, gallery)
+                    value = f"{match[0]} ({match[1] * 100:.0f}%)" if match else "UNKNOWN"
+                pairs.append((key, value))
+                _record_model_latency(metrics, "recognition", key, started)
+            return pairs, embedding
+
+        def _facial_hair_task():
+            pairs = []
+            for key in active_facial_hair:
+                net = models.facial_hair_nets.get(key)
+                if net is None:
+                    continue
+                started = time.perf_counter()
+                value = _cached_face_predict("facial_hair", key, face, predict_facial_hair_bisenet, net, face)
+                pairs.append((key, value))
+                _record_model_latency(metrics, "facial_hair", key, started)
+            return pairs
+
+        def _skin_tone_task():
+            pairs = []
+            for key in active_skin_tone:
+                net = models.skin_tone_nets.get(key)
+                if net is None:
+                    continue
+                started = time.perf_counter()
+                value = _cached_face_predict("skin_tone", key, face, predict_skin_tone_vgg16, net, face)
+                pairs.append((key, value))
+                _record_model_latency(metrics, "skin_tone", key, started)
+            return pairs
+
+        def _glasses_task():
+            pairs = []
+            for key in active_glasses:
+                net = models.glasses_nets.get(key)
+                if net is None:
+                    continue
+                started = time.perf_counter()
+                value = _cached_face_predict("glasses", key, face, predict_glasses_mobilenet, net, face)
+                pairs.append((key, value))
+                _record_model_latency(metrics, "glasses", key, started)
+            return pairs
+
+        def _mask_task():
+            pairs = []
+            for key in active_mask:
+                net = models.mask_nets.get(key)
+                if net is None:
+                    continue
+                started = time.perf_counter()
+                value = _cached_face_predict("mask", key, face, predict_mask_mobilenetv2, net, face)
+                pairs.append((key, value))
+                _record_model_latency(metrics, "mask", key, started)
+            return pairs
+
+        def _hair_color_task():
+            pairs = []
+            for key in active_hair_color:
+                if key not in models.hair_color_nets:
+                    continue
+                started = time.perf_counter()
+                value = predict_hair_color_colorimetric(crop_frame, (cx1, cy1, cx2, cy2))
+                pairs.append((key, value))
+                _record_model_latency(metrics, "hair_color", key, started)
+            return pairs
+
+        def _eye_color_task():
+            pairs = []
+            for key in active_eye_color:
+                net = models.eye_color_nets.get(key)
+                if net is None:
+                    continue
+                started = time.perf_counter()
+                value = _cached_face_predict("eye_color", key, face, predict_eye_color_colorimetric, net, face)
+                pairs.append((key, value))
+                _record_model_latency(metrics, "eye_color", key, started)
+            return pairs
+
+        def _drowsiness_task():
+            pairs = []
+            for key in active_drowsiness:
+                net = models.drowsiness_nets.get(key)
+                if net is None:
+                    continue
+                started = time.perf_counter()
+                drowsy = _cached_face_predict("drowsiness", key, face, detect_drowsiness_haarcascade, net, face)
+                pairs.append((key, "DROWSY" if drowsy else "ALERT"))
+                _record_model_latency(metrics, "drowsiness", key, started)
+            return pairs
+
+        futures = {
+            "age": _INFERENCE_EXECUTOR.submit(_age_task),
+            "gender": _INFERENCE_EXECUTOR.submit(_gender_task),
+            "emotion": _INFERENCE_EXECUTOR.submit(_emotion_task),
+            "race": _INFERENCE_EXECUTOR.submit(_race_task),
+            "expression": _INFERENCE_EXECUTOR.submit(_expression_task),
+            "gaze": _INFERENCE_EXECUTOR.submit(_gaze_task),
+            "head_pose": _INFERENCE_EXECUTOR.submit(_head_pose_task),
+            "recognition": _INFERENCE_EXECUTOR.submit(_recognition_task),
+            "facial_hair": _INFERENCE_EXECUTOR.submit(_facial_hair_task),
+            "skin_tone": _INFERENCE_EXECUTOR.submit(_skin_tone_task),
+            "glasses": _INFERENCE_EXECUTOR.submit(_glasses_task),
+            "mask": _INFERENCE_EXECUTOR.submit(_mask_task),
+            "hair_color": _INFERENCE_EXECUTOR.submit(_hair_color_task),
+            "eye_color": _INFERENCE_EXECUTOR.submit(_eye_color_task),
+            "drowsiness": _INFERENCE_EXECUTOR.submit(_drowsiness_task),
+        }
+
+        age_pairs = futures["age"].result()
+        gender_pairs = futures["gender"].result()
+        emotion_pairs = futures["emotion"].result()
+        race_pairs = futures["race"].result()
+        expression_pairs = futures["expression"].result()
+        gaze_pairs = futures["gaze"].result()
+        head_pose_pairs = futures["head_pose"].result()
+        recognition_pairs, face_embedding = futures["recognition"].result()
+        facial_hair_pairs = futures["facial_hair"].result()
+        skin_tone_pairs = futures["skin_tone"].result()
+        glasses_pairs = futures["glasses"].result()
+        mask_pairs = futures["mask"].result()
+        hair_color_pairs = futures["hair_color"].result()
+        eye_color_pairs = futures["eye_color"].result()
+        drowsy_pairs = futures["drowsiness"].result()
+
         if metrics is not None and emotion_pairs:
             metrics.setdefault("emotion_samples", []).extend(
                 {"model": key, "emotion": value} for key, value in emotion_pairs
             )
 
-        race_pairs = []
-        for key in active_race:
-            net = models.race_nets.get(key)
-            if net is None:
-                continue
-            started = time.perf_counter()
-            value = predict_race_fairface(net, crop_frame, (cx1, cy1, cx2, cy2)) if key == "fairface" else _cached_face_predict("race", key, face, predict_race_deepface, net, face)
-            race_pairs.append((key, value))
-            _record_model_latency(metrics, "race", key, started)
-
-        expression_pairs = []
-        for key in active_expression:
-            net = models.expression_nets.get(key)
-            if net is None:
-                continue
-            started = time.perf_counter()
-            value = _cached_face_predict("expression", key, face, predict_expression_blendshapes, net, face)
-            expression_pairs.append((key, value))
-            _record_model_latency(metrics, "expression", key, started)
-
-        gaze_pairs = []
-        for key in active_gaze:
-            net = models.gaze_nets.get(key)
-            if net is None:
-                continue
-            started = time.perf_counter()
-            value = predict_gaze_mediapipe(net, face)
-            gaze_pairs.append((key, value))
-            _record_model_latency(metrics, "gaze", key, started)
-        head_pose_pairs = []
-        for key in active_gaze:
-            net = models.gaze_nets.get(key)
-            if net is not None:
-                head_pose_pairs.append((key, predict_head_pose_mediapipe(net, face)))
-
-        recognition_pairs = []
-        face_embedding = None
-        for key in active_recognition:
-            net = models.recognition_nets.get(key)
-            if net is None:
-                continue
-            started = time.perf_counter()
-            if key == "lbph":
-                if lbph_trained is None:
-                    value = "UNKNOWN"
-                else:
-                    recognizer, label_names = lbph_trained
-                    match = predict_identity_lbph(recognizer, label_names, face)
-                    value = f"{match[0]} ({match[1]:.0f})" if match else "UNKNOWN"
-            else:
-                # Only the embedding step is cached, not the match -- the gallery can change
-                # (enrollment/deletion) between calls with the same face bytes, and a stale
-                # cached match result would silently ignore that.
-                face_embedding = _cached_face_predict("embedding", key, face, compute_face_embedding, net, face)
-                match = match_face_identity(face_embedding, gallery)
-                value = f"{match[0]} ({match[1] * 100:.0f}%)" if match else "UNKNOWN"
-            recognition_pairs.append((key, value))
-            _record_model_latency(metrics, "recognition", key, started)
-
-        facial_hair_pairs = []
-        for key in active_facial_hair:
-            net = models.facial_hair_nets.get(key)
-            if net is None:
-                continue
-            started = time.perf_counter()
-            value = _cached_face_predict("facial_hair", key, face, predict_facial_hair_bisenet, net, face)
-            facial_hair_pairs.append((key, value))
-            _record_model_latency(metrics, "facial_hair", key, started)
-
-        skin_tone_pairs = []
-        for key in active_skin_tone:
-            net = models.skin_tone_nets.get(key)
-            if net is None:
-                continue
-            started = time.perf_counter()
-            value = _cached_face_predict("skin_tone", key, face, predict_skin_tone_vgg16, net, face)
-            skin_tone_pairs.append((key, value))
-            _record_model_latency(metrics, "skin_tone", key, started)
-
-        glasses_pairs = []
-        for key in active_glasses:
-            net = models.glasses_nets.get(key)
-            if net is None:
-                continue
-            started = time.perf_counter()
-            value = _cached_face_predict("glasses", key, face, predict_glasses_mobilenet, net, face)
-            glasses_pairs.append((key, value))
-            _record_model_latency(metrics, "glasses", key, started)
-
-        mask_pairs = []
-        for key in active_mask:
-            net = models.mask_nets.get(key)
-            if net is None:
-                continue
-            started = time.perf_counter()
-            value = _cached_face_predict("mask", key, face, predict_mask_mobilenetv2, net, face)
-            mask_pairs.append((key, value))
-            _record_model_latency(metrics, "mask", key, started)
-
-        hair_color_pairs = []
-        for key in active_hair_color:
-            if key not in models.hair_color_nets:
-                continue
-            started = time.perf_counter()
-            value = predict_hair_color_colorimetric(crop_frame, (cx1, cy1, cx2, cy2))
-            hair_color_pairs.append((key, value))
-            _record_model_latency(metrics, "hair_color", key, started)
-
-        eye_color_pairs = []
-        for key in active_eye_color:
-            net = models.eye_color_nets.get(key)
-            if net is None:
-                continue
-            started = time.perf_counter()
-            value = _cached_face_predict("eye_color", key, face, predict_eye_color_colorimetric, net, face)
-            eye_color_pairs.append((key, value))
-            _record_model_latency(metrics, "eye_color", key, started)
-
-        drowsy_pairs = []
-        face_drowsy = False
-        for key in active_drowsiness:
-            net = models.drowsiness_nets.get(key)
-            if net is None:
-                continue
-            started = time.perf_counter()
-            drowsy = _cached_face_predict("drowsiness", key, face, detect_drowsiness_haarcascade, net, face)
-            face_drowsy = face_drowsy or drowsy
-            drowsy_pairs.append((key, "DROWSY" if drowsy else "ALERT"))
-            _record_model_latency(metrics, "drowsiness", key, started)
+        face_drowsy = any(value == "DROWSY" for _, value in drowsy_pairs)
         any_drowsy = any_drowsy or face_drowsy
 
         # Attribute text is intentionally NOT drawn on the shared image -- with several faces
@@ -2081,7 +2222,7 @@ def analyze_frame(
         raw_columns = _gather_face_results({
             "age": age_pairs, "gender": gender_pairs, "race": race_pairs, "emotion": emotion_pairs,
             "expression": expression_pairs, "gaze": gaze_pairs, "identity": recognition_pairs, "facial_hair": facial_hair_pairs,
-            "eye_contact": eye_contact, "head_pose": head_pose_pairs,
+            "eye_contact": [("derived", value) for value in eye_contact], "head_pose": head_pose_pairs,
             "skin_tone": skin_tone_pairs, "glasses": glasses_pairs, "mask": mask_pairs,
             "hair_color": hair_color_pairs, "eye_color": eye_color_pairs, "drowsiness": drowsy_pairs,
         })
