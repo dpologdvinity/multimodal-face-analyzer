@@ -5,9 +5,9 @@ more model backends are added.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import os
+import hashlib
 import random
 import sqlite3
 import threading
@@ -1436,10 +1436,37 @@ def enroll_lbph_face(name: str, face_bgr: np.ndarray) -> None:
     LBPH trains directly on raw face images, so ENROLL saves the actual (grayscale, fixed-
     size) crop -- one file per enrollment click, accumulating under gallery/lbph/<name>/.
     More enrolled photos per person generally improves LBPH's accuracy."""
+    name = validate_lbph_name(name)
     person_dir = LBPH_GALLERY_DIR / name
     person_dir.mkdir(parents=True, exist_ok=True)
     existing = len(list(person_dir.glob("*.png")))
     cv2.imwrite(str(person_dir / f"{existing:04d}.png"), _lbph_preprocess(face_bgr))
+
+
+def validate_lbph_name(name: str) -> str:
+    """Return a safe gallery directory name or raise for path traversal input."""
+    name = name.strip()
+    if not name or name in {".", ".."} or Path(name).name != name:
+        raise ValueError("Enrollment name must be a non-empty name without path separators.")
+    return name
+
+
+_LBPH_CACHE_LOCK = threading.Lock()
+_LBPH_CACHE_SIGNATURE = None
+_LBPH_CACHE_RESULT = None
+
+
+def _lbph_gallery_signature() -> str | None:
+    if not LBPH_GALLERY_DIR.is_dir():
+        return None
+    entries = []
+    for path in sorted(LBPH_GALLERY_DIR.glob("*/*.png")):
+        try:
+            stat = path.stat()
+        except FileNotFoundError:
+            continue
+        entries.append(f"{path.relative_to(LBPH_GALLERY_DIR)}:{stat.st_size}:{stat.st_mtime_ns}")
+    return hashlib.sha256("\n".join(entries).encode()).hexdigest()
 
 
 def train_lbph_recognizer():
@@ -1448,11 +1475,21 @@ def train_lbph_recognizer():
     enrolled gallery). Returns (recognizer, label_names) where label_names[i] is the enrolled
     name for numeric label i, or None if opencv-contrib's cv2.face isn't available or nothing
     is enrolled yet."""
-    if not hasattr(cv2, "face") or not LBPH_GALLERY_DIR.is_dir():
+    global _LBPH_CACHE_SIGNATURE, _LBPH_CACHE_RESULT
+    if not hasattr(cv2, "face"):
         return None
+
+    signature = _lbph_gallery_signature()
+    with _LBPH_CACHE_LOCK:
+        if signature == _LBPH_CACHE_SIGNATURE:
+            return _LBPH_CACHE_RESULT
+        if signature is None:
+            _LBPH_CACHE_SIGNATURE, _LBPH_CACHE_RESULT = signature, None
+            return None
 
     label_names = sorted(p.name for p in LBPH_GALLERY_DIR.iterdir() if p.is_dir())
     if not label_names:
+        _LBPH_CACHE_SIGNATURE, _LBPH_CACHE_RESULT = signature, None
         return None
 
     features, labels = [], []
@@ -1463,11 +1500,25 @@ def train_lbph_recognizer():
                 features.append(img)
                 labels.append(label)
     if not features:
+        _LBPH_CACHE_SIGNATURE, _LBPH_CACHE_RESULT = signature, None
         return None
 
     recognizer = cv2.face.LBPHFaceRecognizer_create()
     recognizer.train(features, np.array(labels))
-    return recognizer, label_names
+    with _LBPH_CACHE_LOCK:
+        _LBPH_CACHE_SIGNATURE, _LBPH_CACHE_RESULT = signature, (recognizer, label_names)
+        return _LBPH_CACHE_RESULT
+
+
+def decode_image_bytes(file_bytes: bytes | bytearray | np.ndarray) -> np.ndarray:
+    """Decode uploaded image bytes and reject empty or unsupported payloads clearly."""
+    encoded = np.asarray(bytearray(file_bytes), dtype=np.uint8)
+    if encoded.size == 0:
+        raise ValueError("The uploaded file is empty or could not be read.")
+    frame = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
+    if frame is None or frame.size == 0:
+        raise ValueError("The uploaded file is not a valid supported image.")
+    return frame
 
 
 def predict_identity_lbph(recognizer, label_names: list[str], face_bgr: np.ndarray) -> tuple[str, float] | None:

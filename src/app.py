@@ -605,12 +605,18 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
             if face["embedding"] is not None or lbph_available:
                 enroll_name = st.text_input("ENROLL AS", key=f"enroll_name_{identifier}_{face['idx']}", label_visibility="collapsed", placeholder="ENROLL AS...")
                 if st.button("ENROLL", key=f"enroll_btn_{identifier}_{face['idx']}") and enroll_name:
-                    if face["embedding"] is not None:
-                        st.session_state["gallery"][enroll_name] = np.array(face["embedding"], dtype=np.float32)
-                        inference.save_gallery(st.session_state["gallery"])
-                    if lbph_available:
-                        inference.enroll_lbph_face(enroll_name, cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR))
-                    st.rerun()
+                    try:
+                        safe_name = inference.validate_lbph_name(enroll_name) if lbph_available else enroll_name.strip()
+                        if not safe_name:
+                            raise ValueError("Enrollment name cannot be empty.")
+                        if face["embedding"] is not None:
+                            st.session_state["gallery"][safe_name] = np.array(face["embedding"], dtype=np.float32)
+                            inference.save_gallery(st.session_state["gallery"])
+                        if lbph_available:
+                            inference.enroll_lbph_face(safe_name, cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR))
+                        st.rerun()
+                    except ValueError as exc:
+                        st.error(f"[INVALID ENROLLMENT] {exc}")
 
             col_search, col_save = st.columns(2)
             if col_search.button("SEARCH", key=f"search_btn_{identifier}_{face['idx']}"):
@@ -672,8 +678,11 @@ with tab_upload:
 
     if uploaded_files:
         for uploaded_file in uploaded_files:
-            file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
-            frame = cv2.imdecode(file_bytes, 1)
+            try:
+                frame = inference.decode_image_bytes(uploaded_file.read())
+            except ValueError as exc:
+                st.error(f"[INVALID IMAGE] {uploaded_file.name}: {exc}")
+                continue
             process_and_display(frame, uploaded_file.name, conf_threshold)
 
 with tab_webcam:
@@ -683,9 +692,13 @@ with tab_webcam:
         webcam_image = st.camera_input("Take a snapshot")
 
         if webcam_image:
-            file_bytes = np.asarray(bytearray(webcam_image.read()), dtype=np.uint8)
-            frame = cv2.imdecode(file_bytes, 1)
-            process_and_display(frame, "WEBCAM_CAPTURE", conf_threshold)
+            try:
+                frame = inference.decode_image_bytes(webcam_image.read())
+            except ValueError as exc:
+                st.error(f"[INVALID IMAGE] WEBCAM_CAPTURE: {exc}")
+                frame = None
+            if frame is not None:
+                process_and_display(frame, "WEBCAM_CAPTURE", conf_threshold)
     else:
         st.caption("Live analysis updates as people enter or leave view. Each face keeps a stable ID as it moves.")
         frame_skip = st.slider(
