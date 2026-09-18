@@ -110,6 +110,16 @@ class NativeInstallerVerbosityTests(unittest.TestCase):
         self.assertIn("SCRFD_FACE_MODEL=scrfd", output)
         self.assertIn("RETINAFACE_MODEL=", output)
 
+    def test_face_detector_selection_accepts_all_multi_option_separators(self):
+        for selection in ("123", "1 2 3", "1,2,3"):
+            with self.subTest(selection=selection):
+                selections = "\n".join([selection] + ["0"] * 7) + "\n"
+                output = self._run_installer(input_data=selections)
+
+                self.assertIn("YOLO_FACE_MODEL=yolo", output)
+                self.assertIn("SCRFD_FACE_MODEL=scrfd", output)
+                self.assertIn("RETINAFACE_MODEL=retinaface", output)
+
     def test_reused_optional_packages_turn_later_options_green(self):
         selections = "\n".join(["0", "5", "0", "0", "5"] + ["0"] * 3) + "\n"
         output = self._run_installer("--verbose", input_data=selections)

@@ -71,6 +71,15 @@ class BuildPromptFormattingTests(unittest.TestCase):
         self.assertIn("EMOTION_MODEL=dan", output)
         self.assertIn("RECONSTRUCTION_3D_MODEL=deep3d", output)
 
+    def test_face_detector_selection_accepts_all_multi_option_separators(self):
+        for selection in ("123", "1 2 3", "1,2,3"):
+            with self.subTest(selection=selection):
+                output = self._run_build([selection] + ["0"] * 7)
+
+                self.assertIn("YOLO_FACE_MODEL=yolo", output)
+                self.assertIn("SCRFD_FACE_MODEL=scrfd", output)
+                self.assertIn("RETINAFACE_MODEL=retinaface", output)
+
 
 if __name__ == "__main__":
     unittest.main()
