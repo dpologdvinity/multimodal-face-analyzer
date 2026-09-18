@@ -13,7 +13,8 @@
 ## Key Features
 
 - **Multi-model face analysis:** face detection, age, gender, race, emotion, expression (blendshapes), drowsiness, facial hair, glasses, face mask, colorimetric hair/eye color, face landmarks, plus whole-frame auto-colorization, body pose estimation, and hand landmarks -- most features have 2+ selectable model backends.
-- **Image adjustments, two stages:** 11 Lightroom-style sliders (exposure, contrast, shadows/highlights, saturation/vibrance, sharpness, noise reduction, etc.) -- one panel applied to the whole image before face detection, a second applied to each detected face crop before classification.
+- **Image adjustments:** 11 Lightroom-style sliders (exposure, contrast, shadows/highlights, saturation/vibrance, sharpness, noise reduction, etc.) for the whole image, all face crops before classification, and each detected face's preview separately.
+- **Face details on hover:** Hover or focus a detected face box in the annotated image to see its analysis results; full face cards remain below the image.
 - **Identity search:** SEARCH button per detected face, matching against bundled reference photos (`known_people/`, a few famous people out of the box) plus an optional user-specified directory. Local matching only, no live internet search.
 - **Save & eigenfaces:** SAVE button per detected face writes to a sparse-column SQLite database plus `faces/`/`eigen/`; SEARCH also checks the eigenfaces (PCA) algorithm against every previously-saved face. A whole-image SCAN ALL FACES button labels every detected face Recognized/Unrecognized in one pass.
 - **3D reconstruction:** 3D RECON button per detected face (Deep3DFaceRecon_pytorch: ResNet50 + Basel Face Model), downloads a `.obj` mesh. Ships no working weights out of the box -- both the checkpoint and the Basel Face Model data are gated (Google Drive / university license registration); see README.
@@ -266,7 +267,8 @@ Eleven Lightroom-style sliders, all defaulting to 0 (no-op). Pure OpenCV/numpy -
 - **GLOBAL IMAGE ADJUSTMENTS**: applied to the whole image first, before face detection even runs. Every downstream output -- the annotated image, every face crop, every classification -- sees the adjusted pixels. Useful for e.g. brightening a dark source image so face detection itself finds more faces.
 - **PER-FACE IMAGE ADJUSTMENTS**: applied again, separately, to each detected face's own crop -- after detection, before any classifier runs on it. This only affects that one face's thumbnail and attribute results, not the shared frame or other faces.
 
-Both panels use the same 11 sliders and the same underlying `apply_image_adjustments()` function; an untouched slider is skipped entirely, so leaving either panel at defaults costs nothing extra per frame.
+Each detected face card also has its own **Edit face** sliders. They change that face's preview, edited PNG download, and input to the one-click image operations. Other faces and the classification labels stay unchanged. All sliders use the same `apply_image_adjustments()` function; defaults are a no-op.
+Each slider panel has a reset button. **Reset all adjustments** clears the whole-image, shared face, and individual face sliders together.
 
 ### Select Region & Transform (web app only)
 
@@ -288,7 +290,7 @@ Open **SELECT REGION & TRANSFORM** beneath an uploaded image or webcam snapshot,
 | Bilateral filter | OpenCV | edge-preserving smoothing |
 | Wavelet denoise | PyWavelets | wavelet soft thresholding |
 
-Each detected face has one **IMAGE OP** selector and **APPLY IMAGE OP** button. Operations act on that face's displayed crop; the result can be downloaded as a PNG. Intensity, sharpen, and denoise expose a method selector. These operations need no model files or Docker build arguments. CNN and GAN denoising are not included because trained weights are not supplied.
+Each detected face has an **Edit face** expander containing its sliders, **IMAGE OP** selector, and **APPLY IMAGE OP** button. The filters stay hidden until that expander opens. Operations act on that face's displayed crop; the result can be downloaded as a PNG. Intensity, sharpen, and denoise expose a method selector. These operations need no model files or Docker build arguments. CNN and GAN denoising are not included because trained weights are not supplied.
 
 Model provenance: DAN, SSR-Net, and DeepFace's race model are vendored research code (`src/nets/`). DAN and SSR-Net have no explicit upstream license file (research/educational use). DeepFace (race, gender, and recognition/`deepface_vgg.h5`) is MIT. FairFace's ONNX conversion is MIT (underlying dataset CC BY 4.0). InsightFace's model is non-commercial research use only (see Gender above). BiSeNet face-parsing (facial hair) and Face-Mask-Detection (mask) are MIT; the glasses detector's license is unstated.
 

@@ -1,3 +1,6 @@
+import base64
+from html import escape
+
 import av
 import cv2
 import numpy as np
@@ -6,98 +9,205 @@ from streamlit_webrtc import webrtc_streamer
 
 import inference
 
-# Page setup & surveillance-terminal style injection
+# Page setup and visual system
 st.set_page_config(page_title="MULTIMODAL_FACE_ANALYZER", layout="wide")
 
 st.markdown(
     """
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
-    /* Main app background and font */
+    :root {
+        --base: #0b1217;
+        --surface: #121f26;
+        --surface-raised: #192a31;
+        --line: #2a4248;
+        --text: #e8f2ef;
+        --muted: #a3bdb9;
+        --accent: #76dfb1;
+        --alert: #ff8d83;
+    }
+
     .stApp {
-        background-color: #0d1117;
-        color: #00ff66;
-        font-family: 'Share Tech Mono', 'Courier New', monospace;
+        background: radial-gradient(circle at 85% 0%, #17332f 0, var(--base) 34rem);
+        color: var(--text);
+        font-family: 'DM Sans', sans-serif;
     }
-
-    /* Headers */
-    h1, h2, h3, h4, h5, h6 {
-        color: #00ff66 !important;
-        font-family: 'Share Tech Mono', 'Courier New', monospace;
-        text-transform: uppercase;
-        letter-spacing: 1.5px;
+    .block-container {
+        max-width: 1440px;
+        padding-top: 2.5rem;
+        padding-bottom: 5rem;
     }
-
-    /* Sidebar styling */
+    .stApp h1, .stApp h2, .stApp h3, .stApp h4 {
+        color: var(--text);
+        font-family: 'DM Sans', sans-serif;
+        letter-spacing: -0.025em;
+    }
+    .stApp p, .stApp label, .stApp span { color: var(--text); }
+    .stApp [data-testid="stCaptionContainer"] p { color: var(--muted); }
+    .app-hero {
+        border-left: 3px solid var(--accent);
+        padding: 0.2rem 0 0.25rem 1.5rem;
+        margin: 0 0 2.2rem;
+    }
+    .app-hero h1 {
+        font-size: clamp(2.1rem, 4vw, 3.5rem);
+        line-height: 1.08;
+        margin: 0 0 0.65rem;
+        font-weight: 700;
+    }
+    .app-hero p { color: var(--muted); margin: 0; font-size: 1.05rem; }
     section[data-testid="stSidebar"] {
-        background-color: #161b22;
-        border-right: 1px solid #30363d;
+        background: #101c22;
+        border-right: 1px solid var(--line);
     }
-
-    /* File uploader custom styling */
+    section[data-testid="stSidebar"] h3 {
+        color: var(--accent);
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.8rem;
+        letter-spacing: 0.08em;
+        margin-top: 1.7rem;
+    }
+    section[data-testid="stSidebar"] label,
+    section[data-testid="stSidebar"] p { line-height: 1.4; }
+    div[data-testid="stTabs"] [data-baseweb="tab-list"] {
+        gap: 0.75rem;
+        border-bottom: 1px solid var(--line);
+    }
+    div[data-testid="stTabs"] button[role="tab"] {
+        color: var(--muted);
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.85rem;
+        padding: 0.8rem 1rem;
+    }
+    div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
+        color: var(--accent);
+    }
     div[data-testid="stFileUploader"] {
-        border: 1px dashed #00ff66;
-        border-radius: 4px;
-        background-color: #010409;
-        padding: 10px;
+        border: 1px dashed #4e8174;
+        border-radius: 12px;
+        background: var(--surface);
+        padding: 1rem;
     }
-
-    /* Warning and info alerts */
-    .stAlert {
-        background-color: #161b22;
-        color: #ffcc00;
-        border: 1px solid #ffcc00;
+    div[data-testid="stExpander"] {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--surface);
     }
-
-    /* Target dossier cards -- one per detected face, HUD-style corner brackets
-       instead of a generic rounded shadow card. */
+    div[data-testid="stButton"] > button,
+    div[data-testid="stDownloadButton"] > button {
+        border: 1px solid #467a6c;
+        border-radius: 8px;
+        background: var(--surface-raised);
+        color: var(--text);
+        font-weight: 600;
+        transition: background 120ms ease, border-color 120ms ease;
+    }
+    div[data-testid="stButton"] > button:hover,
+    div[data-testid="stDownloadButton"] > button:hover {
+        background: #244339;
+        border-color: var(--accent);
+        color: #fff;
+    }
+    div[data-testid="stButton"] > button:focus-visible,
+    div[data-testid="stDownloadButton"] > button:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+    }
+    div[data-testid="stImage"] img {
+        border-radius: 10px;
+        border: 1px solid var(--line);
+    }
     .target-card {
-        position: relative;
-        border: 1px solid #1f6b3d;
-        background-color: #0a0f0a;
-        padding: 14px 16px 12px;
-        margin-bottom: 18px;
+        border: 1px solid var(--line);
+        border-top: 2px solid var(--accent);
+        border-radius: 10px;
+        background: var(--surface);
+        padding: 1.1rem 1.25rem;
+        margin: 0.75rem 0 1.25rem;
     }
-    .target-card::before, .target-card::after,
-    .target-card .corner-br, .target-card .corner-bl {
-        content: "";
-        position: absolute;
-        width: 14px;
-        height: 14px;
-        border-color: #00ff66;
-        border-style: solid;
-    }
-    .target-card::before { top: -1px; left: -1px; border-width: 2px 0 0 2px; }
-    .target-card::after { top: -1px; right: -1px; border-width: 2px 2px 0 0; }
-    .target-card .corner-bl { bottom: -1px; left: -1px; border-width: 0 0 2px 2px; }
-    .target-card .corner-br { bottom: -1px; right: -1px; border-width: 0 2px 2px 0; }
     .target-card-id {
-        color: #6bd68f;
-        font-size: 0.75rem;
-        letter-spacing: 1px;
-        margin-bottom: 8px;
+        color: var(--accent);
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.8rem;
+        margin-bottom: 0.7rem;
     }
     .target-card-row {
         display: flex;
         justify-content: space-between;
-        gap: 10px;
-        padding: 3px 0;
-        border-bottom: 1px dashed #1f2d1f;
-        font-size: 0.9rem;
+        gap: 1rem;
+        padding: 0.4rem 0;
+        border-bottom: 1px solid var(--line);
+        font-size: 0.88rem;
     }
     .target-card-row:last-child { border-bottom: none; }
-    .target-card-row .k { color: #4d9c6b; }
-    .target-card-row .v { color: #eafff0; text-align: right; }
-    .target-card-status-alert { color: #00ff66; }
-    .target-card-status-drowsy { color: #ff4d4d; }
+    .target-card-row .k { color: var(--muted); }
+    .target-card-row .v { color: var(--text); text-align: right; overflow-wrap: anywhere; }
+    .target-card-status-alert { color: var(--accent) !important; }
+    .target-card-status-drowsy { color: var(--alert) !important; }
+    .face-hover-image {
+        position: relative;
+        width: 100%;
+        margin-bottom: 1rem;
+    }
+    .face-hover-image > img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+    }
+    .face-hover-target {
+        position: absolute;
+        z-index: 1;
+        cursor: help;
+        border-radius: 4px;
+    }
+    .face-hover-target:hover,
+    .face-hover-target:focus-visible {
+        z-index: 3;
+        outline: 2px solid var(--accent);
+        background: rgba(118, 223, 177, 0.12);
+    }
+    .face-hover-info {
+        display: none;
+        position: absolute;
+        top: calc(100% + 0.5rem);
+        left: 0;
+        width: min(18rem, 75vw);
+        z-index: 4;
+    }
+    .face-hover-target.place-right .face-hover-info { left: auto; right: 0; }
+    .face-hover-target.place-up .face-hover-info { top: auto; bottom: calc(100% + 0.5rem); }
+    .face-hover-target:hover .face-hover-info,
+    .face-hover-target:focus .face-hover-info { display: block; }
+    .face-hover-info .target-card {
+        margin: 0;
+        padding: 0.8rem;
+        max-height: min(70vh, 22rem);
+        overflow: auto;
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+    }
+    @media (max-width: 640px) {
+        .block-container { padding: 1.25rem 1rem 3rem; }
+        .app-hero { padding-left: 1rem; margin-bottom: 1.5rem; }
+        .target-card-row { display: block; }
+        .target-card-row .v { display: block; text-align: left; margin-top: 0.15rem; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        div[data-testid="stButton"] > button,
+        div[data-testid="stDownloadButton"] > button { transition: none; }
+    }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-st.title("MULTIMODAL FACE ANALYZER")
-st.caption("[ STATUS: ONLINE ] -- Multi-Model Face Analysis")
+st.markdown(
+    '<div class="app-hero"><h1>Multimodal Face Analyzer</h1>'
+    '<p>Analyze faces, compare models, and inspect each result.</p></div>',
+    unsafe_allow_html=True,
+)
 
 load_models = st.cache_resource(inference.load_models)
 
@@ -151,27 +261,29 @@ active_face_landmarks = _model_checkboxes("FACE LANDMARKS", models.face_landmark
 active_hands = _model_checkboxes("HAND LANDMARKS", models.hand_nets)
 
 
-def _adjustment_sliders(section_label: str, caption: str, key_prefix: str) -> dict:
-    st.sidebar.markdown(f"### {section_label}")
-    st.sidebar.caption(caption)
+def _reset_adjustments(prefixes: tuple[str, ...]) -> None:
+    for state_key in list(st.session_state):
+        if not any(state_key.startswith(f"{prefix}_") for prefix in prefixes):
+            continue
+        for adj_key, (_, _, default) in inference.IMAGE_ADJUSTMENT_RANGES.items():
+            if state_key.endswith(f"_{adj_key}"):
+                st.session_state[state_key] = default
+                break
+
+
+def _adjustment_sliders(caption: str, key_prefix: str, column_count: int = 2) -> dict:
+    st.caption(caption)
+    if st.button("Reset these sliders", key=f"{key_prefix}_reset"):
+        _reset_adjustments((key_prefix,))
     values = {}
-    for adj_key, (adj_min, adj_max, adj_default) in inference.IMAGE_ADJUSTMENT_RANGES.items():
-        values[adj_key] = st.sidebar.slider(
-            adj_key.replace("_", " ").upper(), adj_min, adj_max, adj_default, key=f"{key_prefix}_{adj_key}"
-        )
+    columns = st.columns(column_count)
+    for index, (adj_key, (adj_min, adj_max, adj_default)) in enumerate(inference.IMAGE_ADJUSTMENT_RANGES.items()):
+        with columns[index % column_count]:
+            values[adj_key] = st.slider(
+                adj_key.replace("_", " ").title(), adj_min, adj_max, adj_default, key=f"{key_prefix}_{adj_key}"
+            )
     return values
 
-
-global_adjustments = _adjustment_sliders(
-    "GLOBAL IMAGE ADJUSTMENTS",
-    "Applied to the whole image first, before face detection. Visible in every output.",
-    "global_adj",
-)
-face_adjustments = _adjustment_sliders(
-    "PER-FACE IMAGE ADJUSTMENTS",
-    "Applied to each detected face individually, after detection, before classification.",
-    "face_adj",
-)
 
 st.session_state.setdefault("gallery", inference.load_gallery())
 
@@ -223,14 +335,40 @@ def _target_card_html(face: dict) -> str:
         ("HAIR COLOR", face["hair_color"]), ("EYE COLOR", face["eye_color"]),
     ):
         if values:
-            rows += f'<div class="target-card-row"><span class="k">{label}</span><span class="v">{" / ".join(values)}</span></div>'
+            rows += f'<div class="target-card-row"><span class="k">{label}</span><span class="v">{escape(" / ".join(values))}</span></div>'
     if face["status"] is not None:
         status_class = "target-card-status-drowsy" if face["drowsy"] else "target-card-status-alert"
         dot = "●"
-        rows += f'<div class="target-card-row"><span class="k">STATUS</span><span class="v {status_class}">{dot} {face["status"]}</span></div>'
+        rows += f'<div class="target-card-row"><span class="k">STATUS</span><span class="v {status_class}">{dot} {escape(face["status"])}</span></div>'
     if not rows:
         rows = '<div class="target-card-row"><span class="k">STATUS</span><span class="v">no model output</span></div>'
-    return f'<div class="target-card"><div class="target-card-id">TARGET_{face["idx"]:02d}</div>{rows}</div>'
+    return f'<div class="target-card"><div class="target-card-id">FACE {face["idx"]:02d}</div>{rows}</div>'
+
+
+def _hoverable_face_image(frame_bgr: np.ndarray, faces: list[dict]) -> str:
+    """Render the annotated frame with focusable hover regions over detected boxes."""
+    height, width = frame_bgr.shape[:2]
+    success, encoded = cv2.imencode(".jpg", frame_bgr, [cv2.IMWRITE_JPEG_QUALITY, 90])
+    if not success:
+        raise ValueError("Could not encode annotated image")
+    source = base64.b64encode(encoded).decode("ascii")
+    targets = []
+    for face in faces:
+        x1, y1, x2, y2 = face["box"]
+        x1, x2 = sorted((max(0, min(x1, width)), max(0, min(x2, width))))
+        y1, y2 = sorted((max(0, min(y1, height)), max(0, min(y2, height))))
+        placement = (" place-right" if x1 + x2 > width else "") + (" place-up" if y1 + y2 > height else "")
+        style = f"left:{x1 / width * 100:.4f}%;top:{y1 / height * 100:.4f}%;width:{(x2 - x1) / width * 100:.4f}%;height:{(y2 - y1) / height * 100:.4f}%"
+        targets.append(
+            f'<div class="face-hover-target{placement}" style="{style}" tabindex="0" '
+            f'aria-label="Face {face["idx"]}: hover or focus for details">'
+            f'<div class="face-hover-info">{_target_card_html(face)}</div></div>'
+        )
+    return (
+        f'<div class="face-hover-image" style="aspect-ratio:{width}/{height}">'
+        f'<img src="data:image/jpeg;base64,{source}" alt="Annotated image with detected faces">'
+        f'{"".join(targets)}</div>'
+    )
 
 
 def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: float) -> None:
@@ -293,12 +431,13 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
         st.image(cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB), caption=identifier, use_container_width=True)
         return
 
-    st.markdown(f"#### ANALYSIS RESULT: `{identifier}`")
+    st.markdown(f"#### Results for `{identifier}`")
 
     if any_drowsy:
         st.error("[ALERT] DROWSINESS DETECTED -- SUBJECT EYES CLOSED")
 
-    st.image(cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB), use_container_width=True)
+    st.caption("Hover or tap a face box to see its details.")
+    st.markdown(_hoverable_face_image(annotated_frame, cropped_faces), unsafe_allow_html=True)
 
     if st.button("SCAN ALL FACES: RECOGNIZED / UNRECOGNIZED", key=f"scan_btn_{identifier}"):
         faces_bgr = [cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR) for face in cropped_faces]
@@ -315,10 +454,47 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
             else:
                 st.text(f"#{face['idx']}: Unrecognized")
 
-    cols = st.columns(min(len(cropped_faces), 4))
+    cols = st.columns(min(len(cropped_faces), 2))
     for i, face in enumerate(cropped_faces):
-        with cols[i % 4]:
-            st.image(face["image"], use_container_width=True)
+        with cols[i % len(cols)]:
+            with st.expander(f"Edit face {face['idx']}"):
+                individual_adjustments = _adjustment_sliders(
+                    "Edit this crop only. Analysis labels use the detected crop.",
+                    f"individual_adj_{identifier}_{face['idx']}",
+                    column_count=1,
+                )
+                face_bgr = cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR)
+                edited_face_bgr = (
+                    inference.apply_image_adjustments(face_bgr, individual_adjustments)
+                    if any(individual_adjustments.values()) else face_bgr
+                )
+                st.download_button(
+                    "DOWNLOAD EDITED FACE PNG", cv2.imencode(".png", edited_face_bgr)[1].tobytes(),
+                    file_name=f"face_{face['idx']}_edited.png", mime="image/png",
+                    key=f"face_edit_dl_{identifier}_{face['idx']}",
+                )
+
+                op_key = f"image_op_result_{identifier}_{face['idx']}"
+                op = st.selectbox("IMAGE OP", inference.IMAGE_OP_OPTIONS, key=f"image_op_{identifier}_{face['idx']}")
+                op_params = {}
+                if op == "intensity":
+                    op_params["method"] = st.selectbox("INTENSITY METHOD", inference.INTENSITY_METHODS,
+                                                        key=f"intensity_method_{identifier}_{face['idx']}")
+                elif op == "sharpen":
+                    op_params["method"] = st.selectbox("SHARPEN METHOD", inference.SHARPEN_METHODS,
+                                                        key=f"sharpen_method_{identifier}_{face['idx']}")
+                elif op == "denoise":
+                    op_params["method"] = st.selectbox("DENOISE METHOD", inference.DENOISE_METHODS,
+                                                        key=f"denoise_method_{identifier}_{face['idx']}")
+                if st.button("APPLY IMAGE OP", key=f"image_op_btn_{identifier}_{face['idx']}"):
+                    st.session_state[op_key] = inference.apply_image_op(edited_face_bgr, op, **op_params)
+                if op_key in st.session_state:
+                    result = st.session_state[op_key]
+                    st.image(cv2.cvtColor(result, cv2.COLOR_BGR2RGB), caption="Processed face")
+                    st.download_button("DOWNLOAD FACE PNG", cv2.imencode(".png", result)[1].tobytes(),
+                                       file_name=f"face_{face['idx']}_processed.png", mime="image/png",
+                                       key=f"image_op_dl_{identifier}_{face['idx']}")
+            st.image(cv2.cvtColor(edited_face_bgr, cv2.COLOR_BGR2RGB), use_container_width=True)
             st.markdown(_target_card_html(face), unsafe_allow_html=True)
             lbph_available = models.recognition_nets.get("lbph") is not None
             if face["embedding"] is not None or lbph_available:
@@ -352,28 +528,6 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
                 saved_id = inference.save_face(face_bgr, face["raw_columns"])
                 st.info(f"[ SAVED ] ID {saved_id}")
 
-            op_key = f"image_op_result_{identifier}_{face['idx']}"
-            op = st.selectbox("IMAGE OP", inference.IMAGE_OP_OPTIONS, key=f"image_op_{identifier}_{face['idx']}")
-            op_params = {}
-            if op == "intensity":
-                op_params["method"] = st.selectbox("INTENSITY METHOD", inference.INTENSITY_METHODS,
-                                                    key=f"intensity_method_{identifier}_{face['idx']}")
-            elif op == "sharpen":
-                op_params["method"] = st.selectbox("SHARPEN METHOD", inference.SHARPEN_METHODS,
-                                                    key=f"sharpen_method_{identifier}_{face['idx']}")
-            elif op == "denoise":
-                op_params["method"] = st.selectbox("DENOISE METHOD", inference.DENOISE_METHODS,
-                                                    key=f"denoise_method_{identifier}_{face['idx']}")
-            if st.button("APPLY IMAGE OP", key=f"image_op_btn_{identifier}_{face['idx']}"):
-                face_bgr = cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR)
-                st.session_state[op_key] = inference.apply_image_op(face_bgr, op, **op_params)
-            if op_key in st.session_state:
-                result = st.session_state[op_key]
-                st.image(cv2.cvtColor(result, cv2.COLOR_BGR2RGB), caption="Processed face")
-                st.download_button("DOWNLOAD FACE PNG", cv2.imencode(".png", result)[1].tobytes(),
-                                   file_name=f"face_{face['idx']}_processed.png", mime="image/png",
-                                   key=f"image_op_dl_{identifier}_{face['idx']}")
-
             if models.reconstruction_3d_nets:
                 if st.button("3D RECON", key=f"recon3d_btn_{identifier}_{face['idx']}"):
                     face_bgr = cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR)
@@ -389,11 +543,24 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
                         )
 
 
-tab_upload, tab_webcam = st.tabs(["[ FILE UPLOAD ]", "[ LIVE WEBCAM ]"])
+with st.expander("Image editing", expanded=True):
+    if st.button("Reset all adjustments", key="reset_all_adjustments"):
+        _reset_adjustments(("global_adj", "face_adj", "individual_adj"))
+    whole_image_tab, each_face_tab = st.tabs(["Whole image", "Each face"])
+    with whole_image_tab:
+        global_adjustments = _adjustment_sliders(
+            "Adjust the full image before face detection.", "global_adj"
+        )
+    with each_face_tab:
+        face_adjustments = _adjustment_sliders(
+            "Adjust each detected face before classification.", "face_adj"
+        )
+
+tab_upload, tab_webcam = st.tabs(["Image upload", "Webcam"])
 
 with tab_upload:
     uploaded_files = st.file_uploader(
-        "SELECT OR DROP IMAGE FILES FOR INFERENCE...",
+        "Choose images to analyze",
         type=["jpg", "jpeg", "png", "webp"],
         accept_multiple_files=True,
     )
@@ -405,17 +572,17 @@ with tab_upload:
             process_and_display(frame, uploaded_file.name, conf_threshold)
 
 with tab_webcam:
-    capture_mode = st.radio("CAPTURE MODE", ["SNAPSHOT", "LIVE"], horizontal=True)
+    capture_mode = st.radio("Capture mode", ["SNAPSHOT", "LIVE"], horizontal=True, format_func=str.title)
 
     if capture_mode == "SNAPSHOT":
-        webcam_image = st.camera_input("CAPTURE LIVE TARGET...")
+        webcam_image = st.camera_input("Take a snapshot")
 
         if webcam_image:
             file_bytes = np.asarray(bytearray(webcam_image.read()), dtype=np.uint8)
             frame = cv2.imdecode(file_bytes, 1)
             process_and_display(frame, "WEBCAM_CAPTURE", conf_threshold)
     else:
-        st.caption("[ CONTINUOUS FEED ] -- Every frame is re-scanned, so the analysis auto-updates as targets enter/leave view.")
+        st.caption("Live analysis updates as people enter or leave view.")
 
         def _video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
             img = frame.to_ndarray(format="bgr24")
