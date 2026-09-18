@@ -204,6 +204,19 @@ evidence on an image or new track reports `INCONCLUSIVE`.
 These are screening cues, not biometric proof. Lighting, compression, makeup, camera focus, and
 display hardware can produce false positives or false negatives.
 
+### Voice + Face Fusion (web app, webcam LIVE mode only)
+
+Enable `VOICE + FACE FUSION` in the LIVE webcam controls to request microphone access. Audio is
+converted to mono and analyzed as normalized short-term RMS energy over a rolling 1.5-second
+window. The video callback compares that signal with the emotion label of the largest detected
+face and reports whether their coarse arousal levels are `consistent` or `inconsistent`.
+
+This is an opt-in heuristic, not speech-emotion recognition. It does not perform frame-accurate
+lip-sync, identify which person is speaking, or produce a clinically or scientifically validated
+emotion measurement. With multiple faces, only the largest face is used. Uploads and webcam
+snapshots do not include audio and therefore do not use this fusion feature. Browser microphone
+permissions and a working WebRTC connection are required.
+
 ### Facial Hair (web app only)
 
 | Backend    | Framework      | Output                    |
