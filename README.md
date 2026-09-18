@@ -94,8 +94,9 @@ If the top-2 predicted classes are within 10 percentage points of each other, bo
 | `ferplus`                | ONNX (cv2.dnn)    | 8 classes: neutral, happiness, surprise, sadness, anger, disgust, fear, contempt |
 | `mini_xception`          | Keras/TensorFlow  | 7 classes: angry, disgust, fear, happy, sad, surprise, neutral |
 | `dan` (DAN, AffectNet-7) | PyTorch           | 7 classes: neutral, happy, sad, surprise, fear, disgust, anger |
+| `hsemotion` (enet_b0_8_best_vgaf, AffectNet-8) | ONNX (cv2.dnn) | 8 classes: anger, contempt, disgust, fear, happiness, neutral, sadness, surprise |
 
-Note the class label order (and count) differs between backends -- each is tracked as a separate constant, never assumed to match. `mini_xception` is tiny (853KB, oarriaga/face_classification, MIT) but needs TensorFlow like the deepface models. `ferplus` is the official ONNX Model Zoo emotion model (MIT, 35MB, no extra framework -- pure cv2.dnn ONNX), used in place of a third-party PyTorch checkpoint for security reasons (no untrusted pickle deserialization).
+Note the class label order (and count) differs between backends -- each is tracked as a separate constant, never assumed to match. `mini_xception` is tiny (853KB, oarriaga/face_classification, MIT) but needs TensorFlow like the deepface models. `ferplus` is the official ONNX Model Zoo emotion model (MIT, 35MB, no extra framework -- pure cv2.dnn ONNX), used in place of a third-party PyTorch checkpoint for security reasons (no untrusted pickle deserialization). `hsemotion` (HSE-asavchenko/EmotiEffLib, Apache-2.0 code, 16MB EfficientNet-B0 backbone) is pretrained on VGGFace2 and fine-tuned on AffectNet-8 -- same AffectNet-derived weight provenance as `dan` (research/educational use, no explicit commercial weight license); pure cv2.dnn ONNX, no extra framework, no torch needed.
 
 ### Expression (web app only)
 
@@ -312,7 +313,7 @@ Open **SELECT REGION & TRANSFORM** beneath an uploaded image or webcam snapshot,
 
 Each detected face has an **Edit face** expander containing its sliders, **IMAGE OP** selector, and **APPLY IMAGE OP** button. The filters stay hidden until that expander opens. Operations act on that face's displayed crop; the result can be downloaded as a PNG. Intensity, sharpen, and denoise expose a method selector. These operations need no model files or Docker build arguments. CNN and GAN denoising are not included because trained weights are not supplied.
 
-Model provenance: DAN, SSR-Net, and DeepFace's race model are vendored research code (`src/nets/`). DAN and SSR-Net have no explicit upstream license file (research/educational use). DeepFace (race, gender, and recognition/`deepface_vgg.h5`) is MIT. FairFace's ONNX conversion is MIT (underlying dataset CC BY 4.0). InsightFace's model is non-commercial research use only (see Gender above). BiSeNet face-parsing (facial hair) and Face-Mask-Detection (mask) are MIT; the glasses detector's license is unstated.
+Model provenance: DAN, SSR-Net, and DeepFace's race model are vendored research code (`src/nets/`). DAN and SSR-Net have no explicit upstream license file (research/educational use). DeepFace (race, gender, and recognition/`deepface_vgg.h5`) is MIT. FairFace's ONNX conversion is MIT (underlying dataset CC BY 4.0). InsightFace's model is non-commercial research use only (see Gender above). BiSeNet face-parsing (facial hair) and Face-Mask-Detection (mask) are MIT; the glasses detector's license is unstated. HSEmotion (HSE-asavchenko/EmotiEffLib) code is Apache-2.0; its AffectNet-8 fine-tuned weight has the same research/educational provenance as DAN.
 
 ## Performance
 
@@ -341,6 +342,7 @@ multimodal-face-analyzer/
 │   ├── efficientnet_b0_fer.onnx                 # emotion: efficientnet backend
 │   ├── emotion_ferplus.onnx                     # emotion: ferplus backend
 │   ├── mini_xception_fer.h5                     # emotion: mini_xception backend
+│   ├── hsemotion_enet_b0_8_best_vgaf.onnx       # emotion: hsemotion backend
 │   ├── fairface_7class.onnx                     # age + gender + race: fairface backend
 │   ├── deepface_race.h5                         # race: deepface backend
 │   ├── deepface_gender.h5                       # gender: deepface backend
@@ -431,7 +433,7 @@ Each build ARG takes a comma-separated list of model keys for that feature, or e
 docker build \
   --build-arg AGE_MODEL=caffe,insightface,ssrnet,fairface,dex,mivolo \
   --build-arg GENDER_MODEL=caffe,insightface,deepface,fairface,mivolo \
-  --build-arg EMOTION_MODEL=efficientnet,ferplus,mini_xception,dan \
+  --build-arg EMOTION_MODEL=efficientnet,ferplus,mini_xception,dan,hsemotion \
   --build-arg DROWSINESS_MODEL=haarcascade \
   --build-arg RACE_MODEL=fairface,deepface \
   --build-arg EXPRESSION_MODEL=blendshapes \
@@ -451,7 +453,7 @@ docker build \
 | -------------------- | -------------------------------- |
 | `AGE_MODEL`        | `caffe`, `insightface`, `ssrnet`, `fairface`, `dex`, `mivolo` |
 | `GENDER_MODEL`     | `caffe`, `insightface`, `deepface`, `fairface`, `mivolo` |
-| `EMOTION_MODEL`    | `efficientnet`, `ferplus`, `mini_xception`, `dan` |
+| `EMOTION_MODEL`    | `efficientnet`, `ferplus`, `mini_xception`, `dan`, `hsemotion` |
 | `DROWSINESS_MODEL` | `haarcascade`                            |
 | `RACE_MODEL`       | `fairface`, `deepface`                   |
 | `EXPRESSION_MODEL` | `blendshapes`                            |

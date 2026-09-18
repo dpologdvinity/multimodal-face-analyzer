@@ -84,6 +84,7 @@ INSIGHTFACE_MODEL = MODEL_DIR / "insightface_genderage.onnx"
 EFFICIENTNET_EMOTION_MODEL = MODEL_DIR / "efficientnet_b0_fer.onnx"
 MINI_XCEPTION_MODEL = MODEL_DIR / "mini_xception_fer.h5"
 FERPLUS_MODEL = MODEL_DIR / "emotion_ferplus.onnx"
+HSEMOTION_MODEL = MODEL_DIR / "hsemotion_enet_b0_8_best_vgaf.onnx"
 FAIRFACE_MODEL = MODEL_DIR / "fairface_7class.onnx"
 DEEPFACE_RACE_MODEL = MODEL_DIR / "deepface_race.h5"
 DEEPFACE_GENDER_MODEL = MODEL_DIR / "deepface_gender.h5"
@@ -114,6 +115,7 @@ EMOTION_LABELS_DAN = ['neutral', 'happy', 'sad', 'surprise', 'fear', 'disgust', 
 EMOTION_LABELS_EFFICIENTNET = ['angry', 'disgust', 'fear', 'happy', 'sad', 'surprise', 'neutral']
 EMOTION_LABELS_MINI_XCEPTION = ['angry', 'disgust', 'fear', 'happy', 'sad', 'surprise', 'neutral']
 EMOTION_LABELS_FERPLUS = ['neutral', 'happiness', 'surprise', 'sadness', 'anger', 'disgust', 'fear', 'contempt']
+EMOTION_LABELS_HSEMOTION = ['anger', 'contempt', 'disgust', 'fear', 'happiness', 'neutral', 'sadness', 'surprise']
 EMOTION_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 EMOTION_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 SSRNET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
@@ -141,7 +143,7 @@ EIGENFACE_DISTANCE_THRESHOLD = 3000.0  # untuned heuristic (see match_face_eigen
 AGE_MODEL_OPTIONS = ["caffe", "insightface", "ssrnet", "fairface", "dex", "mivolo"]
 GENDER_MODEL_OPTIONS = ["caffe", "insightface", "deepface", "fairface", "mivolo"]
 FAIRFACE_AGE_LABELS = ["0-2", "3-9", "10-19", "20-29", "30-39", "40-49", "50-59", "60-69", "70+"]
-EMOTION_MODEL_OPTIONS = ["efficientnet", "ferplus", "mini_xception", "dan"]
+EMOTION_MODEL_OPTIONS = ["efficientnet", "ferplus", "mini_xception", "dan", "hsemotion"]
 DROWSINESS_MODEL_OPTIONS = ["haarcascade"]
 RACE_MODEL_OPTIONS = ["fairface", "deepface"]
 EXPRESSION_MODEL_OPTIONS = ["blendshapes"]
@@ -357,6 +359,8 @@ def load_models() -> Models:
         emotion_nets["mini_xception"] = mini_xception_net
     if FERPLUS_MODEL.exists():
         emotion_nets["ferplus"] = cv2.dnn.readNetFromONNX(str(FERPLUS_MODEL))
+    if HSEMOTION_MODEL.exists():
+        emotion_nets["hsemotion"] = cv2.dnn.readNetFromONNX(str(HSEMOTION_MODEL))
 
     drowsiness_nets = {}
     if EYE_CASCADE_FILE.exists():
@@ -1315,6 +1319,17 @@ def predict_emotion_ferplus(net, face_bgr: np.ndarray) -> str:
         net.setInput(blob)
         logits = net.forward().flatten()
     return EMOTION_LABELS_FERPLUS[int(np.argmax(logits))]
+
+
+def predict_emotion_hsemotion(net, face_bgr: np.ndarray) -> str:
+    """Classify facial expression into one of EMOTION_LABELS_HSEMOTION."""
+    face_rgb = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2RGB)
+    blob = cv2.dnn.blobFromImage(face_rgb, 1.0 / 255.0, (224, 224), (0, 0, 0), swapRB=False, crop=False)
+    blob = (blob - EMOTION_MEAN.reshape(1, 3, 1, 1)) / EMOTION_STD.reshape(1, 3, 1, 1)
+    with _lock_for(net):
+        net.setInput(blob.astype(np.float32))
+        logits = net.forward().flatten()
+    return EMOTION_LABELS_HSEMOTION[int(np.argmax(logits))]
 
 
 def detect_drowsiness_haarcascade(eye_cascade, face_bgr: np.ndarray) -> bool:
@@ -2312,6 +2327,8 @@ def analyze_frame(
                     value = _cached_face_predict("emotion", key, face, predict_emotion_mini_xception, net, face)
                 elif key == "ferplus":
                     value = _cached_face_predict("emotion", key, face, predict_emotion_ferplus, net, face)
+                elif key == "hsemotion":
+                    value = _cached_face_predict("emotion", key, face, predict_emotion_hsemotion, net, face)
                 else:
                     value = _cached_face_predict("emotion", key, face, predict_emotion_efficientnet, net, face)
                 pairs.append((key, value))

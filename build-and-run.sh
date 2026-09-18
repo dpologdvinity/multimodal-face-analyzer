@@ -64,7 +64,7 @@ AGE_MODEL="$REPLY_MODEL"
 prompt_feature "GENDER" caffe insightface deepface fairface mivolo
 GENDER_MODEL="$REPLY_MODEL"
 
-prompt_feature "EMOTION" efficientnet ferplus mini_xception dan
+prompt_feature "EMOTION" efficientnet ferplus mini_xception dan hsemotion
 EMOTION_MODEL="$REPLY_MODEL"
 
 prompt_feature "DROWSINESS" haarcascade
