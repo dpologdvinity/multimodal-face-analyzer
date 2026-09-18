@@ -522,7 +522,18 @@ Disabled model files never land in an image layer (BuildKit bind-mount + conditi
 ### Run
 
 ```bash
-docker run -d -p 8501:8501 --name face_analyzer_container face-analyzer
+docker run -d -p 127.0.0.1:8501:8501 --name face_analyzer_container face-analyzer
 ```
 
 Then open `http://localhost:8501`.
+
+### Remote-access trust boundary
+
+This app has no user authentication or authorization. The container listens on its
+internal interface so Docker can route traffic to it, but the documented run command
+publishes it on the host loopback interface only. Treat all face images, enrollments,
+and saved face metadata as trusted-network data. For remote access, put the app behind
+an authenticating, TLS-terminating reverse proxy or a private network/VPN, and expose
+only that protected proxy; do not publish port 8501 directly to the public internet.
+Streamlit XSRF protection is enabled in the container command, but it is not an
+authentication boundary.

@@ -162,13 +162,13 @@ dev_mount="${dev_mount:-n}"
 docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
 
 if [[ "$dev_mount" =~ ^[Yy] ]]; then
-    docker run -d -p "${PORT}:8501" --name "$CONTAINER_NAME" \
+    docker run -d -p "127.0.0.1:${PORT}:8501" --name "$CONTAINER_NAME" \
         -v "$(pwd)/src:/app/src" \
         "$IMAGE_TAG"
     echo "" >&2
     echo "Dev mode: edit src/*.py locally, Streamlit auto-reruns in the container." >&2
 else
-    docker run -d -p "${PORT}:8501" --name "$CONTAINER_NAME" "$IMAGE_TAG"
+    docker run -d -p "127.0.0.1:${PORT}:8501" --name "$CONTAINER_NAME" "$IMAGE_TAG"
 fi
 
 echo "" >&2

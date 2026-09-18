@@ -248,4 +248,4 @@ RUN --mount=type=bind,source=models/age_deploy.prototxt,target=/tmp/models/age_d
 EXPOSE 8501
 
 # Run Streamlit web app from src directory
-CMD ["streamlit", "run", "src/app.py", "--server.address=0.0.0.0", "--server.port=8501"]
+CMD ["streamlit", "run", "src/app.py", "--server.address=0.0.0.0", "--server.port=8501", "--server.enableXsrfProtection=true"]
