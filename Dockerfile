@@ -10,7 +10,7 @@ FROM python:3.11-slim
 #   DROWSINESS_MODEL:  haarcascade                  (default: haarcascade)
 #   RACE_MODEL:        fairface, deepface           (default: fairface)
 #   EXPRESSION_MODEL:  blendshapes                  (default: blendshapes)
-#   RECOGNITION_MODEL: vggface                       (default: vggface)
+#   RECOGNITION_MODEL: vggface, lbph                 (default: vggface)
 #   FACIAL_HAIR_MODEL: bisenet                       (default: bisenet)
 #   GLASSES_MODEL:     mobilenet                     (default: mobilenet)
 #   MASK_MODEL:        mobilenetv2                   (default: mobilenetv2)
@@ -18,6 +18,17 @@ FROM python:3.11-slim
 #   POSE_MODEL:         mpi                            (default: mpi)
 #   HAND_MODEL:         mediapipe                       (default: mediapipe)
 #   RECONSTRUCTION_3D_MODEL: deep3d                      (default: deep3d)
+#   YOLO_FACE_MODEL:    yolo                             (default: yolo)
+# YOLO_FACE_MODEL is additive, not a replacement -- the original SSD/ResNet-10 TensorFlow
+# detector is always required and always on; this ARG only controls whether the alternative
+# YOLOv8-Face ONNX file is ALSO built in, selectable at runtime via a sidebar dropdown (exactly
+# one detector runs per frame). Needs onnxruntime (not this repo's usual cv2.dnn ONNX path --
+# cv2.dnn cannot parse this specific export, verified against both OpenCV 4.10 and 5.0).
+# lbph (Local Binary Patterns Histogram, opencv-contrib's cv2.face module) needs
+# opencv-contrib-python-headless instead of opencv-python-headless -- see the final opencv
+# reinstall step below. Unlike vggface, it has no pretrained weights: it trains from scratch
+# on whatever's enrolled via the ENROLL button, same "trains fresh on demand" spirit as this
+# app's eigenfaces feature.
 # pose (CMU OpenPose MPI model) is ACADEMIC/NON-COMMERCIAL RESEARCH USE ONLY -- see README.
 # Face Landmarks has no build ARG of its own -- it reuses the same face_landmarker.task file
 # and mediapipe dependency as EXPRESSION_MODEL=blendshapes (one model, two features).
@@ -53,6 +64,7 @@ ARG COLORIZATION_MODEL=eccv16
 ARG POSE_MODEL=mpi
 ARG HAND_MODEL=mediapipe
 ARG RECONSTRUCTION_3D_MODEL=deep3d
+ARG YOLO_FACE_MODEL=yolo
 
 # Install system dependencies for OpenCV and MediaPipe (libegl1/libgles2 needed by
 # mediapipe's face landmarker even in CPU-only/headless use)
@@ -87,6 +99,13 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 RUN --mount=type=cache,target=/root/.cache/pip \
     recon3d_csv=",$RECONSTRUCTION_3D_MODEL,"; \
     case "$recon3d_csv" in *,deep3d,*) pip install scipy ;; esac
+
+# onnxruntime is only needed for YOLO_FACE_MODEL=yolo -- cv2.dnn cannot load this specific
+# ONNX export (verified), so this feature uses onnxruntime instead of this repo's usual
+# cv2.dnn ONNX path.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    yolo_face_csv=",$YOLO_FACE_MODEL,"; \
+    case "$yolo_face_csv" in *,yolo,*) pip install onnxruntime ;; esac
 
 # tensorflow/tf-keras are only needed for the deepface race, deepface gender,
 # and/or mini_xception emotion models
@@ -124,10 +143,15 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # Caffe support (removed in OpenCV 5.0), breaking caffe/dex age, caffe gender, and
 # haarcascade drowsiness (all use cv2.dnn.readNetFromCaffe/CascadeClassifier). Uninstall
 # every opencv variant before reinstalling the one pinned version, so there's no
-# ambiguity about which package's cv2 gets imported.
+# ambiguity about which package's cv2 gets imported. lbph (recognition) needs cv2.face,
+# which only ships in the "contrib" build -- swap the pinned package for that build (still
+# <5.0.0, still has Caffe support -- contrib is a strict superset of the main build) when
+# lbph is requested, otherwise stick with the smaller opencv-python-headless.
 RUN --mount=type=cache,target=/root/.cache/pip \
+    recognition_csv=",$RECOGNITION_MODEL,"; opencv_pkg="opencv-python-headless"; \
+    case "$recognition_csv" in *,lbph,*) opencv_pkg="opencv-contrib-python-headless" ;; esac; \
     pip uninstall -y opencv-python opencv-python-headless opencv-contrib-python opencv-contrib-python-headless 2>/dev/null; \
-    pip install "opencv-python-headless>=4.8.0,<5.0.0"
+    pip install "${opencv_pkg}>=4.8.0,<5.0.0"
 
 # Application code and always-required model files (face detector)
 COPY detect.py ./
@@ -165,10 +189,11 @@ RUN --mount=type=bind,source=models/age_deploy.prototxt,target=/tmp/models/age_d
     --mount=type=bind,source=models/pose_iter_160000.caffemodel,target=/tmp/models/pose_iter_160000.caffemodel \
     --mount=type=bind,source=models/hand_landmarker.task,target=/tmp/models/hand_landmarker.task \
     --mount=type=bind,source=models/BFM/similarity_Lm3D_all.mat,target=/tmp/models/BFM/similarity_Lm3D_all.mat \
+    --mount=type=bind,source=models/yolov8n_face.onnx,target=/tmp/models/yolov8n_face.onnx \
     set -e; \
     age_csv=",$AGE_MODEL,"; gender_csv=",$GENDER_MODEL,"; emotion_csv=",$EMOTION_MODEL,"; \
     drowsiness_csv=",$DROWSINESS_MODEL,"; race_csv=",$RACE_MODEL,"; expression_csv=",$EXPRESSION_MODEL,"; recognition_csv=",$RECOGNITION_MODEL,"; \
-    facial_hair_csv=",$FACIAL_HAIR_MODEL,"; glasses_csv=",$GLASSES_MODEL,"; mask_csv=",$MASK_MODEL,"; colorization_csv=",$COLORIZATION_MODEL,"; pose_csv=",$POSE_MODEL,"; hand_csv=",$HAND_MODEL,"; recon3d_csv=",$RECONSTRUCTION_3D_MODEL,"; \
+    facial_hair_csv=",$FACIAL_HAIR_MODEL,"; glasses_csv=",$GLASSES_MODEL,"; mask_csv=",$MASK_MODEL,"; colorization_csv=",$COLORIZATION_MODEL,"; pose_csv=",$POSE_MODEL,"; hand_csv=",$HAND_MODEL,"; recon3d_csv=",$RECONSTRUCTION_3D_MODEL,"; yolo_face_csv=",$YOLO_FACE_MODEL,"; \
     case "$age_csv" in *,caffe,*) cp /tmp/models/age_deploy.prototxt /tmp/models/age_net.caffemodel models/ ;; esac; \
     case "$age_csv" in *,ssrnet,*) cp /tmp/models/ssrnet_morph2.pth models/ ;; esac; \
     case "$gender_csv" in *,caffe,*) cp /tmp/models/gender_deploy.prototxt /tmp/models/gender_net.caffemodel models/ ;; esac; \
@@ -195,7 +220,8 @@ RUN --mount=type=bind,source=models/age_deploy.prototxt,target=/tmp/models/age_d
     case "$colorization_csv" in *,eccv16,*) cp /tmp/models/colorization_deploy_v2.prototxt /tmp/models/colorization_release_v2.caffemodel /tmp/models/pts_in_hull.npy models/ ;; esac; \
     case "$pose_csv" in *,mpi,*) cp /tmp/models/pose_deploy_linevec_faster_4_stages.prototxt /tmp/models/pose_iter_160000.caffemodel models/ ;; esac; \
     case "$hand_csv" in *,mediapipe,*) cp /tmp/models/hand_landmarker.task models/ ;; esac; \
-    case "$recon3d_csv" in *,deep3d,*) mkdir -p models/BFM && cp /tmp/models/BFM/similarity_Lm3D_all.mat models/BFM/ ;; esac
+    case "$recon3d_csv" in *,deep3d,*) mkdir -p models/BFM && cp /tmp/models/BFM/similarity_Lm3D_all.mat models/BFM/ ;; esac; \
+    case "$yolo_face_csv" in *,yolo,*) cp /tmp/models/yolov8n_face.onnx models/ ;; esac
 
 # Expose default Streamlit port
 EXPOSE 8501

@@ -17,6 +17,8 @@
 - **Identity search:** SEARCH button per detected face, matching against bundled reference photos (`known_people/`, a few famous people out of the box) plus an optional user-specified directory. Local matching only, no live internet search.
 - **Save & eigenfaces:** SAVE button per detected face writes to a sparse-column SQLite database plus `faces/`/`eigen/`; SEARCH also checks the eigenfaces (PCA) algorithm against every previously-saved face. A whole-image SCAN ALL FACES button labels every detected face Recognized/Unrecognized in one pass.
 - **3D reconstruction:** 3D RECON button per detected face (Deep3DFaceRecon_pytorch: ResNet50 + Basel Face Model), downloads a `.obj` mesh. Ships no working weights out of the box -- both the checkpoint and the Basel Face Model data are gated (Google Drive / university license registration); see README.
+- **YOLO face detector:** additive alternative to the required SSD/ResNet-10 detector, selectable per-frame via a sidebar dropdown.
+- **LBPH recognition:** `cv2.face.LBPHFaceRecognizer`-based alternative to VGGFace, trains from scratch on your own enrolled photos -- no pretrained weights to source.
 - **Docker-packaged Streamlit app:** `src/app.py`, all features including race and expression.
 - **Build-time feature toggles:** disable any model at Docker build time to shrink the image (see [Docker](#docker-web-app)).
 - **Graceful degradation:** any model missing at runtime (file or dependency not present) is skipped, not a crash -- the rest of the pipeline keeps working.
@@ -33,6 +35,11 @@ Face detection is required; age, gender, race, emotion, expression, and drowsine
 | Backend         | Framework            | Output                  |
 | --------------- | -------------------- | ----------------------- |
 | SSD / ResNet-10 | TensorFlow (cv2.dnn) | bounding box (required) |
+| `yolo` (web app only) | ONNX (onnxruntime) | bounding box            |
+
+SSD/ResNet-10 is the original detector and is always required/always on (it's the one detect.py uses too, per CLAUDE.md). `yolo` (YOLOv8-Face, `models/yolov8n_face.onnx`, [yakhyo/yolov8-face-onnx-inference](https://github.com/yakhyo/yolov8-face-onnx-inference), no explicit upstream license -- same treatment as DAN/SSR-Net) is an **additive, web-app-only alternative**, selectable via a sidebar dropdown -- unlike every other feature, exactly one detector runs per frame (running two and merging their boxes would just produce duplicate/overlapping faces, not a meaningfully combined result). Verified with a real photo (`known_people/Barack_Obama.jpg`): correctly detects and localizes the face.
+
+**Needs `onnxruntime`, not this repo's usual `cv2.dnn` ONNX path.** Verified directly: this specific ONNX export fails to load under `cv2.dnn` on both OpenCV 4.10 and 5.0 (`Mixed input data types` error in its DFL box-decode subgraph -- an ONNX importer limitation, not a version-pin issue). The decode math (DFL softmax + sigmoid + NMS) is otherwise a faithful port of upstream's own `models/yolov8.py`, using `cv2.dnn.NMSBoxes` in place of their `torchvision.ops.nms` to avoid pulling in `torchvision` just for this.
 
 ### Age
 
@@ -98,12 +105,15 @@ Raw output of Google's MediaPipe Face Landmarker (Apache 2.0), a separate featur
 | Backend    | Framework        | Output                                             |
 | ---------- | ---------------- | --------------------------------------------------- |
 | `vggface`  | Keras/TensorFlow | enrolled identity name + similarity, e.g. `Alice (82%)`, or `UNKNOWN` |
+| `lbph`     | OpenCV (`cv2.face`) | enrolled identity name + LBPH confidence, e.g. `Bob (34)`, or `UNKNOWN` |
 
 Reuses the same VGGFace backbone as the deepface race/gender heads (`src/nets/deepface_common.py`), truncated to its 4096-d penultimate layer as a face embedding (`src/nets/deepface_recognition.py`) instead of a classification head -- same represent+verify shape as the original DeepFace paper. Embeddings are L2-normalized; identity is decided by cosine similarity against every enrolled face in the gallery, with a match only reported above `RECOGNITION_COSINE_THRESHOLD = 0.68` (deepface's own default VGG-Face verification threshold). Needs TensorFlow, like deepface race/gender.
 
 Enrollment happens in the web app: under any detected face with a computed embedding, enter a name and click ENROLL. The gallery is stored as `gallery/known_faces.json` (one L2-normalized 4096-d vector per name), created on first enrollment and gitignored as runtime user data. It survives app restarts; Docker users should volume-mount `gallery/` (e.g. `-v $(pwd)/gallery:/app/gallery`) to persist enrollments across container restarts. Sidebar has a GALLERY section listing enrolled names with a delete button per entry.
 
-**Known issue:** `models/deepface_vgg.h5` (the recognition/identity-search weight file) is not currently present in this repo -- it was never committed. Recognition and Identity Search are wired and ready but non-functional until that file is sourced and added.
+**Known issue:** `models/deepface_vgg.h5` (the `vggface` recognition/identity-search weight file) is not currently present in this repo -- it was never committed. `vggface` recognition and Identity Search's vggface-based matching are wired and ready but non-functional until that file is sourced and added. **This does not affect `lbph`** (see below), which has no pretrained weight file at all.
+
+`lbph` (Local Binary Patterns Histogram, `ideas/lbph.md`) is architecturally different from `vggface`: instead of comparing embeddings, `cv2.face.LBPHFaceRecognizer` trains directly on raw enrolled face images and has no pretrained weights to ship -- like this app's eigenfaces feature, it trains fresh on demand (once per analyzed frame, not once per face, to bound the cost). ENROLL saves the actual grayscale face crop to `gallery/lbph/<name>/NNNN.png` (accumulating -- more photos per person generally improves accuracy) rather than a single embedding vector; the ENROLL button appears whenever either `vggface` or `lbph` is available, and enrolls into whichever backend(s) are active. `LBPH_CONFIDENCE_THRESHOLD = 80.0` (lower confidence is a better match, the opposite convention from `vggface`'s cosine similarity) is within OpenCV's commonly-cited "reasonably confident" range, but -- like `EIGENFACE_DISTANCE_THRESHOLD` -- has no published reference value the way `RECOGNITION_COSINE_THRESHOLD` does; expect it to need tuning for your own enrolled faces. **Needs `opencv-contrib-python-headless`** instead of this repo's default `opencv-python-headless` (see `RECOGNITION_MODEL` in the Docker ARG table) -- `cv2.face` only ships in the contrib build.
 
 ### Identity Search (web app only)
 
@@ -294,6 +304,7 @@ multimodal-face-analyzer/
 │   ├── colorization_deploy_v2.prototxt / colorization_release_v2.caffemodel / pts_in_hull.npy  # colorization
 │   ├── pose_deploy_linevec_faster_4_stages.prototxt / pose_iter_160000.caffemodel  # pose (mpi)
 │   ├── hand_landmarker.task                     # hand landmarks: mediapipe backend
+│   ├── yolov8n_face.onnx                        # face detection: yolo backend (additive)
 │   ├── BFM/
 │   │   └── similarity_Lm3D_all.mat              # 3D recon: bundled landmark alignment template
 │   │   # (no BFM_model_front.mat -- Basel Face Model, registration-gated, see README)
@@ -306,6 +317,7 @@ multimodal-face-analyzer/
 ├── db/                     # gitignored: faces.db (SQLite, sparse per-model columns)
 ├── faces/                  # gitignored: SAVEd faces' color crops, {id}.jpg
 ├── eigen/                  # gitignored: SAVEd faces' grayscale/zoomed crops for eigenfaces
+├── gallery/                # gitignored: known_faces.json (vggface) + lbph/<name>/NNNN.png (lbph)
 │
 └── src/                    # Streamlit app module
     ├── app.py              # UI only (page layout, sidebar, tabs)
@@ -374,7 +386,7 @@ docker build \
   --build-arg DROWSINESS_MODEL=haarcascade \
   --build-arg RACE_MODEL=fairface,deepface \
   --build-arg EXPRESSION_MODEL=blendshapes \
-  --build-arg RECOGNITION_MODEL=vggface \
+  --build-arg RECOGNITION_MODEL=vggface,lbph \
   --build-arg FACIAL_HAIR_MODEL=bisenet \
   --build-arg GLASSES_MODEL=mobilenet \
   --build-arg MASK_MODEL=mobilenetv2 \
@@ -382,6 +394,7 @@ docker build \
   --build-arg POSE_MODEL=mpi \
   --build-arg HAND_MODEL=mediapipe \
   --build-arg RECONSTRUCTION_3D_MODEL=deep3d \
+  --build-arg YOLO_FACE_MODEL=yolo \
   -t face-analyzer .
 ```
 
@@ -393,7 +406,7 @@ docker build \
 | `DROWSINESS_MODEL` | `haarcascade`                            |
 | `RACE_MODEL`       | `fairface`, `deepface`                   |
 | `EXPRESSION_MODEL` | `blendshapes`                            |
-| `RECOGNITION_MODEL` | `vggface`                               |
+| `RECOGNITION_MODEL` | `vggface`, `lbph`                       |
 | `FACIAL_HAIR_MODEL` | `bisenet`                               |
 | `GLASSES_MODEL`    | `mobilenet`                              |
 | `MASK_MODEL`       | `mobilenetv2`                            |
@@ -401,12 +414,13 @@ docker build \
 | `POSE_MODEL`       | `mpi`                                     |
 | `HAND_MODEL`       | `mediapipe`                               |
 | `RECONSTRUCTION_3D_MODEL` | `deep3d` (ships no working weights, see [3D Reconstruction](#3d-reconstruction-web-app-only-ships-no-working-weights)) |
+| `YOLO_FACE_MODEL`  | `yolo` (additive -- SSD stays required/always on) |
 
 There's no `SKIN_TONE_MODEL` build ARG -- see [Skin Tone](#skin-tone-web-app-only-no-working-backend-currently-shipped) above. Hair Color and Eye Color are colorimetric heuristics with no model file and thus no build ARG either -- they're always available in the web app (Eye Color additionally needs `haarcascade_eye.xml`, already required for Drowsiness). Face Landmarks also has no build ARG -- it rides along with `EXPRESSION_MODEL=blendshapes`, reusing that same model file.
 
 Multiple models per feature (e.g. `AGE_MODEL=caffe,ssrnet`) can be built in together -- the web app sidebar shows a checkbox per built model, and checking more than one for the same feature runs and displays all of them at once.
 
-Disabled model files never land in an image layer (BuildKit bind-mount + conditional copy). `torch`/`torchvision` (~200MB) are only installed if `ssrnet`, `dan`, `mivolo`, and/or `deep3d` are requested (`scipy` is additionally installed for `deep3d` alone, to load `.mat` files). `tensorflow-cpu`/`tf-keras` (~200-400MB, plus deepface's 513MB weight file) are only installed if `deepface`, `mini_xception`, `vggface`, and/or `mask` are requested -- deepface race remains by far the heaviest single option in the repo (note: `mivolo` at ~110MB checkpoint plus ultralytics/timm dependencies is the second-heaviest, still much lighter than deepface's full stack). `mediapipe` is only installed if the `blendshapes` expression backend is requested.
+Disabled model files never land in an image layer (BuildKit bind-mount + conditional copy). `torch`/`torchvision` (~200MB) are only installed if `ssrnet`, `dan`, `mivolo`, and/or `deep3d` are requested (`scipy` is additionally installed for `deep3d` alone, to load `.mat` files). `tensorflow-cpu`/`tf-keras` (~200-400MB, plus deepface's 513MB weight file) are only installed if `deepface`, `mini_xception`, `vggface`, and/or `mask` are requested -- deepface race remains by far the heaviest single option in the repo (note: `mivolo` at ~110MB checkpoint plus ultralytics/timm dependencies is the second-heaviest, still much lighter than deepface's full stack). `mediapipe` is only installed if the `blendshapes` expression backend is requested. `onnxruntime` is only installed if `yolo` (face detector) is requested. `opencv-contrib-python-headless` replaces the default `opencv-python-headless` only if `lbph` is requested (needed for `cv2.face`).
 
 ### Run
 
