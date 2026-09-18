@@ -29,3 +29,9 @@ Thumbs.db
 
 # Enrolled-face gallery (runtime user data, not source)
 gallery/
+
+# Saved-face database + images (runtime user data, not source)
+db/
+faces/
+eigen/
+known_people/
