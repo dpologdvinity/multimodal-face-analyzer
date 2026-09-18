@@ -1,15 +1,20 @@
 # syntax=docker/dockerfile:1
 FROM python:3.11-slim
 
-# Toggle which detection features get built in. Each defaults to on (matches
-# running the app with all models present). Disabling a feature skips copying
-# its model file(s) into the image (via bind-mount, so the bytes never land in
-# a layer) and, for emotion, skips installing torch/torchvision.
-ARG INCLUDE_AGE=true
-ARG INCLUDE_AGE_SSRNET=true
-ARG INCLUDE_GENDER=true
-ARG INCLUDE_DROWSINESS=true
-ARG INCLUDE_EMOTION=true
+# Per-feature model selection. Each ARG takes a comma-separated list of model
+# keys for that feature, or an empty string for "none". Options, in
+# quickest-to-build order (default is the first/quickest):
+#   AGE_MODEL:        caffe, ssrnet     (default: caffe)
+#   GENDER_MODEL:      caffe             (default: caffe)
+#   EMOTION_MODEL:     dan               (default: dan)
+#   DROWSINESS_MODEL:  haarcascade       (default: haarcascade)
+# e.g. --build-arg AGE_MODEL=caffe,ssrnet builds both age backends so the web
+# app can switch between them at runtime. See build-and-run.sh for a guided
+# prompt instead of typing these by hand.
+ARG AGE_MODEL=caffe
+ARG GENDER_MODEL=caffe
+ARG EMOTION_MODEL=dan
+ARG DROWSINESS_MODEL=haarcascade
 
 # Install system dependencies for OpenCV
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -23,8 +28,11 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# torch/torchvision are only needed for emotion classification and/or the SSR-Net age backend; skip the ~200MB install otherwise
-RUN if [ "$INCLUDE_EMOTION" = "true" ] || [ "$INCLUDE_AGE_SSRNET" = "true" ]; then \
+# torch/torchvision are only needed for the ssrnet age model and/or the dan emotion model
+RUN age_csv=",$AGE_MODEL,"; emotion_csv=",$EMOTION_MODEL,"; need_torch=false; \
+    case "$age_csv" in *,ssrnet,*) need_torch=true ;; esac; \
+    case "$emotion_csv" in *,dan,*) need_torch=true ;; esac; \
+    if [ "$need_torch" = "true" ]; then \
         pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu torch torchvision; \
     fi
 
@@ -33,7 +41,7 @@ COPY detect.py ./
 COPY src/ src/
 COPY models/opencv_face_detector.pbtxt models/opencv_face_detector_uint8.pb models/
 
-# Per-feature model files: bind-mount the source so disabled files are never written into a layer
+# Per-feature model files: bind-mount the source so files for unselected models are never written into a layer
 RUN --mount=type=bind,source=models/age_deploy.prototxt,target=/tmp/models/age_deploy.prototxt \
     --mount=type=bind,source=models/age_net.caffemodel,target=/tmp/models/age_net.caffemodel \
     --mount=type=bind,source=models/ssrnet_morph2.pth,target=/tmp/models/ssrnet_morph2.pth \
@@ -42,11 +50,12 @@ RUN --mount=type=bind,source=models/age_deploy.prototxt,target=/tmp/models/age_d
     --mount=type=bind,source=models/haarcascade_eye.xml,target=/tmp/models/haarcascade_eye.xml \
     --mount=type=bind,source=models/dan_affecnet7.pth,target=/tmp/models/dan_affecnet7.pth \
     set -e; \
-    if [ "$INCLUDE_AGE" = "true" ]; then cp /tmp/models/age_deploy.prototxt /tmp/models/age_net.caffemodel models/; fi; \
-    if [ "$INCLUDE_AGE_SSRNET" = "true" ]; then cp /tmp/models/ssrnet_morph2.pth models/; fi; \
-    if [ "$INCLUDE_GENDER" = "true" ]; then cp /tmp/models/gender_deploy.prototxt /tmp/models/gender_net.caffemodel models/; fi; \
-    if [ "$INCLUDE_DROWSINESS" = "true" ]; then cp /tmp/models/haarcascade_eye.xml models/; fi; \
-    if [ "$INCLUDE_EMOTION" = "true" ]; then cp /tmp/models/dan_affecnet7.pth models/; fi
+    age_csv=",$AGE_MODEL,"; gender_csv=",$GENDER_MODEL,"; emotion_csv=",$EMOTION_MODEL,"; drowsiness_csv=",$DROWSINESS_MODEL,"; \
+    case "$age_csv" in *,caffe,*) cp /tmp/models/age_deploy.prototxt /tmp/models/age_net.caffemodel models/ ;; esac; \
+    case "$age_csv" in *,ssrnet,*) cp /tmp/models/ssrnet_morph2.pth models/ ;; esac; \
+    case "$gender_csv" in *,caffe,*) cp /tmp/models/gender_deploy.prototxt /tmp/models/gender_net.caffemodel models/ ;; esac; \
+    case "$emotion_csv" in *,dan,*) cp /tmp/models/dan_affecnet7.pth models/ ;; esac; \
+    case "$drowsiness_csv" in *,haarcascade,*) cp /tmp/models/haarcascade_eye.xml models/ ;; esac
 
 # Expose default Streamlit port
 EXPOSE 8501
