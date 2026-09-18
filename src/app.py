@@ -1,4 +1,7 @@
 import base64
+import csv
+import io
+import json
 from html import escape
 
 import av
@@ -11,6 +14,8 @@ import inference
 
 # Page setup and visual system
 st.set_page_config(page_title="MULTIMODAL_FACE_ANALYZER", layout="wide")
+
+theme = st.sidebar.selectbox("THEME", ["Dark cyberpunk", "Light cyberpunk"], key="theme")
 
 st.markdown(
     """
@@ -26,6 +31,17 @@ st.markdown(
         --muted: #a3bdb9;
         --accent: #76dfb1;
         --alert: #ff8d83;
+    }
+
+    body:has(.light-theme) {
+        --base: #f3f8f6;
+        --surface: #ffffff;
+        --surface-raised: #e4f0eb;
+        --line: #a9c5ba;
+        --text: #16312a;
+        --muted: #4f6d63;
+        --accent: #087a52;
+        --alert: #b42318;
     }
 
     .stApp {
@@ -323,6 +339,9 @@ if models.recognition_nets:
 st.sidebar.markdown("### CONTROL PANEL")
 conf_threshold = st.sidebar.slider("CONFIDENCE THRESHOLD", 0.1, 1.0, 0.7)
 
+if theme == "Light cyberpunk":
+    st.markdown('<div class="light-theme"></div>', unsafe_allow_html=True)
+
 
 def _target_card_html(face: dict) -> str:
     """Render one face's results as a HUD-style dossier card (native markup, not pixel text --
@@ -432,6 +451,23 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
         return
 
     st.markdown(f"#### Results for `{identifier}`")
+
+    export_rows = []
+    for face in cropped_faces:
+        export_rows.append({
+            key: value for key, value in face.items()
+            if key not in {"image", "embedding", "raw_columns"} and isinstance(value, (str, int, float, bool, list, type(None)))
+        })
+    export_json = json.dumps(export_rows, indent=2, default=str)
+    csv_buffer = io.StringIO()
+    if export_rows:
+        fieldnames = sorted({key for row in export_rows for key in row})
+        writer = csv.DictWriter(csv_buffer, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows({key: json.dumps(value) if isinstance(value, list) else value for key, value in row.items()} for row in export_rows)
+    export_col_json, export_col_csv = st.columns(2)
+    export_col_json.download_button("DOWNLOAD RESULTS JSON", export_json, f"{identifier}_results.json", "application/json", key=f"json_dl_{identifier}")
+    export_col_csv.download_button("DOWNLOAD RESULTS CSV", csv_buffer.getvalue(), f"{identifier}_results.csv", "text/csv", key=f"csv_dl_{identifier}")
 
     if any_drowsy:
         st.error("[ALERT] DROWSINESS DETECTED -- SUBJECT EYES CLOSED")
