@@ -40,8 +40,11 @@ Face detection is required; age, gender, race, emotion, and drowsiness are each 
 | `insightface` | ONNX (cv2.dnn)  | continuous age, e.g. `31`      |
 | `ssrnet`      | PyTorch         | continuous age, e.g. `31`      |
 | `fairface`    | ONNX (cv2.dnn)  | bucketed range, e.g. `20-29` (9 buckets) |
+| `dex`         | Caffe (cv2.dnn) | continuous age, e.g. `31` (expected value over 101 classes) |
 
 CLI: `--age-model` (`caffe` or `ssrnet` only). Web app: checkbox per built model. Default: `caffe`.
+
+`dex` (Deep EXpectation, Rothe et al. ICCV 2015) is a VGG-16 trained on IMDB-WIKI, by far the heaviest age option (513MB caffemodel). **Research/academic-use license** (ETH Zurich, IMDB-WIKI-derived) -- not for commercial deployments without independent licensing.
 
 ### Gender
 
@@ -194,7 +197,7 @@ Each build ARG takes a comma-separated list of model keys for that feature, or e
 
 ```bash
 docker build \
-  --build-arg AGE_MODEL=caffe,insightface,ssrnet,fairface \
+  --build-arg AGE_MODEL=caffe,insightface,ssrnet,fairface,dex \
   --build-arg GENDER_MODEL=caffe,insightface,deepface,fairface \
   --build-arg EMOTION_MODEL=efficientnet,ferplus,mini_xception,dan \
   --build-arg DROWSINESS_MODEL=haarcascade \
@@ -204,7 +207,7 @@ docker build \
 
 | Build arg          | Options (default first)          |
 | ------------------ | -------------------------------- |
-| `AGE_MODEL`        | `caffe`, `insightface`, `ssrnet`, `fairface` |
+| `AGE_MODEL`        | `caffe`, `insightface`, `ssrnet`, `fairface`, `dex` |
 | `GENDER_MODEL`     | `caffe`, `insightface`, `deepface`, `fairface` |
 | `EMOTION_MODEL`    | `efficientnet`, `ferplus`, `mini_xception`, `dan` |
 | `DROWSINESS_MODEL` | `haarcascade`                    |
