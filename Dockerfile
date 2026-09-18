@@ -4,10 +4,12 @@ FROM python:3.11-slim
 # Per-feature model selection. Each ARG takes a comma-separated list of model
 # keys for that feature, or an empty string for "none". Options, in
 # quickest-to-build order (default is the first/quickest):
-#   AGE_MODEL:        caffe, ssrnet     (default: caffe)
-#   GENDER_MODEL:      caffe             (default: caffe)
-#   EMOTION_MODEL:     dan               (default: dan)
-#   DROWSINESS_MODEL:  haarcascade       (default: haarcascade)
+#   AGE_MODEL:        caffe, insightface, ssrnet   (default: caffe)
+#   GENDER_MODEL:      caffe, insightface           (default: caffe)
+#   EMOTION_MODEL:     dan                          (default: dan)
+#   DROWSINESS_MODEL:  haarcascade                  (default: haarcascade)
+# insightface's genderage.onnx provides BOTH age and gender from one file
+# (non-commercial research license -- see README).
 # e.g. --build-arg AGE_MODEL=caffe,ssrnet builds both age backends so the web
 # app can switch between them at runtime. See build-and-run.sh for a guided
 # prompt instead of typing these by hand.
@@ -47,6 +49,7 @@ RUN --mount=type=bind,source=models/age_deploy.prototxt,target=/tmp/models/age_d
     --mount=type=bind,source=models/ssrnet_morph2.pth,target=/tmp/models/ssrnet_morph2.pth \
     --mount=type=bind,source=models/gender_deploy.prototxt,target=/tmp/models/gender_deploy.prototxt \
     --mount=type=bind,source=models/gender_net.caffemodel,target=/tmp/models/gender_net.caffemodel \
+    --mount=type=bind,source=models/insightface_genderage.onnx,target=/tmp/models/insightface_genderage.onnx \
     --mount=type=bind,source=models/haarcascade_eye.xml,target=/tmp/models/haarcascade_eye.xml \
     --mount=type=bind,source=models/dan_affecnet7.pth,target=/tmp/models/dan_affecnet7.pth \
     set -e; \
@@ -54,6 +57,8 @@ RUN --mount=type=bind,source=models/age_deploy.prototxt,target=/tmp/models/age_d
     case "$age_csv" in *,caffe,*) cp /tmp/models/age_deploy.prototxt /tmp/models/age_net.caffemodel models/ ;; esac; \
     case "$age_csv" in *,ssrnet,*) cp /tmp/models/ssrnet_morph2.pth models/ ;; esac; \
     case "$gender_csv" in *,caffe,*) cp /tmp/models/gender_deploy.prototxt /tmp/models/gender_net.caffemodel models/ ;; esac; \
+    case "$age_csv" in *,insightface,*) cp /tmp/models/insightface_genderage.onnx models/ ;; esac; \
+    case "$gender_csv" in *,insightface,*) cp /tmp/models/insightface_genderage.onnx models/ ;; esac; \
     case "$emotion_csv" in *,dan,*) cp /tmp/models/dan_affecnet7.pth models/ ;; esac; \
     case "$drowsiness_csv" in *,haarcascade,*) cp /tmp/models/haarcascade_eye.xml models/ ;; esac
 

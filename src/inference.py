@@ -30,6 +30,7 @@ GENDER_MODEL = MODEL_DIR / "gender_net.caffemodel"
 EYE_CASCADE_FILE = MODEL_DIR / "haarcascade_eye.xml"
 EMOTION_MODEL = MODEL_DIR / "dan_affecnet7.pth"
 SSRNET_MODEL = MODEL_DIR / "ssrnet_morph2.pth"
+INSIGHTFACE_MODEL = MODEL_DIR / "insightface_genderage.onnx"
 
 MODEL_MEAN_VALUES = (78.4263377603, 87.768914374, 114.895847746)
 AGE_LIST = ['(0-2)', '(4-6)', '(8-12)', '(15-20)', '(25-32)', '(38-43)', '(48-53)', '(60-100)']
@@ -43,8 +44,8 @@ MIN_EYES_OPEN = 2
 
 # Model keys per feature, in quickest-to-build order (first = default).
 # Must match the numbered options in build-and-run.sh and the Dockerfile ARGs.
-AGE_MODEL_OPTIONS = ["caffe", "ssrnet"]
-GENDER_MODEL_OPTIONS = ["caffe"]
+AGE_MODEL_OPTIONS = ["caffe", "insightface", "ssrnet"]
+GENDER_MODEL_OPTIONS = ["caffe", "insightface"]
 EMOTION_MODEL_OPTIONS = ["dan"]
 DROWSINESS_MODEL_OPTIONS = ["haarcascade"]
 
@@ -90,6 +91,11 @@ def load_models() -> Models:
     gender_nets = {}
     if GENDER_PROTO.exists() and GENDER_MODEL.exists():
         gender_nets["caffe"] = cv2.dnn.readNet(str(GENDER_MODEL), str(GENDER_PROTO))
+
+    if INSIGHTFACE_MODEL.exists():
+        insightface_net = cv2.dnn.readNetFromONNX(str(INSIGHTFACE_MODEL))
+        age_nets["insightface"] = insightface_net
+        gender_nets["insightface"] = insightface_net
 
     emotion_nets = {}
     if TORCH_SUPPORTED and EMOTION_MODEL.exists():
@@ -143,6 +149,22 @@ def predict_age_ssrnet(net, face_bgr: np.ndarray) -> str:
     with torch.no_grad():
         age = net(tensor).item()
     return f"{age:.0f}"
+
+
+def _insightface_forward(net, face_bgr: np.ndarray) -> np.ndarray:
+    blob = cv2.dnn.blobFromImage(face_bgr, 1.0 / 128.0, (112, 112), (127.5, 127.5, 127.5), swapRB=True)
+    net.setInput(blob)
+    return net.forward().flatten()
+
+
+def predict_gender_insightface(net, face_bgr: np.ndarray) -> str:
+    out = _insightface_forward(net, face_bgr)
+    return "Male" if np.argmax(out[:2]) == 0 else "Female"
+
+
+def predict_age_insightface(net, face_bgr: np.ndarray) -> str:
+    out = _insightface_forward(net, face_bgr)
+    return f"{round(out[2] * 100):.0f}"
 
 
 def predict_emotion_dan(net, face_bgr: np.ndarray) -> str:
@@ -216,7 +238,12 @@ def analyze_frame(
             net = models.age_nets.get(key)
             if net is None:
                 continue
-            value = predict_age_caffe(net, blob227) if key == "caffe" else predict_age_ssrnet(net, face)
+            if key == "caffe":
+                value = predict_age_caffe(net, blob227)
+            elif key == "ssrnet":
+                value = predict_age_ssrnet(net, face)
+            else:
+                value = predict_age_insightface(net, face)
             age_parts.append(f"{key}={value}")
 
         gender_parts = []
@@ -224,7 +251,7 @@ def analyze_frame(
             net = models.gender_nets.get(key)
             if net is None:
                 continue
-            value = predict_gender_caffe(net, blob227)
+            value = predict_gender_caffe(net, blob227) if key == "caffe" else predict_gender_insightface(net, face)
             gender_parts.append(f"{key}={value}")
 
         emotion_parts = []

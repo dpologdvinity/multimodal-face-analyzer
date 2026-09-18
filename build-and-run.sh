@@ -53,10 +53,10 @@ prompt_feature() {
     REPLY_MODEL="$result"
 }
 
-prompt_feature "AGE" caffe ssrnet
+prompt_feature "AGE" caffe insightface ssrnet
 AGE_MODEL="$REPLY_MODEL"
 
-prompt_feature "GENDER" caffe
+prompt_feature "GENDER" caffe insightface
 GENDER_MODEL="$REPLY_MODEL"
 
 prompt_feature "EMOTION" dan
