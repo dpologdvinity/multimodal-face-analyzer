@@ -23,6 +23,7 @@ prompt_feature() {
         echo "  ${i}) ${opt}" >&2
         i=$((i + 1))
     done
+    echo "  9) all" >&2
 
     read -rp "Select (comma-separated for multiple) [default: 1]: " selection
     selection="${selection:-1}"
@@ -34,6 +35,10 @@ prompt_feature() {
         [ -z "$n" ] && continue
         if [ "$n" = "0" ]; then
             chosen=()
+            break
+        fi
+        if [ "$n" = "9" ]; then
+            chosen=("${options[@]}")
             break
         fi
         if ! [[ "$n" =~ ^[0-9]+$ ]] || [ "$n" -lt 1 ] || [ "$n" -gt "${#options[@]}" ]; then
@@ -154,3 +159,28 @@ fi
 
 echo "" >&2
 echo "Running at http://localhost:${PORT}" >&2
+
+echo "" >&2
+echo "Container running. Commands:" >&2
+echo "  q = stop container, exit" >&2
+echo "  d = stop container, delete image + build cache, exit" >&2
+while true; do
+    read -rp "> " cmd
+    case "$cmd" in
+        q|Q)
+            docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+            echo "Container removed." >&2
+            break
+            ;;
+        d|D)
+            docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+            docker rmi -f "$IMAGE_TAG" >/dev/null 2>&1 || true
+            docker builder prune -f >/dev/null 2>&1 || true
+            echo "Container, image, and build cache removed." >&2
+            break
+            ;;
+        *)
+            echo "Unknown command. Use q or d." >&2
+            ;;
+    esac
+done
