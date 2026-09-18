@@ -6,7 +6,7 @@ FROM python:3.11-slim
 # quickest-to-build order (default is the first/quickest):
 #   AGE_MODEL:        caffe, insightface, ssrnet, fairface, dex, mivolo (default: caffe)
 #   GENDER_MODEL:      caffe, insightface, deepface, fairface, mivolo (default: caffe)
-#   EMOTION_MODEL:     efficientnet, ferplus, mini_xception, dan (default: efficientnet)
+#   EMOTION_MODEL:     efficientnet, ferplus, mini_xception, dan, hsemotion (default: efficientnet)
 #   DROWSINESS_MODEL:  haarcascade                  (default: haarcascade)
 #   RACE_MODEL:        fairface, deepface           (default: fairface)
 #   EXPRESSION_MODEL:  blendshapes                  (default: blendshapes)
@@ -170,6 +170,7 @@ RUN --mount=type=bind,source=models/age_deploy.prototxt,target=/tmp/models/age_d
     --mount=type=bind,source=models/dan_affecnet7.pth,target=/tmp/models/dan_affecnet7.pth \
     --mount=type=bind,source=models/efficientnet_b0_fer.onnx,target=/tmp/models/efficientnet_b0_fer.onnx \
     --mount=type=bind,source=models/emotion_ferplus.onnx,target=/tmp/models/emotion_ferplus.onnx \
+    --mount=type=bind,source=models/hsemotion_enet_b0_8_best_vgaf.onnx,target=/tmp/models/hsemotion_enet_b0_8_best_vgaf.onnx \
     --mount=type=bind,source=models/fairface_7class.onnx,target=/tmp/models/fairface_7class.onnx \
     --mount=type=bind,source=models/deepface_race.h5,target=/tmp/models/deepface_race.h5 \
     --mount=type=bind,source=models/deepface_gender.h5,target=/tmp/models/deepface_gender.h5 \
@@ -208,6 +209,7 @@ RUN --mount=type=bind,source=models/age_deploy.prototxt,target=/tmp/models/age_d
     case "$emotion_csv" in *,dan,*) cp /tmp/models/dan_affecnet7.pth models/ ;; esac; \
     case "$emotion_csv" in *,efficientnet,*) cp /tmp/models/efficientnet_b0_fer.onnx models/ ;; esac; \
     case "$emotion_csv" in *,ferplus,*) cp /tmp/models/emotion_ferplus.onnx models/ ;; esac; \
+    case "$emotion_csv" in *,hsemotion,*) cp /tmp/models/hsemotion_enet_b0_8_best_vgaf.onnx models/ ;; esac; \
     case "$emotion_csv" in *,mini_xception,*) cp /tmp/models/mini_xception_fer.h5 models/ ;; esac; \
     case "$drowsiness_csv" in *,haarcascade,*) cp /tmp/models/haarcascade_eye.xml models/ ;; esac; \
     case "$race_csv" in *,fairface,*) cp /tmp/models/fairface_7class.onnx models/ ;; esac; \
