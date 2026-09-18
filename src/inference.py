@@ -175,19 +175,37 @@ def predict_age_ssrnet(net, face_bgr: np.ndarray) -> str:
     return f"{age:.0f}"
 
 
-def _insightface_forward(net, face_bgr: np.ndarray) -> np.ndarray:
-    blob = cv2.dnn.blobFromImage(face_bgr, 1.0 / 128.0, (112, 112), (127.5, 127.5, 127.5), swapRB=True)
+def _insightface_align(frame_bgr: np.ndarray, box: tuple[int, int, int, int]) -> np.ndarray:
+    """Replicate insightface's own alignment (model_zoo/attribute.py + utils/face_align.py):
+    a similarity transform (no rotation) centered on the raw detection box, scaled so the box
+    fits into the 112x112 output with a 1.5x margin. Must operate on the ORIGINAL frame and the
+    UNPADDED detection box -- insightface's genderage model was trained on this specific framing,
+    not an arbitrarily-padded crop+resize (feeding it a padded crop gives wrong predictions)."""
+    x1, y1, x2, y2 = box
+    w, h = x2 - x1, y2 - y1
+    cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
+    scale = 112.0 / (max(w, h) * 1.5)
+    m = np.array([
+        [scale, 0, 56 - scale * cx],
+        [0, scale, 56 - scale * cy],
+    ], dtype=np.float32)
+    return cv2.warpAffine(frame_bgr, m, (112, 112), borderValue=0.0)
+
+
+def _insightface_forward(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int]) -> np.ndarray:
+    aligned = _insightface_align(frame_bgr, box)
+    blob = cv2.dnn.blobFromImage(aligned, 1.0 / 128.0, (112, 112), (127.5, 127.5, 127.5), swapRB=True)
     net.setInput(blob)
     return net.forward().flatten()
 
 
-def predict_gender_insightface(net, face_bgr: np.ndarray) -> str:
-    out = _insightface_forward(net, face_bgr)
+def predict_gender_insightface(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int]) -> str:
+    out = _insightface_forward(net, frame_bgr, box)
     return "Male" if np.argmax(out[:2]) == 0 else "Female"
 
 
-def predict_age_insightface(net, face_bgr: np.ndarray) -> str:
-    out = _insightface_forward(net, face_bgr)
+def predict_age_insightface(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int]) -> str:
+    out = _insightface_forward(net, frame_bgr, box)
     return f"{round(out[2] * 100):.0f}"
 
 
@@ -216,6 +234,14 @@ def detect_drowsiness_haarcascade(eye_cascade, face_bgr: np.ndarray) -> bool:
     face_gray = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2GRAY)
     eyes = eye_cascade.detectMultiScale(face_gray, scaleFactor=1.1, minNeighbors=6, minSize=(20, 20))
     return len(eyes) < MIN_EYES_OPEN
+
+
+def _format_results(pairs: list[tuple[str, str]]) -> list[str]:
+    """Prefix each result with its model key only when more than one model is active for
+    that feature (disambiguation); a single active model just shows its plain value."""
+    if len(pairs) > 1:
+        return [f"{key}={value}" for key, value in pairs]
+    return [value for _, value in pairs]
 
 
 def _softmax(x: np.ndarray) -> np.ndarray:
@@ -248,10 +274,17 @@ def predict_race_deepface(net, face_bgr: np.ndarray) -> str:
 
 
 def draw_outlined_text(frame: np.ndarray, text: str, org: tuple[int, int], color: tuple[int, int, int]) -> None:
-    """Draw text with a black outline so it stays readable over any background. Clamps origin so text stays inside the frame."""
+    """Draw text with a black outline so it stays readable over any background. Clamps origin
+    so text stays inside the frame, and shrinks the font if the text is wider than the frame
+    itself (clamping alone can't fix that -- a line wider than the frame overflows regardless
+    of x position)."""
     font, scale, thickness = cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2
-    (text_w, text_h), baseline = cv2.getTextSize(text, font, scale, thickness)
     frame_h, frame_w = frame.shape[:2]
+
+    (text_w, text_h), baseline = cv2.getTextSize(text, font, scale, thickness)
+    while text_w > frame_w and scale > 0.3:
+        scale -= 0.1
+        (text_w, text_h), baseline = cv2.getTextSize(text, font, scale, thickness)
 
     x, y = org
     x = max(0, min(x, frame_w - text_w))
@@ -297,7 +330,7 @@ def analyze_frame(
         if need_blob227:
             blob227 = cv2.dnn.blobFromImage(face, 1.0, (227, 227), MODEL_MEAN_VALUES, swapRB=False)
 
-        age_parts = []
+        age_pairs = []
         for key in active_age:
             net = models.age_nets.get(key)
             if net is None:
@@ -307,34 +340,34 @@ def analyze_frame(
             elif key == "ssrnet":
                 value = predict_age_ssrnet(net, face)
             else:
-                value = predict_age_insightface(net, face)
-            age_parts.append(f"{key}={value}")
+                value = predict_age_insightface(net, frame, (x1, y1, x2, y2))
+            age_pairs.append((key, value))
 
-        gender_parts = []
+        gender_pairs = []
         for key in active_gender:
             net = models.gender_nets.get(key)
             if net is None:
                 continue
-            value = predict_gender_caffe(net, blob227) if key == "caffe" else predict_gender_insightface(net, face)
-            gender_parts.append(f"{key}={value}")
+            value = predict_gender_caffe(net, blob227) if key == "caffe" else predict_gender_insightface(net, frame, (x1, y1, x2, y2))
+            gender_pairs.append((key, value))
 
-        emotion_parts = []
+        emotion_pairs = []
         for key in active_emotion:
             net = models.emotion_nets.get(key)
             if net is None:
                 continue
             value = predict_emotion_dan(net, face) if key == "dan" else predict_emotion_efficientnet(net, face)
-            emotion_parts.append(f"{key}={value}")
+            emotion_pairs.append((key, value))
 
-        race_parts = []
+        race_pairs = []
         for key in active_race:
             net = models.race_nets.get(key)
             if net is None:
                 continue
             value = predict_race_fairface(net, face) if key == "fairface" else predict_race_deepface(net, face)
-            race_parts.append(f"{key}={value}")
+            race_pairs.append((key, value))
 
-        drowsy_parts = []
+        drowsy_pairs = []
         face_drowsy = False
         for key in active_drowsiness:
             net = models.drowsiness_nets.get(key)
@@ -342,15 +375,29 @@ def analyze_frame(
                 continue
             drowsy = detect_drowsiness_haarcascade(net, face)
             face_drowsy = face_drowsy or drowsy
-            drowsy_parts.append(f"{key}={'DROWSY' if drowsy else 'ALERT'}")
+            drowsy_pairs.append((key, "DROWSY" if drowsy else "ALERT"))
         any_drowsy = any_drowsy or face_drowsy
 
-        label_parts = age_parts + gender_parts + race_parts + emotion_parts
-        label = ", ".join(label_parts) if label_parts else "Face"
+        age_parts = _format_results(age_pairs)
+        gender_parts = _format_results(gender_pairs)
+        emotion_parts = _format_results(emotion_pairs)
+        race_parts = _format_results(race_pairs)
+        drowsy_parts = _format_results(drowsy_pairs)
+
+        # One line per feature (not one long comma-joined line) -- a combined line with several
+        # active models per feature can easily be wider than the frame itself, which clamping
+        # alone can't fix.
+        label_lines = [", ".join(parts) for parts in (age_parts, gender_parts, race_parts, emotion_parts) if parts]
+        if not label_lines:
+            label_lines = ["Face"]
+        label = ", ".join(label_lines)
 
         # Draw green box and cyan overlay text with black outline for readability
         cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), (0, 255, 0), int(round(frame.shape[0] / 150)), 8)
-        draw_outlined_text(annotated_frame, label, (x1, y1 - 10), (0, 255, 255))
+        line_height = 28
+        for line_idx, line in enumerate(label_lines):
+            y = y1 - 10 - line_idx * line_height
+            draw_outlined_text(annotated_frame, line, (x1, y), (0, 255, 255))
 
         status_label = None
         if drowsy_parts:
