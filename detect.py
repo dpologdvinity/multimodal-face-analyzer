@@ -14,16 +14,18 @@ AGE_PROTO = MODEL_DIR / "age_deploy.prototxt"
 AGE_MODEL = MODEL_DIR / "age_net.caffemodel"
 GENDER_PROTO = MODEL_DIR / "gender_deploy.prototxt"
 GENDER_MODEL = MODEL_DIR / "gender_net.caffemodel"
+EYE_CASCADE_FILE = MODEL_DIR / "haarcascade_eye.xml"
 
 # Constants
 MODEL_MEAN_VALUES = (78.4263377603, 87.768914374, 114.895847746)
 AGE_LIST = ['(0-2)', '(4-6)', '(8-12)', '(15-20)', '(25-32)', '(38-43)', '(48-53)', '(60-100)']
 GENDER_LIST = ['Male', 'Female']
+MIN_EYES_OPEN = 2
 
 
 def load_networks():
     """Verify paths and load DNN models into OpenCV."""
-    required_files = [FACE_PROTO, FACE_MODEL, AGE_PROTO, AGE_MODEL, GENDER_PROTO, GENDER_MODEL]
+    required_files = [FACE_PROTO, FACE_MODEL, AGE_PROTO, AGE_MODEL, GENDER_PROTO, GENDER_MODEL, EYE_CASCADE_FILE]
     for file_path in required_files:
         if not file_path.exists():
             raise FileNotFoundError(
@@ -34,8 +36,22 @@ def load_networks():
     face_net = cv2.dnn.readNetFromTensorflow(str(FACE_MODEL), str(FACE_PROTO))
     age_net = cv2.dnn.readNetFromCaffe(str(AGE_PROTO), str(AGE_MODEL))
     gender_net = cv2.dnn.readNetFromCaffe(str(GENDER_PROTO), str(GENDER_MODEL))
+    eye_cascade = cv2.CascadeClassifier(str(EYE_CASCADE_FILE))
 
-    return face_net, age_net, gender_net
+    return face_net, age_net, gender_net, eye_cascade
+
+
+def detect_drowsiness(eye_cascade, face_bgr):
+    """Return True if fewer than MIN_EYES_OPEN eyes are visible (eyes likely closed)."""
+    face_gray = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2GRAY)
+    eyes = eye_cascade.detectMultiScale(face_gray, scaleFactor=1.1, minNeighbors=6, minSize=(20, 20))
+    return len(eyes) < MIN_EYES_OPEN
+
+
+def draw_outlined_text(frame, text, org, color):
+    """Draw text with a black outline so it stays readable over any background."""
+    cv2.putText(frame, text, org, cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 5, cv2.LINE_AA)
+    cv2.putText(frame, text, org, cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2, cv2.LINE_AA)
 
 
 def detect_faces(net, frame, conf_threshold=0.7):
@@ -57,7 +73,7 @@ def detect_faces(net, frame, conf_threshold=0.7):
     return face_boxes
 
 
-def process_image(image_path, face_net, age_net, gender_net, crop_only=False, show=True, save=False, output_dir="output", conf_threshold=0.7):
+def process_image(image_path, face_net, age_net, gender_net, eye_cascade, crop_only=False, show=True, save=False, output_dir="output", conf_threshold=0.7):
     """Run face detection, age prediction, and gender prediction on an image."""
     frame = cv2.imread(str(image_path))
     if frame is None:
@@ -94,30 +110,19 @@ def process_image(image_path, face_net, age_net, gender_net, crop_only=False, sh
         age_net.setInput(blob)
         age = AGE_LIST[age_net.forward()[0].argmax()]
 
+        drowsy = detect_drowsiness(eye_cascade, face)
+        status_label = "DROWSY" if drowsy else "ALERT"
+        status_color = (0, 0, 255) if drowsy else (0, 255, 0)
+
         label = f"{gender}, {age}"
 
         # Draw box and text on main image frame, black outline for readability
         cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), (0, 255, 0), int(round(frame.shape[0] / 150)), 8)
-        cv2.putText(
-            annotated_frame,
-            label,
-            (x1, y1 - 10),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.8,
-            (0, 0, 0),
-            5,
-            cv2.LINE_AA,
-        )
-        cv2.putText(
-            annotated_frame,
-            label,
-            (x1, y1 - 10),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.8,
-            (0, 255, 255),
-            2,
-            cv2.LINE_AA,
-        )
+        draw_outlined_text(annotated_frame, label, (x1, y1 - 10), (0, 255, 255))
+        draw_outlined_text(annotated_frame, status_label, (x1, y1 + (y2 - y1) + 30), status_color)
+
+        if drowsy:
+            print(f"[{image_path.name}] Face #{idx}: DROWSINESS DETECTED")
 
         # Save cropped face
         if save and crop_only:
@@ -160,7 +165,7 @@ def main():
     args = parser.parse_args()
 
     try:
-        face_net, age_net, gender_net = load_networks()
+        face_net, age_net, gender_net, eye_cascade = load_networks()
     except Exception as e:
         print(f"Error: {e}")
         return
@@ -174,6 +179,7 @@ def main():
             face_net,
             age_net,
             gender_net,
+            eye_cascade,
             crop_only=args.crop,
             show=not args.no_show,
             save=args.save,
@@ -192,6 +198,7 @@ def main():
                 face_net,
                 age_net,
                 gender_net,
+                eye_cascade,
                 crop_only=args.crop,
                 show=not args.no_show,
                 save=args.save,
