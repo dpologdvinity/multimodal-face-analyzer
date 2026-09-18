@@ -1709,15 +1709,18 @@ def build_gallery_from_directory(face_net, recognition_net, directory: str | Pat
     return gallery
 
 
-def predict_expression_blendshapes(landmarker, face_bgr: np.ndarray) -> str:
+def _detect_face_landmarker(landmarker, face_bgr: np.ndarray):
+    face_rgb = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2RGB)
+    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=face_rgb)
+    with _lock_for(landmarker):
+        return landmarker.detect(mp_image)
+
+
+def predict_expression_blendshapes(landmarker, face_bgr: np.ndarray, result=None) -> str:
     """Predict facial expression via MediaPipe's BlendShapes (52 continuous muscle coefficients).
     Returns the top 3 highest-scoring blendshapes as a comma-separated string,
     or 'no landmarks' if no face is detected."""
-    face_rgb = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2RGB)
-    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=face_rgb)
-
-    with _lock_for(landmarker):
-        result = landmarker.detect(mp_image)
+    result = result if result is not None else _detect_face_landmarker(landmarker, face_bgr)
 
     if not result.face_blendshapes or len(result.face_blendshapes) == 0:
         return "no landmarks"
@@ -1883,26 +1886,23 @@ def predict_eye_color_colorimetric(eye_cascade, face_bgr: np.ndarray) -> str:
     return "hazel"
 
 
-def predict_face_landmarks_mediapipe(landmarker, face_bgr: np.ndarray) -> list[tuple[float, float]] | None:
+def predict_face_landmarks_mediapipe(landmarker, face_bgr: np.ndarray, result=None) -> list[tuple[float, float]] | None:
     """MediaPipe FaceLandmarker (same model instance as Expression's blendshapes backend --
     one model, two features, same pattern as insightface/fairface elsewhere in this file).
     Returns 468 (x, y) points normalized to [0, 1] within face_bgr, or None if no face found."""
-    face_rgb = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2RGB)
-    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=face_rgb)
-    with _lock_for(landmarker):
-        result = landmarker.detect(mp_image)
+    result = result if result is not None else _detect_face_landmarker(landmarker, face_bgr)
     if not result.face_landmarks:
         return None
     return [(lm.x, lm.y) for lm in result.face_landmarks[0]]
 
 
-def predict_gaze_mediapipe(landmarker, face_bgr: np.ndarray) -> str:
+def predict_gaze_mediapipe(landmarker, face_bgr: np.ndarray, result=None) -> str:
     """Estimate coarse gaze direction from MediaPipe iris and eye landmarks.
 
     The result describes the direction relative to the face crop. It is a geometric
     attention cue, not a calibrated eye tracker.
     """
-    points = predict_face_landmarks_mediapipe(landmarker, face_bgr)
+    points = predict_face_landmarks_mediapipe(landmarker, face_bgr, result)
     if points is None or len(points) < 478:
         return "unknown"
 
@@ -1932,9 +1932,9 @@ def predict_gaze_mediapipe(landmarker, face_bgr: np.ndarray) -> str:
     return f"{horizontal_label}/{vertical_label}"
 
 
-def predict_head_pose_mediapipe(landmarker, face_bgr: np.ndarray) -> str:
+def predict_head_pose_mediapipe(landmarker, face_bgr: np.ndarray, result=None) -> str:
     """Estimate coarse yaw/pitch from stable MediaPipe face landmarks."""
-    points = predict_face_landmarks_mediapipe(landmarker, face_bgr)
+    points = predict_face_landmarks_mediapipe(landmarker, face_bgr, result)
     if points is None or len(points) < 264:
         return "unknown"
     image_points = np.float32([points[i] for i in (1, 152, 33, 263, 61, 291)])
@@ -2175,6 +2175,21 @@ def analyze_frame(
         if face_adjustments and any(face_adjustments.values()):
             face = apply_image_adjustments(face, face_adjustments)
 
+        # Expression, gaze, head pose, and drawn landmarks all consume the
+        # same MediaPipe FaceLandmarker result. Detect once before dispatching
+        # feature tasks so the shared model is not run repeatedly per crop.
+        face_landmarker = models.face_landmarks_nets.get("blendshapes")
+        needs_face_landmarks = (
+            "blendshapes" in active_expression
+            or "mediapipe" in active_gaze
+            or "blendshapes" in active_face_landmarks
+        )
+        landmarker_result = (
+            _detect_face_landmarker(face_landmarker, face)
+            if face_landmarker is not None and needs_face_landmarks
+            else None
+        )
+
         blob227 = None
         if need_blob227:
             blob227 = cv2.dnn.blobFromImage(face, 1.0, (227, 227), MODEL_MEAN_VALUES, swapRB=False)
@@ -2271,7 +2286,9 @@ def analyze_frame(
                 if net is None:
                     continue
                 started = time.perf_counter()
-                value = _cached_face_predict("expression", key, face, predict_expression_blendshapes, net, face)
+                value = _cached_face_predict(
+                    "expression", key, face, predict_expression_blendshapes, net, face, landmarker_result
+                )
                 pairs.append((key, value))
                 _record_model_latency(metrics, "expression", key, started)
             return pairs
@@ -2283,7 +2300,7 @@ def analyze_frame(
                 if net is None:
                     continue
                 started = time.perf_counter()
-                value = predict_gaze_mediapipe(net, face)
+                value = predict_gaze_mediapipe(net, face, landmarker_result)
                 pairs.append((key, value))
                 _record_model_latency(metrics, "gaze", key, started)
             return pairs
@@ -2293,7 +2310,7 @@ def analyze_frame(
             for key in active_gaze:
                 net = models.gaze_nets.get(key)
                 if net is not None:
-                    pairs.append((key, predict_head_pose_mediapipe(net, face)))
+                    pairs.append((key, predict_head_pose_mediapipe(net, face, landmarker_result)))
             return pairs
 
         def _recognition_task():
@@ -2458,7 +2475,7 @@ def analyze_frame(
 
         landmarks_net = models.face_landmarks_nets.get("blendshapes")
         if landmarks_net is not None and "blendshapes" in active_face_landmarks:
-            landmark_points = predict_face_landmarks_mediapipe(landmarks_net, face)
+            landmark_points = predict_face_landmarks_mediapipe(landmarks_net, face, landmarker_result)
             if landmark_points is not None:
                 draw_face_landmarks(annotated_frame, landmark_points, (x1, y1, x2, y2))
 
