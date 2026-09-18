@@ -183,7 +183,7 @@ The Python-side plumbing (`src/inference.py`'s `skin_tone_nets`, `src/nets/skin_
 
 | Backend     | Framework      | Output              |
 | ----------- | -------------- | -------------------- |
-| `mobilenet` | ONNX (cv2.dnn) | `glasses` / `none`  |
+| `mobilenet` | ONNX (onnxruntime) | `glasses` / `none`  |
 
 Sorour190/Glasses-Detector, `models/glasses_detector.onnx` (MobileNetV3-Large, 224x224 RGB, normalization baked into the ONNX graph itself -- feed raw uint8 pixels). **License unstated by the source repo** -- same treatment as DAN/SSR-Net, use at your own discretion.
 
@@ -442,7 +442,7 @@ There's no `SKIN_TONE_MODEL` build ARG -- see [Skin Tone](#skin-tone-web-app-onl
 
 Multiple models per feature (e.g. `AGE_MODEL=caffe,ssrnet`) can be built in together -- the web app sidebar shows a checkbox per built model, and checking more than one for the same feature runs and displays all of them at once.
 
-Disabled model files never land in an image layer (BuildKit bind-mount + conditional copy). `torch`/`torchvision` (~200MB) are only installed if `ssrnet`, `dan`, `mivolo`, and/or `deep3d` are requested (`scipy` is additionally installed for `deep3d` alone, to load `.mat` files). `tensorflow-cpu`/`tf-keras` (~200-400MB, plus deepface's 513MB weight file) are only installed if `deepface`, `mini_xception`, `vggface`, and/or `mask` are requested -- deepface race remains by far the heaviest single option in the repo (note: `mivolo` at ~110MB checkpoint plus ultralytics/timm dependencies is the second-heaviest, still much lighter than deepface's full stack). `mediapipe` is only installed if the `blendshapes` expression backend is requested. `onnxruntime` is only installed if `yolo` (face detector) is requested. `opencv-contrib-python-headless` replaces the default `opencv-python-headless` only if `lbph` is requested (needed for `cv2.face`).
+Disabled model files never land in an image layer (BuildKit bind-mount + conditional copy). `torch`/`torchvision` (~200MB) are only installed if `ssrnet`, `dan`, `mivolo`, and/or `deep3d` are requested (`scipy` is additionally installed for `deep3d` alone, to load `.mat` files). `tensorflow-cpu`/`tf-keras` (~200-400MB, plus deepface's 513MB weight file) are only installed if `deepface`, `mini_xception`, `vggface`, and/or `mask` are requested -- deepface race remains by far the heaviest single option in the repo (note: `mivolo` at ~110MB checkpoint plus ultralytics/timm dependencies is the second-heaviest, still much lighter than deepface's full stack). `mediapipe` is only installed if the `blendshapes` expression backend is requested. `onnxruntime` is installed if `yolo` (face detector) or `mobilenet` (glasses) is requested. `opencv-contrib-python-headless` replaces the default `opencv-python-headless` only if `lbph` is requested (needed for `cv2.face`).
 
 ### Run
 
