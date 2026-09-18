@@ -1,9 +1,11 @@
 import os
+import sys
 from pathlib import Path
 import av
 import cv2
 import numpy as np
 import streamlit as st
+import torch
 from streamlit_webrtc import webrtc_streamer
 
 # Page setup & surveillance-terminal style injection
@@ -61,6 +63,9 @@ st.caption("[ STATUS: ONLINE ] -- Deep Neural Network Image Analysis")
 BASE_DIR = Path(__file__).resolve().parent.parent
 MODEL_DIR = BASE_DIR / "models"
 
+sys.path.insert(0, str(BASE_DIR))
+from dan_model import DAN
+
 FACE_PROTO = MODEL_DIR / "opencv_face_detector.pbtxt"
 FACE_MODEL = MODEL_DIR / "opencv_face_detector_uint8.pb"
 AGE_PROTO = MODEL_DIR / "age_deploy.prototxt"
@@ -68,17 +73,21 @@ AGE_MODEL = MODEL_DIR / "age_net.caffemodel"
 GENDER_PROTO = MODEL_DIR / "gender_deploy.prototxt"
 GENDER_MODEL = MODEL_DIR / "gender_net.caffemodel"
 EYE_CASCADE_FILE = MODEL_DIR / "haarcascade_eye.xml"
+EMOTION_MODEL = MODEL_DIR / "dan_affecnet7.pth"
 
 MODEL_MEAN_VALUES = (78.4263377603, 87.768914374, 114.895847746)
 AGE_LIST = ['(0-2)', '(4-6)', '(8-12)', '(15-20)', '(25-32)', '(38-43)', '(48-53)', '(60-100)']
 GENDER_LIST = ['Male', 'Female']
+EMOTION_LABELS = ['neutral', 'happy', 'sad', 'surprise', 'fear', 'disgust', 'anger']
+EMOTION_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
+EMOTION_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 MIN_EYES_OPEN = 2
 
 
 @st.cache_resource
 def load_models():
     """Load neural network files into memory."""
-    required_files = [FACE_PROTO, FACE_MODEL, AGE_PROTO, AGE_MODEL, GENDER_PROTO, GENDER_MODEL, EYE_CASCADE_FILE]
+    required_files = [FACE_PROTO, FACE_MODEL, AGE_PROTO, AGE_MODEL, GENDER_PROTO, GENDER_MODEL, EYE_CASCADE_FILE, EMOTION_MODEL]
     for file_path in required_files:
         if not file_path.exists():
             raise FileNotFoundError(f"Missing weight/config file: {file_path}")
@@ -87,11 +96,17 @@ def load_models():
     age_net = cv2.dnn.readNet(str(AGE_MODEL), str(AGE_PROTO))
     gender_net = cv2.dnn.readNet(str(GENDER_MODEL), str(GENDER_PROTO))
     eye_cascade = cv2.CascadeClassifier(str(EYE_CASCADE_FILE))
-    return face_net, age_net, gender_net, eye_cascade
+
+    emotion_net = DAN(num_class=7, num_head=4, pretrained=False)
+    checkpoint = torch.load(str(EMOTION_MODEL), map_location="cpu")
+    emotion_net.load_state_dict(checkpoint["model_state_dict"])
+    emotion_net.eval()
+
+    return face_net, age_net, gender_net, eye_cascade, emotion_net
 
 
 try:
-    face_net, age_net, gender_net, eye_cascade = load_models()
+    face_net, age_net, gender_net, eye_cascade, emotion_net = load_models()
 except Exception as e:
     st.error(f"[SYSTEM ERROR] Failed to load models: {e}")
     st.stop()
@@ -126,10 +141,29 @@ def predict_age(blob: np.ndarray) -> str:
     return AGE_LIST[age_net.forward()[0].argmax()]
 
 
+def predict_emotion(face_bgr: np.ndarray) -> str:
+    """Classify facial expression into one of EMOTION_LABELS."""
+    face_rgb = cv2.cvtColor(cv2.resize(face_bgr, (224, 224)), cv2.COLOR_BGR2RGB)
+    face_norm = (face_rgb.astype(np.float32) / 255.0 - EMOTION_MEAN) / EMOTION_STD
+    tensor = torch.from_numpy(face_norm.transpose(2, 0, 1)).unsqueeze(0).float()
+    with torch.no_grad():
+        logits, _, _ = emotion_net(tensor)
+    return EMOTION_LABELS[logits[0].argmax().item()]
+
+
 def _draw_outlined_text(frame: np.ndarray, text: str, org: tuple[int, int], color: tuple[int, int, int]) -> None:
-    """Draw text with a black outline so it stays readable over any background."""
-    cv2.putText(frame, text, org, cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 5, cv2.LINE_AA)
-    cv2.putText(frame, text, org, cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2, cv2.LINE_AA)
+    """Draw text with a black outline so it stays readable over any background. Clamps origin so text stays inside the frame."""
+    font, scale, thickness = cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2
+    (text_w, text_h), baseline = cv2.getTextSize(text, font, scale, thickness)
+    frame_h, frame_w = frame.shape[:2]
+
+    x, y = org
+    x = max(0, min(x, frame_w - text_w))
+    y = max(text_h, min(y, frame_h - baseline))
+    org = (x, y)
+
+    cv2.putText(frame, text, org, font, scale, (0, 0, 0), thickness + 3, cv2.LINE_AA)
+    cv2.putText(frame, text, org, font, scale, color, thickness, cv2.LINE_AA)
 
 
 def detect_drowsiness(face_bgr: np.ndarray) -> bool:
@@ -164,10 +198,11 @@ def analyze_frame(frame: np.ndarray, conf_threshold: float):
         blob = cv2.dnn.blobFromImage(face, 1.0, (227, 227), MODEL_MEAN_VALUES, swapRB=False)
         gender = predict_gender(blob)
         age = predict_age(blob)
+        emotion = predict_emotion(face)
         drowsy = detect_drowsiness(face)
         any_drowsy = any_drowsy or drowsy
 
-        label = f"{gender}, {age}"
+        label = f"{gender}, {age}, {emotion}"
         status_label = "DROWSY" if drowsy else "ALERT"
         status_color = (0, 0, 255) if drowsy else (0, 255, 0)
 
