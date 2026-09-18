@@ -1725,15 +1725,15 @@ def analyze_frame(
         # drawn on annotated_frame further below.
         crop_frame, (cx1, cy1, cx2, cy2) = frame, (x1, y1, x2, y2)
         if eye_cascade is not None:
-            probe = frame[max(0, y1 - 20):min(y2 + 20, frame.shape[0] - 1), max(0, x1 - 20):min(x2 + 20, frame.shape[1] - 1)]
+            probe = frame[max(0, y1 - 20):min(y2 + 20, frame.shape[0]), max(0, x1 - 20):min(x2 + 20, frame.shape[1])]
             angle = _estimate_roll_angle(probe, eye_cascade) if probe.size else None
             if angle is not None and abs(angle) > 3:  # skip work for near-level faces
                 crop_frame, (cx1, cy1, cx2, cy2) = _rotate_region(frame, (x1, y1, x2, y2), angle)
 
         y1_crop = max(0, cy1 - 20)
-        y2_crop = min(cy2 + 20, crop_frame.shape[0] - 1)
+        y2_crop = min(cy2 + 20, crop_frame.shape[0])
         x1_crop = max(0, cx1 - 20)
-        x2_crop = min(cx2 + 20, crop_frame.shape[1] - 1)
+        x2_crop = min(cx2 + 20, crop_frame.shape[1])
 
         face = crop_frame[y1_crop:y2_crop, x1_crop:x2_crop]
         if face.size == 0:
