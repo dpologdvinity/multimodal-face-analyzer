@@ -6,7 +6,7 @@ FROM python:3.11-slim
 # quickest-to-build order (default is the first/quickest):
 #   AGE_MODEL:        caffe, insightface, ssrnet   (default: caffe)
 #   GENDER_MODEL:      caffe, insightface           (default: caffe)
-#   EMOTION_MODEL:     dan                          (default: dan)
+#   EMOTION_MODEL:     efficientnet, dan            (default: efficientnet)
 #   DROWSINESS_MODEL:  haarcascade                  (default: haarcascade)
 # insightface's genderage.onnx provides BOTH age and gender from one file
 # (non-commercial research license -- see README).
@@ -15,7 +15,7 @@ FROM python:3.11-slim
 # prompt instead of typing these by hand.
 ARG AGE_MODEL=caffe
 ARG GENDER_MODEL=caffe
-ARG EMOTION_MODEL=dan
+ARG EMOTION_MODEL=efficientnet
 ARG DROWSINESS_MODEL=haarcascade
 
 # Install system dependencies for OpenCV
@@ -52,6 +52,7 @@ RUN --mount=type=bind,source=models/age_deploy.prototxt,target=/tmp/models/age_d
     --mount=type=bind,source=models/insightface_genderage.onnx,target=/tmp/models/insightface_genderage.onnx \
     --mount=type=bind,source=models/haarcascade_eye.xml,target=/tmp/models/haarcascade_eye.xml \
     --mount=type=bind,source=models/dan_affecnet7.pth,target=/tmp/models/dan_affecnet7.pth \
+    --mount=type=bind,source=models/efficientnet_b0_fer.onnx,target=/tmp/models/efficientnet_b0_fer.onnx \
     set -e; \
     age_csv=",$AGE_MODEL,"; gender_csv=",$GENDER_MODEL,"; emotion_csv=",$EMOTION_MODEL,"; drowsiness_csv=",$DROWSINESS_MODEL,"; \
     case "$age_csv" in *,caffe,*) cp /tmp/models/age_deploy.prototxt /tmp/models/age_net.caffemodel models/ ;; esac; \
@@ -60,6 +61,7 @@ RUN --mount=type=bind,source=models/age_deploy.prototxt,target=/tmp/models/age_d
     case "$age_csv" in *,insightface,*) cp /tmp/models/insightface_genderage.onnx models/ ;; esac; \
     case "$gender_csv" in *,insightface,*) cp /tmp/models/insightface_genderage.onnx models/ ;; esac; \
     case "$emotion_csv" in *,dan,*) cp /tmp/models/dan_affecnet7.pth models/ ;; esac; \
+    case "$emotion_csv" in *,efficientnet,*) cp /tmp/models/efficientnet_b0_fer.onnx models/ ;; esac; \
     case "$drowsiness_csv" in *,haarcascade,*) cp /tmp/models/haarcascade_eye.xml models/ ;; esac
 
 # Expose default Streamlit port

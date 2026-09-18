@@ -31,11 +31,13 @@ EYE_CASCADE_FILE = MODEL_DIR / "haarcascade_eye.xml"
 EMOTION_MODEL = MODEL_DIR / "dan_affecnet7.pth"
 SSRNET_MODEL = MODEL_DIR / "ssrnet_morph2.pth"
 INSIGHTFACE_MODEL = MODEL_DIR / "insightface_genderage.onnx"
+EFFICIENTNET_EMOTION_MODEL = MODEL_DIR / "efficientnet_b0_fer.onnx"
 
 MODEL_MEAN_VALUES = (78.4263377603, 87.768914374, 114.895847746)
 AGE_LIST = ['(0-2)', '(4-6)', '(8-12)', '(15-20)', '(25-32)', '(38-43)', '(48-53)', '(60-100)']
 GENDER_LIST = ['Male', 'Female']
-EMOTION_LABELS = ['neutral', 'happy', 'sad', 'surprise', 'fear', 'disgust', 'anger']
+EMOTION_LABELS_DAN = ['neutral', 'happy', 'sad', 'surprise', 'fear', 'disgust', 'anger']
+EMOTION_LABELS_EFFICIENTNET = ['angry', 'disgust', 'fear', 'happy', 'sad', 'surprise', 'neutral']
 EMOTION_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 EMOTION_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 SSRNET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
@@ -46,7 +48,7 @@ MIN_EYES_OPEN = 2
 # Must match the numbered options in build-and-run.sh and the Dockerfile ARGs.
 AGE_MODEL_OPTIONS = ["caffe", "insightface", "ssrnet"]
 GENDER_MODEL_OPTIONS = ["caffe", "insightface"]
-EMOTION_MODEL_OPTIONS = ["dan"]
+EMOTION_MODEL_OPTIONS = ["efficientnet", "dan"]
 DROWSINESS_MODEL_OPTIONS = ["haarcascade"]
 
 
@@ -104,6 +106,8 @@ def load_models() -> Models:
         net.load_state_dict(checkpoint["model_state_dict"])
         net.eval()
         emotion_nets["dan"] = net
+    if EFFICIENTNET_EMOTION_MODEL.exists():
+        emotion_nets["efficientnet"] = cv2.dnn.readNetFromONNX(str(EFFICIENTNET_EMOTION_MODEL))
 
     drowsiness_nets = {}
     if EYE_CASCADE_FILE.exists():
@@ -168,13 +172,23 @@ def predict_age_insightface(net, face_bgr: np.ndarray) -> str:
 
 
 def predict_emotion_dan(net, face_bgr: np.ndarray) -> str:
-    """Classify facial expression into one of EMOTION_LABELS."""
+    """Classify facial expression into one of EMOTION_LABELS_DAN."""
     face_rgb = cv2.cvtColor(cv2.resize(face_bgr, (224, 224)), cv2.COLOR_BGR2RGB)
     face_norm = (face_rgb.astype(np.float32) / 255.0 - EMOTION_MEAN) / EMOTION_STD
     tensor = torch.from_numpy(face_norm.transpose(2, 0, 1)).unsqueeze(0).float()
     with torch.no_grad():
         logits, _, _ = net(tensor)
-    return EMOTION_LABELS[logits[0].argmax().item()]
+    return EMOTION_LABELS_DAN[logits[0].argmax().item()]
+
+
+def predict_emotion_efficientnet(net, face_bgr: np.ndarray) -> str:
+    """Classify facial expression into one of EMOTION_LABELS_EFFICIENTNET."""
+    face_rgb = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2RGB)
+    blob = cv2.dnn.blobFromImage(face_rgb, 1.0 / 255.0, (224, 224), (0, 0, 0), swapRB=False, crop=False)
+    blob = (blob - EMOTION_MEAN.reshape(1, 3, 1, 1)) / EMOTION_STD.reshape(1, 3, 1, 1)
+    net.setInput(blob.astype(np.float32))
+    logits = net.forward().flatten()
+    return EMOTION_LABELS_EFFICIENTNET[int(np.argmax(logits))]
 
 
 def detect_drowsiness_haarcascade(eye_cascade, face_bgr: np.ndarray) -> bool:
@@ -259,7 +273,7 @@ def analyze_frame(
             net = models.emotion_nets.get(key)
             if net is None:
                 continue
-            value = predict_emotion_dan(net, face)
+            value = predict_emotion_dan(net, face) if key == "dan" else predict_emotion_efficientnet(net, face)
             emotion_parts.append(f"{key}={value}")
 
         drowsy_parts = []
