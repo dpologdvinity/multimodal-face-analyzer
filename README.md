@@ -20,6 +20,7 @@
 - **3D reconstruction:** 3D RECON button per detected face (Deep3DFaceRecon_pytorch: ResNet50 + Basel Face Model), downloads a `.obj` mesh. Ships no working weights out of the box -- both the checkpoint and the Basel Face Model data are gated (Google Drive / university license registration); see README.
 - **YOLO face detector:** additive alternative to the required SSD/ResNet-10 detector, selectable per-frame via a sidebar dropdown.
 - **LBPH recognition:** `cv2.face.LBPHFaceRecognizer`-based alternative to VGGFace, trains from scratch on your own enrolled photos -- no pretrained weights to source. The trained recognizer is cached by the enrolled gallery's file fingerprint and retrains only after enrollment or gallery-file changes.
+- **Age progression/regression:** AGE PROGRESSION button per detected face (U-Net re-aging network, [timroelofs123/face_reaging](https://github.com/timroelofs123/face_reaging)), outputs a before/after image pair for a chosen source/target age. **Non-commercial use only** -- see below.
 - **Docker-packaged Streamlit app:** `src/app.py`, all features including race and expression.
 - **Build-time feature toggles:** disable any model at Docker build time to shrink the image (see [Docker](#docker-web-app)).
 - **Graceful degradation:** any model missing at runtime (file or dependency not present) is skipped, not a crash -- the rest of the pipeline keeps working.
@@ -181,6 +182,16 @@ Without both gated files present, this feature shows as offline (`RECONSTRUCTION
 
 **Verified against real weights:** the real upstream checkpoint (`epoch_20.pth`, its `net_recon` sub-state-dict) and real BFM09 data (converted via upstream's own `util/load_mats.py transferBFM09()`, combined with the Guo et al. expression basis) were obtained and run end-to-end -- produced a valid 35709-vertex/70789-face mesh with plausible coordinate/color ranges from a real test image. It's a faithful line-for-line port of the published source (`models/networks.py`, `models/bfm.py`, `util/preprocess.py`), now confirmed correct against the real pipeline, not just synthetic weights.
 
+### Age Progression / Regression (web app only, non-commercial use only)
+
+| Backend    | Framework | Output                          |
+| ---------- | --------- | -------------------------------- |
+| `franunet` | PyTorch U-Net | before/after face-crop image pair (downloadable PNG) |
+
+An `AGE PROGRESSION` button per detected face, wired to [timroelofs123/face_reaging](https://github.com/timroelofs123/face_reaging) (MIT-licensed code), a U-Net reproducing Disney Research's FRAN paper. Given a source age and target age (both user-entered, 0-100), the network predicts a residual that's added onto the face crop (resized to the model's native 512x512, then resized back), producing an aged/de-aged version of the same crop. Pretrained weights (`best_unet_model.pth` -> bundled here as `models/face_reaging_unet.pth`) are downloaded directly from [Hugging Face](https://huggingface.co/timroelofs123/face_re-aging), loadable with plain `torch.load` -- no training or gated download needed, unlike this repo's 3D Reconstruction or InsightFace models.
+
+**License caveat -- non-commercial, and NOT just a training-data footnote:** the U-Net's `DownLayer`/`UpLayer` blocks use `BlurPool` (anti-aliased strided downsampling), vendored here from Adobe's [antialiased-cnns](https://github.com/adobe/antialiased-cnns) (see `src/nets/face_reaging_model.py`). antialiased-cnns is licensed **Creative Commons Attribution-NonCommercial-ShareAlike 4.0** -- non-commercial only, and share-alike (redistributions/adaptations must carry the same license). This is a *required inference-time component of the network architecture itself*, not merely a caveat about what data the weights were trained on. Separately, the pretrained weights were trained on FFHQ images re-aged via SAM (built on StyleGAN2, NVIDIA's own non-commercial research license), so the training-data provenance also traces back through a non-commercial-licensed tool. Net effect: treat this whole feature as **non-commercial/research use only**, same category as InsightFace's age/gender model already in this repo, but with a stronger justification (a direct architectural dependency, not just lineage).
+
 ### Drowsiness
 
 | Backend                   | Framework | Output             |
@@ -325,7 +336,7 @@ Open **SELECT REGION & TRANSFORM** beneath an uploaded image or webcam snapshot,
 
 Each detected face has an **Edit face** expander containing its sliders, **IMAGE OP** selector, and **APPLY IMAGE OP** button. The filters stay hidden until that expander opens. Operations act on that face's displayed crop; the result can be downloaded as a PNG. Intensity, sharpen, and denoise expose a method selector. These operations need no model files or Docker build arguments. CNN and GAN denoising are not included because trained weights are not supplied.
 
-Model provenance: DAN, SSR-Net, and DeepFace's race model are vendored research code (`src/nets/`). DAN and SSR-Net have no explicit upstream license file (research/educational use). DeepFace (race, gender, and recognition/`deepface_vgg.h5`) is MIT. FairFace's ONNX conversion is MIT (underlying dataset CC BY 4.0). InsightFace's model is non-commercial research use only (see Gender above). BiSeNet face-parsing (facial hair) and Face-Mask-Detection (mask) are MIT; the glasses detector's license is unstated.
+Model provenance: DAN, SSR-Net, and DeepFace's race model are vendored research code (`src/nets/`). DAN and SSR-Net have no explicit upstream license file (research/educational use). DeepFace (race, gender, and recognition/`deepface_vgg.h5`) is MIT. FairFace's ONNX conversion is MIT (underlying dataset CC BY 4.0). InsightFace's model is non-commercial research use only (see Gender above). BiSeNet face-parsing (facial hair) and Face-Mask-Detection (mask) are MIT; the glasses detector's license is unstated. The age-reaging U-Net (`franunet`) is MIT-licensed code, but its BlurPool component (vendored from Adobe's antialiased-cnns) is CC BY-NC-SA 4.0 -- non-commercial use only (see Age Progression / Regression above).
 
 ## Performance
 
@@ -457,6 +468,7 @@ docker build \
   --build-arg HAND_MODEL=mediapipe \
   --build-arg RECONSTRUCTION_3D_MODEL=deep3d \
   --build-arg YOLO_FACE_MODEL=yolo \
+  --build-arg AGE_PROGRESSION_MODEL=franunet \
   -t face-analyzer .
 ```
 
@@ -477,12 +489,13 @@ docker build \
 | `HAND_MODEL`       | `mediapipe`                               |
 | `RECONSTRUCTION_3D_MODEL` | `deep3d` (ships no working weights, see [3D Reconstruction](#3d-reconstruction-web-app-only-ships-no-working-weights)) |
 | `YOLO_FACE_MODEL`  | `yolo` (additive -- SSD stays required/always on) |
+| `AGE_PROGRESSION_MODEL` | `franunet` (non-commercial use only, see [Age Progression / Regression](#age-progression--regression-web-app-only-non-commercial-use-only)) |
 
 There's no `SKIN_TONE_MODEL` build ARG -- see [Skin Tone](#skin-tone-web-app-only-no-working-backend-currently-shipped) above. Hair Color and Eye Color are colorimetric heuristics with no model file and thus no build ARG either -- they're always available in the web app (Eye Color additionally needs `haarcascade_eye.xml`, already required for Drowsiness). Face Landmarks also has no build ARG -- it rides along with `EXPRESSION_MODEL=blendshapes`, reusing that same model file.
 
 Multiple models per feature (e.g. `AGE_MODEL=caffe,ssrnet`) can be built in together -- the web app sidebar shows a checkbox per built model, and checking more than one for the same feature runs and displays all of them at once.
 
-Disabled model files never land in an image layer (BuildKit bind-mount + conditional copy). `torch`/`torchvision` (~200MB) are only installed if `ssrnet`, `dan`, `mivolo`, and/or `deep3d` are requested (`scipy` is additionally installed for `deep3d` alone, to load `.mat` files). `tensorflow-cpu`/`tf-keras` (~200-400MB, plus deepface's 513MB weight file) are only installed if `deepface`, `mini_xception`, `vggface`, and/or `mask` are requested -- deepface race remains by far the heaviest single option in the repo (note: `mivolo` at ~110MB checkpoint plus ultralytics/timm dependencies is the second-heaviest, still much lighter than deepface's full stack). `mediapipe` is only installed if the `blendshapes` expression backend is requested. `onnxruntime` is installed if `yolo` (face detector) or `mobilenet` (glasses) is requested. `opencv-contrib-python-headless` replaces the default `opencv-python-headless` only if `lbph` is requested (needed for `cv2.face`).
+Disabled model files never land in an image layer (BuildKit bind-mount + conditional copy). `torch`/`torchvision` (~200MB) are only installed if `ssrnet`, `dan`, `mivolo`, `deep3d`, and/or `franunet` are requested (`scipy` is additionally installed for `deep3d` alone, to load `.mat` files). `tensorflow-cpu`/`tf-keras` (~200-400MB, plus deepface's 513MB weight file) are only installed if `deepface`, `mini_xception`, `vggface`, and/or `mask` are requested -- deepface race remains by far the heaviest single option in the repo (note: `mivolo` at ~110MB checkpoint plus ultralytics/timm dependencies is the second-heaviest, still much lighter than deepface's full stack). `mediapipe` is only installed if the `blendshapes` expression backend is requested. `onnxruntime` is installed if `yolo` (face detector) or `mobilenet` (glasses) is requested. `opencv-contrib-python-headless` replaces the default `opencv-python-headless` only if `lbph` is requested (needed for `cv2.face`).
 
 ### Run
 

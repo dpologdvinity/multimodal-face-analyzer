@@ -660,6 +660,33 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
                             mime="text/plain", key=f"recon3d_dl_{identifier}_{face['idx']}",
                         )
 
+            if models.age_progression_nets:
+                st.caption("AGE PROGRESSION (non-commercial use only -- see README)")
+                col_src_age, col_tgt_age = st.columns(2)
+                source_age = col_src_age.number_input(
+                    "Source age", min_value=0, max_value=100, value=30,
+                    key=f"reage_src_{identifier}_{face['idx']}",
+                )
+                target_age = col_tgt_age.number_input(
+                    "Target age", min_value=0, max_value=100, value=60,
+                    key=f"reage_tgt_{identifier}_{face['idx']}",
+                )
+                if st.button("AGE PROGRESSION", key=f"reage_btn_{identifier}_{face['idx']}"):
+                    face_bgr = cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR)
+                    aged_bgr = inference.run_age_progression(models, face_bgr, source_age, target_age)
+                    st.session_state[f"reage_result_{identifier}_{face['idx']}"] = aged_bgr
+                result_key = f"reage_result_{identifier}_{face['idx']}"
+                if result_key in st.session_state:
+                    aged_bgr = st.session_state[result_key]
+                    col_before, col_after = st.columns(2)
+                    col_before.image(face["image"], caption="Before")
+                    col_after.image(cv2.cvtColor(aged_bgr, cv2.COLOR_BGR2RGB), caption="After")
+                    st.download_button(
+                        "DOWNLOAD AGED PNG", cv2.imencode(".png", aged_bgr)[1].tobytes(),
+                        file_name=f"face_{identifier}_{face['idx']}_aged.png", mime="image/png",
+                        key=f"reage_dl_{identifier}_{face['idx']}",
+                    )
+
 
 with st.expander("Image editing", expanded=True):
     if st.button("Reset all adjustments", key="reset_all_adjustments"):

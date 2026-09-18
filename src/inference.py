@@ -82,6 +82,12 @@ try:
 except ImportError:
     TORCHVISION_SUPPORTED = False
 
+try:
+    from nets.face_reaging_model import build_face_reaging_model, age_progress_face
+    FACE_REAGING_SUPPORTED = True
+except ImportError:
+    FACE_REAGING_SUPPORTED = False
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 MODEL_DIR = BASE_DIR / "models"
 
@@ -121,6 +127,7 @@ BFM_DIR = MODEL_DIR / "BFM"
 DEEP3D_RECON_MODEL = MODEL_DIR / "deep3d_recon_resnet50.pth"  # gated, not bundled -- see README
 BFM_MODEL_PATH = BFM_DIR / "BFM_model_front.mat"  # gated, not bundled -- see README
 BFM_LM3D_PATH = BFM_DIR / "similarity_Lm3D_all.mat"  # bundled (MIT, small landmark template)
+FACE_REAGING_MODEL = MODEL_DIR / "face_reaging_unet.pth"  # non-commercial -- see README
 
 MODEL_MEAN_VALUES = (78.4263377603, 87.768914374, 114.895847746)
 AGE_LIST = ['(0-2)', '(4-6)', '(8-12)', '(15-20)', '(25-32)', '(38-43)', '(48-53)', '(60-100)']
@@ -284,6 +291,7 @@ class Models:
     reconstruction_3d_nets: dict = field(default_factory=dict)
     yolo_face_nets: dict = field(default_factory=dict)
     gaze_nets: dict = field(default_factory=dict)
+    age_progression_nets: dict = field(default_factory=dict)
 
     @property
     def offline_features(self) -> list[str]:
@@ -300,6 +308,7 @@ class Models:
                 ("POSE", self.pose_nets), ("FACE_LANDMARKS", self.face_landmarks_nets),
                 ("HANDS", self.hand_nets), ("RECONSTRUCTION_3D", self.reconstruction_3d_nets),
                 ("FACE_DETECTOR_YOLO", self.yolo_face_nets),
+                ("AGE_PROGRESSION", self.age_progression_nets),
             ] if not nets
         ]
 
@@ -461,11 +470,15 @@ def load_models() -> Models:
     if ONNXRUNTIME_SUPPORTED and YOLO_FACE_MODEL.exists():
         yolo_face_nets["yolo"] = onnxruntime.InferenceSession(str(YOLO_FACE_MODEL), providers=["CPUExecutionProvider"])
 
+    age_progression_nets = {}
+    if FACE_REAGING_SUPPORTED and FACE_REAGING_MODEL.exists():
+        age_progression_nets["franunet"] = build_face_reaging_model(str(FACE_REAGING_MODEL))
+
     return Models(
         face_net, age_nets, gender_nets, emotion_nets, drowsiness_nets, race_nets, expression_nets, recognition_nets,
         facial_hair_nets, skin_tone_nets, glasses_nets, mask_nets, hair_color_nets, eye_color_nets, colorization_nets,
         pose_nets, face_landmarks_nets, hand_nets, reconstruction_3d_nets, yolo_face_nets,
-        gaze_nets,
+        gaze_nets, age_progression_nets,
     )
 
 
@@ -2068,6 +2081,18 @@ def run_3d_reconstruction(models: "Models", face_bgr: np.ndarray) -> tuple[np.nd
     h, w = face_bgr.shape[:2]
     landmarks_5pt = landmarks_5pt_from_mediapipe(points, w, h)
     return reconstruct_face_3d(recon_net, bfm_model, face_bgr, landmarks_5pt, lm3d_template)
+
+
+def run_age_progression(models: "Models", face_bgr: np.ndarray, source_age: float, target_age: float) -> np.ndarray | None:
+    """FRAN-style age progression/regression (see src/nets/face_reaging_model.py) for one face
+    crop. Returns an aged/de-aged BGR uint8 crop the same size as face_bgr, or None if the
+    franunet model isn't available. Non-commercial use only -- see README."""
+    net = models.age_progression_nets.get("franunet")
+    if net is None:
+        return None
+    face_rgb = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2RGB)
+    aged_rgb = age_progress_face(net, face_rgb, source_age, target_age)
+    return cv2.cvtColor(aged_rgb, cv2.COLOR_RGB2BGR)
 
 
 def draw_face_landmarks(frame: np.ndarray, points_normalized: list[tuple[float, float]], box: tuple[int, int, int, int]) -> None:

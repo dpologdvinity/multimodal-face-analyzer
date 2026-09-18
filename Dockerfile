@@ -19,6 +19,7 @@ FROM python:3.11-slim
 #   HAND_MODEL:         mediapipe                       (default: mediapipe)
 #   RECONSTRUCTION_3D_MODEL: deep3d                      (default: deep3d)
 #   YOLO_FACE_MODEL:    yolo                             (default: yolo)
+#   AGE_PROGRESSION_MODEL: franunet                       (default: franunet)
 # YOLO_FACE_MODEL is additive, not a replacement -- the original SSD/ResNet-10 TensorFlow
 # detector is always required and always on; this ARG only controls whether the alternative
 # YOLOv8-Face ONNX file is ALSO built in, selectable at runtime via a sidebar dropdown (exactly
@@ -37,6 +38,11 @@ FROM python:3.11-slim
 # and the Basel Face Model data it needs are both gated (Google Drive / university license
 # registration respectively); this ARG alone will never produce a working reconstruction.
 # See README's Known Issues for what the user must supply themselves.
+# AGE_PROGRESSION_MODEL (franunet, timroelofs123/face_reaging) needs torch. Its BlurPool
+# component is vendored directly into src/nets/face_reaging_model.py from Adobe's
+# antialiased-cnns, which is CC BY-NC-SA 4.0 (non-commercial) -- a required inference-time
+# dependency, not just a training-data provenance caveat like this repo's other NC-flagged
+# models. See README.
 # insightface's genderage.onnx provides BOTH age and gender from one file
 # (non-commercial research license -- see README). deepface's race model
 # needs TensorFlow (~200-400MB) and a 513MB weight file, much heavier
@@ -65,6 +71,7 @@ ARG POSE_MODEL=mpi
 ARG HAND_MODEL=mediapipe
 ARG RECONSTRUCTION_3D_MODEL=deep3d
 ARG YOLO_FACE_MODEL=yolo
+ARG AGE_PROGRESSION_MODEL=franunet
 
 # Install system dependencies for OpenCV and MediaPipe (libegl1/libgles2 needed by
 # mediapipe's face landmarker even in CPU-only/headless use)
@@ -91,6 +98,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     case "$gender_csv" in *,mivolo,*) need_torch=true ;; esac; \
     case "$emotion_csv" in *,dan,*) need_torch=true ;; esac; \
     case "$recon3d_csv" in *,deep3d,*) need_torch=true ;; esac; \
+    case "$AGE_PROGRESSION_MODEL" in *franunet*) need_torch=true ;; esac; \
     if [ "$need_torch" = "true" ]; then \
         pip install --extra-index-url https://download.pytorch.org/whl/cpu torch torchvision; \
     fi
@@ -189,10 +197,11 @@ RUN --mount=type=bind,source=models/age_deploy.prototxt,target=/tmp/models/age_d
     --mount=type=bind,source=models/BFM/similarity_Lm3D_all.mat,target=/tmp/models/BFM/similarity_Lm3D_all.mat \
     --mount=type=bind,source=models/deep3d_recon_resnet50.pth,target=/tmp/models/deep3d_recon_resnet50.pth \
     --mount=type=bind,source=models/yolov8n_face.onnx,target=/tmp/models/yolov8n_face.onnx \
+    --mount=type=bind,source=models/face_reaging_unet.pth,target=/tmp/models/face_reaging_unet.pth \
     set -e; \
     age_csv=",$AGE_MODEL,"; gender_csv=",$GENDER_MODEL,"; emotion_csv=",$EMOTION_MODEL,"; \
     drowsiness_csv=",$DROWSINESS_MODEL,"; race_csv=",$RACE_MODEL,"; expression_csv=",$EXPRESSION_MODEL,"; recognition_csv=",$RECOGNITION_MODEL,"; \
-    facial_hair_csv=",$FACIAL_HAIR_MODEL,"; glasses_csv=",$GLASSES_MODEL,"; mask_csv=",$MASK_MODEL,"; colorization_csv=",$COLORIZATION_MODEL,"; pose_csv=",$POSE_MODEL,"; hand_csv=",$HAND_MODEL,"; recon3d_csv=",$RECONSTRUCTION_3D_MODEL,"; yolo_face_csv=",$YOLO_FACE_MODEL,"; \
+    facial_hair_csv=",$FACIAL_HAIR_MODEL,"; glasses_csv=",$GLASSES_MODEL,"; mask_csv=",$MASK_MODEL,"; colorization_csv=",$COLORIZATION_MODEL,"; pose_csv=",$POSE_MODEL,"; hand_csv=",$HAND_MODEL,"; recon3d_csv=",$RECONSTRUCTION_3D_MODEL,"; yolo_face_csv=",$YOLO_FACE_MODEL,"; age_progression_csv=",$AGE_PROGRESSION_MODEL,"; \
     case "$age_csv" in *,caffe,*) cp /tmp/models/age_deploy.prototxt /tmp/models/age_net.caffemodel models/ ;; esac; \
     case "$age_csv" in *,ssrnet,*) cp /tmp/models/ssrnet_morph2.pth models/ ;; esac; \
     case "$gender_csv" in *,caffe,*) cp /tmp/models/gender_deploy.prototxt /tmp/models/gender_net.caffemodel models/ ;; esac; \
@@ -220,7 +229,8 @@ RUN --mount=type=bind,source=models/age_deploy.prototxt,target=/tmp/models/age_d
     case "$pose_csv" in *,mpi,*) cp /tmp/models/pose_deploy_linevec_faster_4_stages.prototxt /tmp/models/pose_iter_160000.caffemodel models/ ;; esac; \
     case "$hand_csv" in *,mediapipe,*) cp /tmp/models/hand_landmarker.task models/ ;; esac; \
     case "$recon3d_csv" in *,deep3d,*) mkdir -p models/BFM && cp /tmp/models/BFM/similarity_Lm3D_all.mat models/BFM/ && cp /tmp/models/deep3d_recon_resnet50.pth models/ ;; esac; \
-    case "$yolo_face_csv" in *,yolo,*) cp /tmp/models/yolov8n_face.onnx models/ ;; esac
+    case "$yolo_face_csv" in *,yolo,*) cp /tmp/models/yolov8n_face.onnx models/ ;; esac; \
+    case "$age_progression_csv" in *,franunet,*) cp /tmp/models/face_reaging_unet.pth models/ ;; esac
 
 # Expose default Streamlit port
 EXPOSE 8501
