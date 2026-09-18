@@ -357,7 +357,7 @@ def _target_card_html(face: dict) -> str:
     rows = ""
     for label, values in (
         ("AGE", face["age"]), ("GENDER", face["gender"]), ("RACE", face["race"]), ("MOOD", face["emotion"]),
-        ("EXPR", face["expression"]), ("GAZE", face["gaze"]), ("IDENTITY", face["identity"]), ("FACIAL HAIR", face["facial_hair"]),
+        ("EXPR", face["expression"]), ("GAZE", face["gaze"]), ("EYE CONTACT", face["eye_contact"]), ("IDENTITY", face["identity"]), ("FACIAL HAIR", face["facial_hair"]),
         ("SKIN TONE", face["skin_tone"]), ("GLASSES", face["glasses"]), ("MASK", face["mask"]),
         ("HAIR COLOR", face["hair_color"]), ("EYE COLOR", face["eye_color"]),
     ):
@@ -680,3 +680,15 @@ with tab_webcam:
                 summary = latency_frame.groupby("Model", as_index=False)["Latency (ms)"].mean()
                 summary["Latency (ms)"] = summary["Latency (ms)"].round(1)
                 st.dataframe(summary, hide_index=True, use_container_width=True)
+            emotion_rows = []
+            start_time = live_metrics[0]["timestamp"]
+            for item in live_metrics:
+                for sample in item.get("emotion_samples", []):
+                    emotion_rows.append({
+                        "Seconds": item["timestamp"] - start_time,
+                        "Model": sample["model"],
+                        "Emotion": sample["emotion"],
+                    })
+            if emotion_rows:
+                st.markdown("#### Emotion over time")
+                st.dataframe(pd.DataFrame(emotion_rows), hide_index=True, use_container_width=True)

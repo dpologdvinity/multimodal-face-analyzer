@@ -1853,6 +1853,10 @@ def analyze_frame(
                 value = predict_emotion_efficientnet(net, face)
             emotion_pairs.append((key, value))
             _record_model_latency(metrics, "emotion", key, started)
+        if metrics is not None and emotion_pairs:
+            metrics.setdefault("emotion_samples", []).extend(
+                {"model": key, "emotion": value} for key, value in emotion_pairs
+            )
 
         race_pairs = []
         for key in active_race:
@@ -1993,10 +1997,12 @@ def analyze_frame(
 
         drowsy_parts = _format_results(drowsy_pairs)
         status = drowsy_parts[0] if len(drowsy_parts) == 1 else (", ".join(drowsy_parts) if drowsy_parts else None)
+        eye_contact = [f"{key}=yes" if value.startswith("center/") else f"{key}=no" for key, value in gaze_pairs]
 
         raw_columns = _gather_face_results({
             "age": age_pairs, "gender": gender_pairs, "race": race_pairs, "emotion": emotion_pairs,
             "expression": expression_pairs, "gaze": gaze_pairs, "identity": recognition_pairs, "facial_hair": facial_hair_pairs,
+            "eye_contact": eye_contact,
             "skin_tone": skin_tone_pairs, "glasses": glasses_pairs, "mask": mask_pairs,
             "hair_color": hair_color_pairs, "eye_color": eye_color_pairs, "drowsiness": drowsy_pairs,
         })
@@ -2005,6 +2011,7 @@ def analyze_frame(
             for feature, pairs in {
                 "age": age_pairs, "gender": gender_pairs, "race": race_pairs, "emotion": emotion_pairs,
                 "expression": expression_pairs, "gaze": gaze_pairs, "identity": recognition_pairs,
+                "eye contact": [("derived", value) for value in eye_contact],
                 "facial hair": facial_hair_pairs, "skin tone": skin_tone_pairs, "glasses": glasses_pairs,
                 "mask": mask_pairs, "hair color": hair_color_pairs, "eye color": eye_color_pairs,
                 "drowsiness": drowsy_pairs,
@@ -2022,6 +2029,7 @@ def analyze_frame(
             "emotion": _format_results(emotion_pairs),
             "expression": _format_results(expression_pairs),
             "gaze": _format_results(gaze_pairs),
+            "eye_contact": eye_contact,
             "identity": _format_results(recognition_pairs),
             "facial_hair": _format_results(facial_hair_pairs),
             "skin_tone": _format_results(skin_tone_pairs),
