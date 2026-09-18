@@ -267,15 +267,26 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
                     inference.save_gallery(st.session_state["gallery"])
                     st.rerun()
 
-                if st.button("SEARCH", key=f"search_btn_{identifier}_{face['idx']}"):
-                    if not search_gallery:
-                        st.warning("[ NO MATCH ] -- search gallery is empty (no bundled or directory photos with a detected face)")
-                    else:
-                        match = inference.match_face_identity(np.array(face["embedding"], dtype=np.float32), search_gallery)
-                        if match:
-                            st.success(f"[ MATCH ] {match[0]} ({match[1] * 100:.0f}%)")
-                        else:
-                            st.warning("[ NO MATCH ] -- no known face cleared the similarity threshold")
+            col_search, col_save = st.columns(2)
+            if col_search.button("SEARCH", key=f"search_btn_{identifier}_{face['idx']}"):
+                face_bgr = cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR)
+                found = False
+                if face["embedding"] is not None and search_gallery:
+                    match = inference.match_face_identity(np.array(face["embedding"], dtype=np.float32), search_gallery)
+                    if match:
+                        st.success(f"[ PHOTO MATCH ] {match[0]} ({match[1] * 100:.0f}%)")
+                        found = True
+                eigen_match = inference.match_face_eigenfaces(face_bgr)
+                if eigen_match:
+                    st.success(f"[ EIGENFACE MATCH ] saved face ID {eigen_match[0]} (distance {eigen_match[1]:.0f})")
+                    found = True
+                if not found:
+                    st.warning("[ NO MATCH ] -- no known/saved face matched")
+
+            if col_save.button("SAVE", key=f"save_btn_{identifier}_{face['idx']}"):
+                face_bgr = cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR)
+                saved_id = inference.save_face(face_bgr, face["raw_columns"])
+                st.info(f"[ SAVED ] ID {saved_id}")
 
 
 tab_upload, tab_webcam = st.tabs(["[ FILE UPLOAD ]", "[ LIVE WEBCAM ]"])
