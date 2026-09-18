@@ -34,17 +34,20 @@ Face detection is required; age, gender, race, emotion, and drowsiness are each 
 
 ### Age
 
-| Backend       | Framework       | Output                         |
-| ------------- | --------------- | ------------------------------ |
-| `caffe`       | Caffe (cv2.dnn) | bucketed range, e.g. `(25-32)` |
-| `insightface` | ONNX (cv2.dnn)  | continuous age, e.g. `31`      |
-| `ssrnet`      | PyTorch         | continuous age, e.g. `31`      |
-| `fairface`    | ONNX (cv2.dnn)  | bucketed range, e.g. `20-29` (9 buckets) |
-| `dex`         | Caffe (cv2.dnn) | continuous age, e.g. `31` (expected value over 101 classes) |
+| Backend       | Framework         | Output                         |
+| ------------- | ----------------- | ------------------------------ |
+| `caffe`       | Caffe (cv2.dnn)   | bucketed range, e.g. `(25-32)` |
+| `insightface` | ONNX (cv2.dnn)    | continuous age, e.g. `31`      |
+| `ssrnet`      | PyTorch           | continuous age, e.g. `31`      |
+| `fairface`    | ONNX (cv2.dnn)    | bucketed range, e.g. `20-29` (9 buckets) |
+| `dex`         | Caffe (cv2.dnn)   | continuous age, e.g. `31` (expected value over 101 classes) |
+| `mivolo`      | PyTorch/timm ViT  | continuous age, e.g. `31`      |
 
 CLI: `--age-model` (`caffe` or `ssrnet` only). Web app: checkbox per built model. Default: `caffe`.
 
-`dex` (Deep EXpectation, Rothe et al. ICCV 2015) is a VGG-16 trained on IMDB-WIKI, by far the heaviest age option (513MB caffemodel). **Research/academic-use license** (ETH Zurich, IMDB-WIKI-derived) -- not for commercial deployments without independent licensing.
+`dex` (Deep EXpectation, Rothe et al. ICCV 2015) is a VGG-16 trained on IMDB-WIKI, a heavy age option (513MB caffemodel). **Research/academic-use license** (ETH Zurich, IMDB-WIKI-derived) -- not for commercial deployments without independent licensing.
+
+`mivolo` (MiVOLO: Multi-input Transformer for Age/Gender, Apache 2.0, WildChlamydia/MiVOLO) is a vision transformer that runs in face-only mode (no body context in this pipeline), sharing one checkpoint with the gender backend. Accuracy is ~4.24 years age MAE (face-only mode); heaviest option (~110MB checkpoint plus ultralytics/timm dependencies). Web app only.
 
 ### Gender
 
@@ -54,8 +57,11 @@ CLI: `--age-model` (`caffe` or `ssrnet` only). Web app: checkbox per built model
 | `insightface`      | ONNX (cv2.dnn)        | `Male` / `Female` |
 | `deepface`         | Keras/TensorFlow      | `Male` / `Female` |
 | `fairface`         | ONNX (cv2.dnn)        | `Male` / `Female` |
+| `mivolo`           | PyTorch/timm ViT      | `Male` / `Female` |
 
 `insightface` shares one small ONNX file (`models/insightface_genderage.onnx`) with the insightface age backend -- one model, two feature outputs. **Non-commercial research-use-only license** (CelebA-derived); not for commercial deployments. `deepface` shares its VGGFace backbone code (`src/nets/deepface_common.py`) with the deepface race backend, but is a separate 537MB weight file (`models/deepface_gender.h5`) and needs TensorFlow like deepface race does. `fairface` shares one ONNX file (`models/fairface_7class.onnx`) across all three of age, gender, and race -- one model, three feature outputs (named `age_output`/`gender_output`/`race_output` in the same graph).
+
+`mivolo` (Apache 2.0, WildChlamydia/MiVOLO) shares its 110MB checkpoint with the mivolo age backend -- one model, two feature outputs. Face-only mode (no body context). Web app only.
 
 ### Race (web app only)
 
@@ -103,6 +109,7 @@ multimodal-face-analyzer/
 │   ├── ssrnet_morph2.pth                        # age: ssrnet backend
 │   ├── gender_deploy.prototxt / gender_net.caffemodel
 │   ├── insightface_genderage.onnx               # age + gender: insightface backend
+│   ├── mivolo_v2.safetensors / _config.json     # age + gender: mivolo backend
 │   ├── dan_affecnet7.pth                        # emotion: dan backend
 │   ├── efficientnet_b0_fer.onnx                 # emotion: efficientnet backend
 │   ├── emotion_ferplus.onnx                     # emotion: ferplus backend
@@ -121,7 +128,16 @@ multimodal-face-analyzer/
         ├── deepface_common.py                   # shared VGGFace backbone
         ├── deepface_race.py
         ├── mini_xception_model.py
-        └── deepface_gender.py
+        ├── deepface_gender.py
+        └── mivolo/                              # MiVOLO ViT (Apache 2.0)
+            ├── __init__.py
+            ├── loader.py                        # HF checkpoint adapter
+            ├── inference_wrapper.py             # high-level inference API
+            ├── predictor.py
+            ├── structures.py
+            ├── model/                           # ViT architecture
+            ├── data/                            # preprocessing
+            └── LICENSE_MIVOLO
 ```
 
 `detect.py` (CLI) and `src/app.py`+`src/inference.py` (web app) intentionally duplicate the detection pipeline rather than sharing one module.
@@ -197,8 +213,8 @@ Each build ARG takes a comma-separated list of model keys for that feature, or e
 
 ```bash
 docker build \
-  --build-arg AGE_MODEL=caffe,insightface,ssrnet,fairface,dex \
-  --build-arg GENDER_MODEL=caffe,insightface,deepface,fairface \
+  --build-arg AGE_MODEL=caffe,insightface,ssrnet,fairface,dex,mivolo \
+  --build-arg GENDER_MODEL=caffe,insightface,deepface,fairface,mivolo \
   --build-arg EMOTION_MODEL=efficientnet,ferplus,mini_xception,dan \
   --build-arg DROWSINESS_MODEL=haarcascade \
   --build-arg RACE_MODEL=fairface,deepface \
@@ -207,15 +223,15 @@ docker build \
 
 | Build arg          | Options (default first)          |
 | ------------------ | -------------------------------- |
-| `AGE_MODEL`        | `caffe`, `insightface`, `ssrnet`, `fairface`, `dex` |
-| `GENDER_MODEL`     | `caffe`, `insightface`, `deepface`, `fairface` |
+| `AGE_MODEL`        | `caffe`, `insightface`, `ssrnet`, `fairface`, `dex`, `mivolo` |
+| `GENDER_MODEL`     | `caffe`, `insightface`, `deepface`, `fairface`, `mivolo` |
 | `EMOTION_MODEL`    | `efficientnet`, `ferplus`, `mini_xception`, `dan` |
-| `DROWSINESS_MODEL` | `haarcascade`                    |
-| `RACE_MODEL`       | `fairface`, `deepface`           |
+| `DROWSINESS_MODEL` | `haarcascade`                            |
+| `RACE_MODEL`       | `fairface`, `deepface`                   |
 
 Multiple models per feature (e.g. `AGE_MODEL=caffe,ssrnet`) can be built in together -- the web app sidebar shows a checkbox per built model, and checking more than one for the same feature runs and displays all of them at once.
 
-Disabled model files never land in an image layer (BuildKit bind-mount + conditional copy). `torch`/`torchvision` (~200MB) are only installed if `ssrnet` and/or `dan` are requested. `tensorflow-cpu`/`tf-keras` (~200-400MB, plus deepface's 513MB weight file) are only installed if `deepface` is requested -- by far the heaviest single option in the repo.
+Disabled model files never land in an image layer (BuildKit bind-mount + conditional copy). `torch`/`torchvision` (~200MB) are only installed if `ssrnet`, `dan`, and/or `mivolo` are requested. `tensorflow-cpu`/`tf-keras` (~200-400MB, plus deepface's 513MB weight file) are only installed if `deepface` is requested -- by far the heaviest single option in the repo (note: `mivolo` at ~110MB checkpoint plus ultralytics/timm dependencies is the second-heaviest, still much lighter than deepface's full stack).
 
 ### Run
 
