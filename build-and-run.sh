@@ -63,7 +63,18 @@ prompt_feature() {
     selection="${selection:-$default_selection}"
 
     local chosen=()
-    IFS=',' read -ra nums <<< "$selection"
+    local n token index
+    local -a nums=() tokens=()
+    IFS=' ' read -ra tokens <<< "${selection//,/ }"
+    for token in "${tokens[@]}"; do
+        if [[ "$token" =~ ^[0-9]+$ && "${#token}" -gt 1 ]]; then
+            for ((index = 0; index < ${#token}; index++)); do
+                nums+=("${token:index:1}")
+            done
+        else
+            nums+=("$token")
+        fi
+    done
     for n in "${nums[@]}"; do
         n="$(echo "$n" | tr -d '[:space:]')"
         [ -z "$n" ] && continue
