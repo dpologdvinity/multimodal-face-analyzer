@@ -6,13 +6,14 @@
 ![Streamlit](https://img.shields.io/badge/Streamlit-UI-00ff66?style=flat-square&logo=streamlit&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Ready-00ff66?style=flat-square&logo=docker&logoColor=white)
 
-> Computer vision pipeline for face detection with age, gender, race, emotion, expression (blendshapes), gaze, drowsiness, facial hair, glasses, mask, and hair/eye color inference. A containerized Streamlit web app.
+> Computer vision pipeline for face detection with age, gender, race, emotion, expression (blendshapes), gaze, drowsiness, facial hair, glasses, mask, hair/eye color, and experimental face-derived body-composition inference. A containerized Streamlit web app.
 
 ---
 
 ## Key Features
 
 - **Multi-model face analysis:** face detection, age, gender, race, emotion, expression (blendshapes), gaze, drowsiness, facial hair, glasses, face mask, colorimetric hair/eye color, face landmarks, plus whole-frame auto-colorization, body pose estimation, and hand landmarks -- most features have 2+ selectable model backends.
+- **Experimental BMI / body-fat estimate:** per-face `face_geometry` backend reports a relative facial-adiposity proxy from MediaPipe landmarks for exploratory research and controlled-dataset triage; it is not a measured BMI or body-fat percentage and is not clinical.
 - **Image adjustments:** 11 Lightroom-style sliders (exposure, contrast, shadows/highlights, saturation/vibrance, sharpness, noise reduction, etc.) for the whole image, all face crops before classification, and each detected face's preview separately.
 - **Face details on hover:** Hover or focus a detected face box in the annotated image to see its analysis results; full face cards remain below the image.
 - **Identity search:** SEARCH button per detected face, matching against bundled reference photos (`known_people/`, a few famous people out of the box) plus an optional user-specified directory. Local matching only, no live internet search.
@@ -207,6 +208,27 @@ display hardware can produce false positives or false negatives.
 | `bisenet`  | ONNX (cv2.dnn) | `beard` / `clean-shaven`  |
 
 BiSeNet 19-class face parsing (yakhyo/face-parsing, MIT, `models/bisenet_face_parsing.onnx`, 512x512 RGB, ImageNet-normalized). CelebAMask-HQ's 19-class scheme has **no dedicated beard/facial-hair class** -- annotators fold facial hair into the same `hair` class as scalp hair. This backend approximates facial hair by checking how much of the `hair` class falls in the *lower* part of the face crop (jaw/chin/mouth), where scalp hair rarely appears in a tight box -- reported `beard` if that coverage clears 15%. Treat this as a coarse proxy, not a purpose-built facial-hair classifier.
+
+### BMI / Body-Fat Estimate (web app only, experimental research proxy)
+
+| Backend          | Framework                   | Output |
+| ---------------- | --------------------------- | ------ |
+| `face_geometry` | MediaPipe FaceLandmarker    | relative facial-adiposity index `0..100` |
+
+The `BMI / BODY-FAT ESTIMATE` sidebar option runs per detected face and reuses the same
+`models/face_landmarker.task` instance used by Expression, Gaze, Face Landmarks, and Liveness.
+It combines scale-invariant face aspect ratio and lower-face width into a transparent relative
+index, rather than pretending that a face crop contains height, weight, or a clinical body-fat
+measurement. The output is intended for **exploratory research, within-dataset relative ranking,
+and controlled-capture/data-quality checks**.
+
+**Research-grade caveat: this is not clinically validated and is not a BMI measurement or body-fat
+percentage.** Do not use it for diagnosis, screening, treatment, insurance, employment, access,
+or body-size decisions. Facial shape varies with pose, expression, camera geometry, age,
+population, hairstyle, and lighting; published research reports correlations rather than a
+universal clinical conversion. See [Predicting Obesity Using Facial Pictures](https://pubmed.ncbi.nlm.nih.gov/33778081/)
+and [Testing the Utility of a Data-Driven Approach for Assessing BMI from Face Images](https://pubmed.ncbi.nlm.nih.gov/26460526/)
+for examples of the research context and limitations.
 
 ### Skin Tone (web app only, no working backend currently shipped)
 
@@ -481,7 +503,7 @@ docker build \
 | `RECONSTRUCTION_3D_MODEL` | `deep3d` (ships no working weights, see [3D Reconstruction](#3d-reconstruction-web-app-only-ships-no-working-weights)) |
 | `YOLO_FACE_MODEL`  | `yolo` (additive -- SSD stays required/always on) |
 
-There's no `SKIN_TONE_MODEL` build ARG -- see [Skin Tone](#skin-tone-web-app-only-no-working-backend-currently-shipped) above. Hair Color and Eye Color are colorimetric heuristics with no model file and thus no build ARG either -- they're always available in the web app (Eye Color additionally needs `haarcascade_eye.xml`, already required for Drowsiness). Face Landmarks has no build ARG -- it rides along with `EXPRESSION_MODEL=blendshapes`; Liveness uses its own `LIVENESS_MODEL=mediapipe` ARG while reusing the same model file.
+There's no `SKIN_TONE_MODEL` build ARG -- see [Skin Tone](#skin-tone-web-app-only-no-working-backend-currently-shipped) above. Hair Color and Eye Color are colorimetric heuristics with no model file and thus no build ARG either -- they're always available in the web app (Eye Color additionally needs `haarcascade_eye.xml`, already required for Drowsiness). Face Landmarks has no build ARG -- it rides along with `EXPRESSION_MODEL=blendshapes`; Liveness uses its own `LIVENESS_MODEL=mediapipe` ARG while reusing the same model file. BMI / Body-Fat Estimate has no build ARG -- `face_geometry` rides along with the same MediaPipe FaceLandmarker file and appears whenever that dependency/model is available.
 
 Multiple models per feature (e.g. `AGE_MODEL=caffe,ssrnet`) can be built in together -- the web app sidebar shows a checkbox per built model, and checking more than one for the same feature runs and displays all of them at once.
 

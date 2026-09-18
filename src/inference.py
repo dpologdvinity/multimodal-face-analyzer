@@ -28,6 +28,7 @@ try:
         blink_score_from_landmarker,
         texture_artifact_score,
     )
+    from .body_composition import BODY_COMPOSITION_MODEL_OPTIONS, estimate_face_composition
 except ImportError:  # app.py runs with src/ on sys.path in the container
     from liveness import (
         LivenessTracker,
@@ -35,6 +36,7 @@ except ImportError:  # app.py runs with src/ on sys.path in the container
         blink_score_from_landmarker,
         texture_artifact_score,
     )
+    from body_composition import BODY_COMPOSITION_MODEL_OPTIONS, estimate_face_composition
 
 try:
     import torch
@@ -286,6 +288,7 @@ class Models:
     reconstruction_3d_nets: dict = field(default_factory=dict)
     yolo_face_nets: dict = field(default_factory=dict)
     gaze_nets: dict = field(default_factory=dict)
+    body_composition_nets: dict = field(default_factory=dict)
 
     @property
     def offline_features(self) -> list[str]:
@@ -303,6 +306,7 @@ class Models:
                 ("POSE", self.pose_nets), ("FACE_LANDMARKS", self.face_landmarks_nets),
                 ("HANDS", self.hand_nets), ("RECONSTRUCTION_3D", self.reconstruction_3d_nets),
                 ("FACE_DETECTOR_YOLO", self.yolo_face_nets),
+                ("BODY_COMPOSITION", self.body_composition_nets),
             ] if not nets
         ]
 
@@ -403,6 +407,7 @@ def load_models() -> Models:
     liveness_nets = {}
     face_landmarks_nets = {}
     gaze_nets = {}
+    body_composition_nets = {}
     if MEDIAPIPE_SUPPORTED and BLENDSHAPES_MODEL.exists():
         options = mp.tasks.vision.FaceLandmarkerOptions(
             base_options=mp.tasks.BaseOptions(model_asset_path=str(BLENDSHAPES_MODEL)),
@@ -414,6 +419,7 @@ def load_models() -> Models:
         liveness_nets["mediapipe"] = landmarker
         face_landmarks_nets["blendshapes"] = landmarker  # same model instance, two features
         gaze_nets["mediapipe"] = landmarker
+        body_composition_nets[BODY_COMPOSITION_MODEL_OPTIONS[0]] = landmarker
 
     facial_hair_nets = {}
     if BISENET_MODEL.exists():
@@ -470,7 +476,7 @@ def load_models() -> Models:
         face_net, age_nets, gender_nets, emotion_nets, drowsiness_nets, race_nets, expression_nets, liveness_nets, recognition_nets,
         facial_hair_nets, skin_tone_nets, glasses_nets, mask_nets, hair_color_nets, eye_color_nets, colorization_nets,
         pose_nets, face_landmarks_nets, hand_nets, reconstruction_3d_nets, yolo_face_nets,
-        gaze_nets,
+        gaze_nets, body_composition_nets,
     )
 
 
@@ -1822,6 +1828,17 @@ def predict_expression_blendshapes(landmarker, face_bgr: np.ndarray, result=None
     return ", ".join(f"{bs.category_name} {bs.score:.2f}" for bs in top_blendshapes)
 
 
+def predict_body_composition_face_geometry(landmarker, face_bgr: np.ndarray, result=None) -> str:
+    """Return the transparent, relative face-geometry body-composition proxy.
+
+    The MediaPipe result is shared with expression, gaze, landmarks, and liveness so this
+    backend adds no second landmark inference.  ``face_bgr`` remains in the signature to
+    match the per-face predictor contract; the proxy intentionally uses landmarks only.
+    """
+    result = result if result is not None else _detect_face_landmarker(landmarker, face_bgr)
+    return estimate_face_composition(result)
+
+
 BISENET_HAIR_CLASS = 17  # CelebAMask-HQ 19-class scheme (yakhyo/face-parsing's own utils/prepare_labels.py
 # attribute order, 1-indexed after background=0): skin, l_brow, r_brow, l_eye, r_eye, eye_g, l_ear, r_ear,
 # ear_r, nose, mouth, u_lip, l_lip, neck, neck_l, cloth, hair, hat -- there is NO separate beard/facial-hair
@@ -2172,6 +2189,7 @@ def analyze_frame(
     tracker: "FaceTracker | None" = None,
     liveness_tracker: "LivenessTracker | None" = None,
     active_liveness: set | None = None,
+    active_body_composition: set | None = None,
 ):
     """Detect faces and run inference for whichever model keys are active per feature.
     Multiple active models for the same feature (e.g. active_age = {"caffe", "ssrnet"})
@@ -2199,6 +2217,8 @@ def analyze_frame(
     the loaded liveness backend; omitted callers use every loaded backend."""
     if active_liveness is None:
         active_liveness = set(models.liveness_nets)
+    if active_body_composition is None:
+        active_body_composition = set(models.body_composition_nets)
     if global_adjustments and any(global_adjustments.values()):
         frame = apply_image_adjustments(frame, global_adjustments)
 
@@ -2265,14 +2285,19 @@ def analyze_frame(
         # same MediaPipe FaceLandmarker result. Detect once before dispatching
         # feature tasks so the shared model is not run repeatedly per crop.
         liveness_net = models.liveness_nets.get("mediapipe") if "mediapipe" in active_liveness else None
+        body_composition_net = (
+            models.body_composition_nets.get("face_geometry")
+            if "face_geometry" in active_body_composition else None
+        )
         face_landmarker = (
             liveness_net if liveness_net is not None
-            else models.face_landmarks_nets.get("blendshapes")
+            else body_composition_net or models.face_landmarks_nets.get("blendshapes")
         )
         needs_face_landmarks = (
             "blendshapes" in active_expression
             or "mediapipe" in active_gaze
             or "blendshapes" in active_face_landmarks
+            or body_composition_net is not None
             or face_landmarker is not None
         )
         landmarker_result = (
@@ -2384,6 +2409,21 @@ def analyze_frame(
                 )
                 pairs.append((key, value))
                 _record_model_latency(metrics, "expression", key, started)
+            return pairs
+
+        def _body_composition_task():
+            pairs = []
+            for key in active_body_composition:
+                net = models.body_composition_nets.get(key)
+                if net is None:
+                    continue
+                started = time.perf_counter()
+                if key == "face_geometry":
+                    value = predict_body_composition_face_geometry(net, face, landmarker_result)
+                else:
+                    continue
+                pairs.append((key, value))
+                _record_model_latency(metrics, "body_composition", key, started)
             return pairs
 
         def _gaze_task():
@@ -2535,6 +2575,7 @@ def analyze_frame(
             "emotion": _INFERENCE_EXECUTOR.submit(_emotion_task),
             "race": _INFERENCE_EXECUTOR.submit(_race_task),
             "expression": _INFERENCE_EXECUTOR.submit(_expression_task),
+            "body_composition": _INFERENCE_EXECUTOR.submit(_body_composition_task),
             "gaze": _INFERENCE_EXECUTOR.submit(_gaze_task),
             "head_pose": _INFERENCE_EXECUTOR.submit(_head_pose_task),
             "recognition": _INFERENCE_EXECUTOR.submit(_recognition_task),
@@ -2553,6 +2594,7 @@ def analyze_frame(
         emotion_pairs = futures["emotion"].result()
         race_pairs = futures["race"].result()
         expression_pairs = futures["expression"].result()
+        body_composition_pairs = futures["body_composition"].result()
         gaze_pairs = futures["gaze"].result()
         head_pose_pairs = futures["head_pose"].result()
         recognition_pairs, face_embedding = futures["recognition"].result()
@@ -2595,6 +2637,7 @@ def analyze_frame(
         raw_columns = _gather_face_results({
             "age": age_pairs, "gender": gender_pairs, "race": race_pairs, "emotion": emotion_pairs,
             "expression": expression_pairs, "gaze": gaze_pairs, "identity": recognition_pairs, "facial_hair": facial_hair_pairs,
+            "body_composition": body_composition_pairs,
             "eye_contact": [("derived", value) for value in eye_contact], "head_pose": head_pose_pairs,
             "skin_tone": skin_tone_pairs, "glasses": glasses_pairs, "mask": mask_pairs,
             "hair_color": hair_color_pairs, "eye_color": eye_color_pairs, "drowsiness": drowsy_pairs,
@@ -2605,6 +2648,7 @@ def analyze_frame(
             for feature, pairs in {
                 "age": age_pairs, "gender": gender_pairs, "race": race_pairs, "emotion": emotion_pairs,
                 "expression": expression_pairs, "gaze": gaze_pairs, "identity": recognition_pairs,
+                "body composition": body_composition_pairs,
                 "eye contact": [("derived", value) for value in eye_contact],
                 "head pose": head_pose_pairs,
                 "facial hair": facial_hair_pairs, "skin tone": skin_tone_pairs, "glasses": glasses_pairs,
@@ -2624,6 +2668,7 @@ def analyze_frame(
             "race": _format_results(race_pairs),
             "emotion": _format_results(emotion_pairs),
             "expression": _format_results(expression_pairs),
+            "body_composition": _format_results(body_composition_pairs),
             "gaze": _format_results(gaze_pairs),
             "eye_contact": eye_contact,
             "head_pose": _format_results(head_pose_pairs),
