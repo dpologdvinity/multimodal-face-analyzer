@@ -251,6 +251,43 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
     if hands_detected:
         st.caption("[ HANDS DETECTED ] -- landmark overlay drawn")
 
+    height, width = frame.shape[:2]
+    region_key = f"region_result_{identifier}"
+    with st.expander("SELECT REGION & TRANSFORM"):
+        x_col, y_col = st.columns(2)
+        x1 = x_col.number_input("X1", min_value=0, max_value=width, value=0, key=f"x1_{identifier}")
+        x2 = x_col.number_input("X2", min_value=0, max_value=width, value=width, key=f"x2_{identifier}")
+        y1 = y_col.number_input("Y1", min_value=0, max_value=height, value=0, key=f"y1_{identifier}")
+        y2 = y_col.number_input("Y2", min_value=0, max_value=height, value=height, key=f"y2_{identifier}")
+        transform = st.selectbox("TRANSFORM", inference.GEOMETRIC_TRANSFORM_OPTIONS, key=f"transform_{identifier}")
+        params = {}
+        if transform == "translate":
+            params = {"dx": st.number_input("DX", value=0, key=f"dx_{identifier}"),
+                      "dy": st.number_input("DY", value=0, key=f"dy_{identifier}")}
+        elif transform == "reflect":
+            params = {"axis": st.selectbox("AXIS", ["horizontal", "vertical"], key=f"reflect_axis_{identifier}")}
+        elif transform == "rotate":
+            params = {"angle": st.number_input("ANGLE (DEGREES)", value=0.0, key=f"angle_{identifier}"),
+                      "scale": st.number_input("ROTATION SCALE", min_value=0.01, value=1.0, key=f"rotation_scale_{identifier}")}
+        elif transform == "scale":
+            params = {"fx": st.number_input("X SCALE", min_value=0.01, value=1.0, key=f"fx_{identifier}"),
+                      "fy": st.number_input("Y SCALE", min_value=0.01, value=1.0, key=f"fy_{identifier}")}
+        elif transform == "shear":
+            params = {"axis": st.selectbox("AXIS", ["x", "y"], key=f"shear_axis_{identifier}"),
+                      "factor": st.number_input("SHEAR FACTOR", value=0.0, key=f"shear_factor_{identifier}")}
+        if st.button("APPLY TRANSFORM", key=f"transform_btn_{identifier}"):
+            region = inference.crop_region(frame, x1, y1, x2, y2)
+            if region.size == 0:
+                st.warning("[ EMPTY REGION ] -- select a rectangle with nonzero width and height")
+            else:
+                result = inference.apply_geometric_transform(region, transform, **params)
+                st.session_state[region_key] = result
+        if region_key in st.session_state:
+            result = st.session_state[region_key]
+            st.image(cv2.cvtColor(result, cv2.COLOR_BGR2RGB), caption="Transformed region")
+            st.download_button("DOWNLOAD TRANSFORMED PNG", cv2.imencode(".png", result)[1].tobytes(),
+                               file_name="transformed_region.png", mime="image/png", key=f"transform_dl_{identifier}")
+
     if not has_faces:
         st.warning(f"[TARGET MISSING] Zero targets detected in file: {identifier}")
         st.image(cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB), caption=identifier, use_container_width=True)
@@ -314,6 +351,28 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
                 face_bgr = cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR)
                 saved_id = inference.save_face(face_bgr, face["raw_columns"])
                 st.info(f"[ SAVED ] ID {saved_id}")
+
+            op_key = f"image_op_result_{identifier}_{face['idx']}"
+            op = st.selectbox("IMAGE OP", inference.IMAGE_OP_OPTIONS, key=f"image_op_{identifier}_{face['idx']}")
+            op_params = {}
+            if op == "intensity":
+                op_params["method"] = st.selectbox("INTENSITY METHOD", inference.INTENSITY_METHODS,
+                                                    key=f"intensity_method_{identifier}_{face['idx']}")
+            elif op == "sharpen":
+                op_params["method"] = st.selectbox("SHARPEN METHOD", inference.SHARPEN_METHODS,
+                                                    key=f"sharpen_method_{identifier}_{face['idx']}")
+            elif op == "denoise":
+                op_params["method"] = st.selectbox("DENOISE METHOD", inference.DENOISE_METHODS,
+                                                    key=f"denoise_method_{identifier}_{face['idx']}")
+            if st.button("APPLY IMAGE OP", key=f"image_op_btn_{identifier}_{face['idx']}"):
+                face_bgr = cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR)
+                st.session_state[op_key] = inference.apply_image_op(face_bgr, op, **op_params)
+            if op_key in st.session_state:
+                result = st.session_state[op_key]
+                st.image(cv2.cvtColor(result, cv2.COLOR_BGR2RGB), caption="Processed face")
+                st.download_button("DOWNLOAD FACE PNG", cv2.imencode(".png", result)[1].tobytes(),
+                                   file_name=f"face_{face['idx']}_processed.png", mime="image/png",
+                                   key=f"image_op_dl_{identifier}_{face['idx']}")
 
             if models.reconstruction_3d_nets:
                 if st.button("3D RECON", key=f"recon3d_btn_{identifier}_{face['idx']}"):
