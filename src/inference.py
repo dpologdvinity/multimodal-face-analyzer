@@ -1630,6 +1630,30 @@ def predict_gaze_mediapipe(landmarker, face_bgr: np.ndarray) -> str:
     return f"{horizontal_label}/{vertical_label}"
 
 
+def predict_head_pose_mediapipe(landmarker, face_bgr: np.ndarray) -> str:
+    """Estimate coarse yaw/pitch from stable MediaPipe face landmarks."""
+    points = predict_face_landmarks_mediapipe(landmarker, face_bgr)
+    if points is None or len(points) < 264:
+        return "unknown"
+    image_points = np.float32([points[i] for i in (1, 152, 33, 263, 61, 291)])
+    h, w = face_bgr.shape[:2]
+    image_points[:, 0] *= w
+    image_points[:, 1] *= h
+    model_points = np.float32([
+        (0.0, 0.0, 0.0), (0.0, -63.6, -12.5), (-43.3, 32.7, -26.0),
+        (43.3, 32.7, -26.0), (-28.9, -28.9, -24.1), (28.9, -28.9, -24.1),
+    ])
+    focal = float(w)
+    camera = np.array([[focal, 0, w / 2], [0, focal, h / 2], [0, 0, 1]], dtype=np.float32)
+    ok, rotation, _ = cv2.solvePnP(model_points, image_points, camera, np.zeros((4, 1)), flags=cv2.SOLVEPNP_ITERATIVE)
+    if not ok:
+        return "unknown"
+    matrix, _ = cv2.Rodrigues(rotation)
+    pitch = np.degrees(np.arctan2(-matrix[2, 0], np.hypot(matrix[2, 1], matrix[2, 2])))
+    yaw = np.degrees(np.arctan2(matrix[1, 0], matrix[0, 0]))
+    return f"yaw={yaw:.0f}°, pitch={pitch:.0f}°"
+
+
 def _record_model_latency(metrics: dict | None, feature: str, model: str, started: float) -> None:
     if metrics is None:
         return
@@ -1922,6 +1946,11 @@ def analyze_frame(
             value = predict_gaze_mediapipe(net, face)
             gaze_pairs.append((key, value))
             _record_model_latency(metrics, "gaze", key, started)
+        head_pose_pairs = []
+        for key in active_gaze:
+            net = models.gaze_nets.get(key)
+            if net is not None:
+                head_pose_pairs.append((key, predict_head_pose_mediapipe(net, face)))
 
         recognition_pairs = []
         face_embedding = None
@@ -2040,7 +2069,7 @@ def analyze_frame(
         raw_columns = _gather_face_results({
             "age": age_pairs, "gender": gender_pairs, "race": race_pairs, "emotion": emotion_pairs,
             "expression": expression_pairs, "gaze": gaze_pairs, "identity": recognition_pairs, "facial_hair": facial_hair_pairs,
-            "eye_contact": eye_contact,
+            "eye_contact": eye_contact, "head_pose": head_pose_pairs,
             "skin_tone": skin_tone_pairs, "glasses": glasses_pairs, "mask": mask_pairs,
             "hair_color": hair_color_pairs, "eye_color": eye_color_pairs, "drowsiness": drowsy_pairs,
         })
@@ -2050,6 +2079,7 @@ def analyze_frame(
                 "age": age_pairs, "gender": gender_pairs, "race": race_pairs, "emotion": emotion_pairs,
                 "expression": expression_pairs, "gaze": gaze_pairs, "identity": recognition_pairs,
                 "eye contact": [("derived", value) for value in eye_contact],
+                "head pose": head_pose_pairs,
                 "facial hair": facial_hair_pairs, "skin tone": skin_tone_pairs, "glasses": glasses_pairs,
                 "mask": mask_pairs, "hair color": hair_color_pairs, "eye color": eye_color_pairs,
                 "drowsiness": drowsy_pairs,
@@ -2068,6 +2098,7 @@ def analyze_frame(
             "expression": _format_results(expression_pairs),
             "gaze": _format_results(gaze_pairs),
             "eye_contact": eye_contact,
+            "head_pose": _format_results(head_pose_pairs),
             "identity": _format_results(recognition_pairs),
             "facial_hair": _format_results(facial_hair_pairs),
             "skin_tone": _format_results(skin_tone_pairs),
@@ -2094,7 +2125,7 @@ def aggregate_demographics(cropped_faces: list[dict]) -> dict[str, dict[str, dic
     model(s) were already active per feature; if two models are active for the same feature
     (e.g. caffe + ssrnet age), each gets its own independent tally since their label sets/value
     granularity generally differ (same reasoning as DAN vs EfficientNet emotion labels not being
-    mixed, see CLAUDE.md). Returns {feature: {model_key: {label: count}}}; a feature/model with
+    mixed). Returns {feature: {model_key: {label: count}}}; a feature/model with
     no faces contributing a value for it is simply absent, not a zero-filled entry."""
     totals: dict[str, dict[str, dict[str, int]]] = {feature: {} for feature in AGGREGATE_FEATURES}
     for face in cropped_faces:
