@@ -7,6 +7,8 @@ itself from growing unbounded as more model backends are added.
 from __future__ import annotations
 
 import json
+import random
+import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -99,6 +101,11 @@ DEX_MEAN_VALUES = (103.939, 116.779, 123.68)  # VGG-16 ImageNet BGR mean, per DE
 GALLERY_FILE = BASE_DIR / "gallery" / "known_faces.json"
 KNOWN_PEOPLE_DIR = BASE_DIR / "known_people"  # bundled reference photos for identity search (see README)
 IMAGE_FILE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+FACES_DB_FILE = BASE_DIR / "db" / "faces.db"  # sparse-column SQLite database, see save_face()
+FACES_DIR = BASE_DIR / "faces"  # saved face crops (color, as-classified), one per saved face
+EIGEN_DIR = BASE_DIR / "eigen"  # saved faces' grayscale/zoomed eigenfaces training images
+EIGEN_FACE_SIZE = (100, 100)  # (width, height) every eigen/ image is normalized to
+EIGENFACE_DISTANCE_THRESHOLD = 3000.0  # untuned heuristic (see match_face_eigenfaces docstring)
 
 # Model keys per feature, in quickest-to-build order (first = default).
 # Must match the numbered options in build-and-run.sh and the Dockerfile ARGs.
@@ -806,6 +813,146 @@ def save_gallery(gallery: dict) -> None:
     GALLERY_FILE.write_text(json.dumps({name: vec.tolist() for name, vec in gallery.items()}))
 
 
+def _sanitize_column_name(feature: str, model_key: str) -> str:
+    return f"{feature}_{model_key}".lower().replace(" ", "_").replace("-", "_")
+
+
+def _gather_face_results(pairs_by_feature: dict[str, list[tuple[str, str]]]) -> dict[str, str]:
+    """Flatten analyze_frame's per-feature (model_key, value) pairs into
+    {column_name: value}, one entry per (feature, model) that actually produced a value for
+    this face. A model that wasn't active, or produced no result, contributes no key here --
+    this is what makes save_face()'s column creation lazy/sparse."""
+    results = {}
+    for feature, pairs in pairs_by_feature.items():
+        for model_key, value in pairs:
+            results[_sanitize_column_name(feature, model_key)] = value
+    return results
+
+
+def _crop_and_resize_for_eigenfaces(face_bgr: np.ndarray) -> np.ndarray:
+    """Grayscale + center-square crop (tighter than the padded face crop already saved to
+    faces/, i.e. 'zoomed in') + resize to EIGEN_FACE_SIZE. Used both when saving a new face
+    to eigen/ and when preprocessing a live query face for match_face_eigenfaces, so the two
+    are directly comparable."""
+    gray = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2GRAY)
+    h, w = gray.shape[:2]
+    side = min(h, w)
+    cy, cx = h // 2, w // 2
+    zoomed = gray[max(0, cy - side // 2):cy + side // 2, max(0, cx - side // 2):cx + side // 2]
+    return cv2.resize(zoomed, EIGEN_FACE_SIZE)
+
+
+def save_face(face_bgr: np.ndarray, raw_columns: dict[str, str]) -> int:
+    """Save one classified face: a DB row (sparse columns, see module docstring above),
+    the color crop to faces/{id}.jpg, and a grayscale/zoomed crop to eigen/{id}.jpg for
+    eigenfaces matching. raw_columns is {column_name: value} from _gather_face_results --
+    only columns present here get created (ALTER TABLE), so a model that was never run on
+    any saved face never gets a column. Returns the randomly generated id (1..999999)."""
+    FACES_DIR.mkdir(parents=True, exist_ok=True)
+    EIGEN_DIR.mkdir(parents=True, exist_ok=True)
+    FACES_DB_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+    conn = sqlite3.connect(str(FACES_DB_FILE))
+    try:
+        conn.execute("CREATE TABLE IF NOT EXISTS faces (id INTEGER PRIMARY KEY)")
+        existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(faces)")}
+        # Column names are interpolated directly (sqlite3 can't parameterize identifiers) --
+        # safe here because raw_columns' keys only ever come from _sanitize_column_name(feature,
+        # model_key), where both parts are drawn from this codebase's own fixed *_MODEL_OPTIONS
+        # lists, never from user-supplied text.
+        for col in raw_columns:
+            if col not in existing_cols:
+                conn.execute(f"ALTER TABLE faces ADD COLUMN {col} TEXT")
+                existing_cols.add(col)
+
+        face_id = None
+        for _ in range(20):
+            candidate = random.randint(1, 999_999)
+            cols = ["id"] + list(raw_columns.keys())
+            placeholders = ", ".join("?" for _ in cols)
+            try:
+                conn.execute(f"INSERT INTO faces ({', '.join(cols)}) VALUES ({placeholders})", [candidate] + list(raw_columns.values()))
+                face_id = candidate
+                break
+            except sqlite3.IntegrityError:
+                continue
+        if face_id is None:
+            raise RuntimeError("Could not generate a unique face id after 20 attempts")
+        conn.commit()
+    finally:
+        conn.close()
+
+    cv2.imwrite(str(FACES_DIR / f"{face_id}.jpg"), face_bgr)
+    cv2.imwrite(str(EIGEN_DIR / f"{face_id}.jpg"), _crop_and_resize_for_eigenfaces(face_bgr))
+
+    return face_id
+
+
+def _load_eigen_images() -> tuple[list[int], np.ndarray]:
+    """Load every image in eigen/ as a flattened float64 row vector. Returns (ids, data)
+    where data has shape (M, EIGEN_FACE_SIZE[0]*EIGEN_FACE_SIZE[1])."""
+    ids: list[int] = []
+    vectors = []
+    if EIGEN_DIR.is_dir():
+        for path in sorted(EIGEN_DIR.iterdir()):
+            if path.suffix.lower() not in IMAGE_FILE_EXTENSIONS:
+                continue
+            try:
+                face_id = int(path.stem)
+            except ValueError:
+                continue
+            img = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
+            if img is None:
+                continue
+            if img.shape[::-1] != EIGEN_FACE_SIZE:
+                img = cv2.resize(img, EIGEN_FACE_SIZE)
+            ids.append(face_id)
+            vectors.append(img.flatten().astype(np.float64))
+    dim = EIGEN_FACE_SIZE[0] * EIGEN_FACE_SIZE[1]
+    return ids, (np.array(vectors) if vectors else np.empty((0, dim)))
+
+
+def match_face_eigenfaces(face_bgr: np.ndarray, k: int = 15) -> tuple[int, float] | None:
+    """Turk & Pentland eigenfaces (PCA), per ideas/eigenfaces.md: trains fresh on every call
+    directly against eigen/ (the training set is just previously-SAVEd faces, so this is cheap
+    at the scale it's meant for). Uses the M x M covariance trick from the paper (A @ A.T
+    instead of A.T @ A) since the number of saved faces M is much smaller than the pixel
+    dimension N*N. Returns (matched_face_id, L2_distance) for the closest training face if it
+    clears EIGENFACE_DISTANCE_THRESHOLD, else None -- also None if eigen/ has fewer than 2
+    images (PCA needs at least 2 samples to have any variance to project onto).
+
+    EIGENFACE_DISTANCE_THRESHOLD is an untuned heuristic -- unlike RECOGNITION_COSINE_THRESHOLD
+    (deepface's own published default), there's no established reference value for raw
+    grayscale-pixel eigenspace distance at this face size; treat match/no-match near the
+    threshold with skepticism until tuned against real saved-face data."""
+    ids, data = _load_eigen_images()
+    if len(ids) < 2:
+        return None
+
+    mean_face = data.mean(axis=0)
+    A = data - mean_face  # (M, N*N)
+
+    cov_small = A @ A.T  # (M, M)
+    eigvals, eigvecs_small = np.linalg.eigh(cov_small)
+    order = np.argsort(eigvals)[::-1][:k]
+    eigvecs_small = eigvecs_small[:, order]
+
+    eigenfaces = A.T @ eigvecs_small  # (N*N, k') -- k' = min(k, M)
+    norms = np.linalg.norm(eigenfaces, axis=0)
+    norms[norms == 0] = 1.0
+    eigenfaces = eigenfaces / norms
+
+    weights = A @ eigenfaces  # (M, k') -- training faces' coordinates in eigenspace
+
+    query = _crop_and_resize_for_eigenfaces(face_bgr).flatten().astype(np.float64) - mean_face
+    query_weights = query @ eigenfaces  # (k',)
+
+    distances = np.linalg.norm(weights - query_weights, axis=1)
+    best_idx = int(np.argmin(distances))
+    best_dist = float(distances[best_idx])
+    return (ids[best_idx], best_dist) if best_dist <= EIGENFACE_DISTANCE_THRESHOLD else None
+
+
 def build_gallery_from_directory(face_net, recognition_net, directory: str | Path) -> dict[str, np.ndarray]:
     """Identity search's directory-matching mode (see README): scan `directory` for image
     files, detect the largest face in each, and embed it with the same VGGFace backbone as
@@ -1321,6 +1468,13 @@ def analyze_frame(
         drowsy_parts = _format_results(drowsy_pairs)
         status = drowsy_parts[0] if len(drowsy_parts) == 1 else (", ".join(drowsy_parts) if drowsy_parts else None)
 
+        raw_columns = _gather_face_results({
+            "age": age_pairs, "gender": gender_pairs, "race": race_pairs, "emotion": emotion_pairs,
+            "expression": expression_pairs, "identity": recognition_pairs, "facial_hair": facial_hair_pairs,
+            "skin_tone": skin_tone_pairs, "glasses": glasses_pairs, "mask": mask_pairs,
+            "hair_color": hair_color_pairs, "eye_color": eye_color_pairs, "drowsiness": drowsy_pairs,
+        })
+
         cropped_faces.append({
             "idx": idx,
             "image": cv2.cvtColor(face, cv2.COLOR_BGR2RGB),
@@ -1337,6 +1491,7 @@ def analyze_frame(
             "hair_color": _format_results(hair_color_pairs),
             "eye_color": _format_results(eye_color_pairs),
             "embedding": face_embedding.tolist() if face_embedding is not None else None,
+            "raw_columns": raw_columns,
             "status": status,
             "drowsy": face_drowsy if drowsy_pairs else None,
         })

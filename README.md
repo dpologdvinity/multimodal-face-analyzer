@@ -15,6 +15,7 @@
 - **Multi-model face analysis:** face detection, age, gender, race, emotion, expression (blendshapes), drowsiness, facial hair, glasses, face mask, colorimetric hair/eye color, face landmarks, plus whole-frame auto-colorization, body pose estimation, and hand landmarks -- most features have 2+ selectable model backends.
 - **Image adjustments, two stages:** 11 Lightroom-style sliders (exposure, contrast, shadows/highlights, saturation/vibrance, sharpness, noise reduction, etc.) -- one panel applied to the whole image before face detection, a second applied to each detected face crop before classification.
 - **Identity search:** SEARCH button per detected face, matching against bundled reference photos (`known_people/`, a few famous people out of the box) plus an optional user-specified directory. Local matching only, no live internet search.
+- **Save & eigenfaces:** SAVE button per detected face writes to a sparse-column SQLite database plus `faces/`/`eigen/`; SEARCH also checks the eigenfaces (PCA) algorithm against every previously-saved face.
 - **Docker-packaged Streamlit app:** `src/app.py`, all features including race and expression.
 - **Build-time feature toggles:** disable any model at Docker build time to shrink the image (see [Docker](#docker-web-app)).
 - **Graceful degradation:** any model missing at runtime (file or dependency not present) is skipped, not a crash -- the rest of the pipeline keeps working.
@@ -110,6 +111,17 @@ A SEARCH button next to ENROLL on every detected face's card. Unlike Recognition
 To add more known people, drop a photo with one clear face into `known_people/` named `First_Last.jpg` (underscores become the displayed name, e.g. `Ada_Lovelace.jpg` -> "Ada Lovelace"). Each photo is face-detected and embedded on demand (cached for the bundled directory; a custom directory is rescanned on each search since its contents can change between runs).
 
 **This does not search the internet.** There is no live reverse-image-search or web-scraping component -- matching is strictly against local image files (bundled or user-specified directory). Needs the same `vggface` recognition model as Recognition above (and inherits its "not currently functional" known issue -- see above).
+
+SEARCH also independently checks **eigenfaces** (see below) against every previously-SAVEd face, regardless of whether the `vggface` model is available -- the two methods run together and either can report a match.
+
+### Save & Eigenfaces Search (web app only, no model)
+
+Every detected face's card also has SAVE and (now dual-purpose) SEARCH buttons:
+
+- **SAVE** writes one row to a small SQLite database (`db/faces.db`), the face's color crop to `faces/{id}.jpg`, and a grayscale, tighter-cropped ("zoomed in") version to `eigen/{id}.jpg`. `id` is a random integer 1-999999, retried on collision. The database schema is **sparse and lazy**: there's no fixed column list -- a column (e.g. `age_caffe`, `facial_hair_bisenet`) is only created the first time some SAVEd face actually has a value for that (feature, model) pair. A model that was never run, or never active, never gets a column. Every SAVE call independently extends the schema as needed (`ALTER TABLE ... ADD COLUMN`).
+- **SEARCH**'s eigenfaces half runs Turk & Pentland's PCA algorithm (`ideas/eigenfaces.md`) fresh against every image in `eigen/` -- there's no persisted/trained model file, it retrains on the fly each time (cheap at the scale this is meant for: a personal collection of previously-saved faces, not a large dataset). Faces are normalized to a fixed 100x100 grayscale size; the query face goes through the exact same crop/resize pipeline as SAVE's `eigen/` output so the two are comparable. A match is reported by saved-face **ID** (there's no name at this layer -- look up `db/faces.db` by ID for whatever attributes were saved with it).
+
+**`EIGENFACE_DISTANCE_THRESHOLD` is an untuned heuristic.** Unlike `RECOGNITION_COSINE_THRESHOLD` (deepface's own published default), there's no established reference value for raw-pixel eigenspace L2 distance at this face size -- it was verified to behave correctly (an unmodified saved face matches itself with near-zero distance; unrelated random images produce much larger distances) but the cutoff itself will need real-world tuning against your own saved faces. Per the algorithm's own known limitations (see `ideas/eigenfaces.md`): sensitive to lighting, pose, and scale -- front-facing, consistently-lit photos work best.
 
 ### Drowsiness
 
@@ -261,6 +273,9 @@ multimodal-face-analyzer/
 │   # (no deepface_vgg.h5 -- never committed, Recognition/Identity Search are non-functional until it's sourced)
 │
 ├── known_people/           # bundled reference photos for Identity Search (First_Last.jpg)
+├── db/                     # gitignored: faces.db (SQLite, sparse per-model columns)
+├── faces/                  # gitignored: SAVEd faces' color crops, {id}.jpg
+├── eigen/                  # gitignored: SAVEd faces' grayscale/zoomed crops for eigenfaces
 │
 └── src/                    # Streamlit app module
     ├── app.py              # UI only (page layout, sidebar, tabs)
