@@ -4,33 +4,35 @@ import cv2
 import numpy as np
 import streamlit as st
 
-# Page setup & Cyberpunk style injection
-st.set_page_config(page_title="SYS // AGE_GENDER_DETECTOR", layout="wide")
+# Page setup & surveillance-terminal style injection
+st.set_page_config(page_title="AGE_GENDER_DETECTOR", layout="wide")
 
 st.markdown(
     """
     <style>
+    @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+
     /* Main app background and font */
     .stApp {
         background-color: #0d1117;
         color: #00ff66;
-        font-family: 'Courier New', Courier, monospace;
+        font-family: 'Share Tech Mono', 'Courier New', monospace;
     }
-    
+
     /* Headers */
     h1, h2, h3, h4, h5, h6 {
         color: #00ff66 !important;
-        font-family: 'Courier New', Courier, monospace;
+        font-family: 'Share Tech Mono', 'Courier New', monospace;
         text-transform: uppercase;
         letter-spacing: 1.5px;
     }
-    
+
     /* Sidebar styling */
     section[data-testid="stSidebar"] {
         background-color: #161b22;
         border-right: 1px solid #30363d;
     }
-    
+
     /* File uploader custom styling */
     div[data-testid="stFileUploader"] {
         border: 1px dashed #00ff66;
@@ -50,7 +52,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.title("SYS // AGE & GENDER INFERENCE")
+st.title("AGE & GENDER INFERENCE")
 st.caption("[ STATUS: ONLINE ] -- Deep Neural Network Image Analysis")
 
 # Resolve model paths relative to the project root
@@ -120,7 +122,7 @@ def predict_age(blob: np.ndarray) -> str:
 
 
 # Sidebar Interface Controls
-st.sidebar.markdown("### // CONTROL PANEL")
+st.sidebar.markdown("### CONTROL PANEL")
 crop_toggle = st.sidebar.toggle("CROP FACE TARGETS ONLY", value=False)
 conf_threshold = st.sidebar.slider("CONFIDENCE THRESHOLD", 0.1, 1.0, 0.7)
 
@@ -153,8 +155,18 @@ def process_and_display(frame: np.ndarray, identifier: str, crop_toggle: bool, c
 
         label = f"{gender}, {age}"
 
-        # Draw green box and yellow overlay text
+        # Draw green box and cyan overlay text with black outline for readability
         cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), (0, 255, 0), int(round(frame.shape[0] / 150)), 8)
+        cv2.putText(
+            annotated_frame,
+            label,
+            (x1, y1 - 10),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.8,
+            (0, 0, 0),
+            5,
+            cv2.LINE_AA,
+        )
         cv2.putText(
             annotated_frame,
             label,
@@ -168,7 +180,7 @@ def process_and_display(frame: np.ndarray, identifier: str, crop_toggle: bool, c
 
         cropped_faces.append((f"TARGET_{idx}: {label}", cv2.cvtColor(face, cv2.COLOR_BGR2RGB)))
 
-    st.markdown(f"#### // ANALYSIS RESULT: `{identifier}`")
+    st.markdown(f"#### ANALYSIS RESULT: `{identifier}`")
 
     # Toggle Display Output Mode
     if crop_toggle:
