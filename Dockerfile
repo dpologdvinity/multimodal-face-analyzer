@@ -71,11 +71,15 @@ RUN expression_csv=",$EXPRESSION_MODEL,"; need_mediapipe=false; \
         pip install --no-cache-dir mediapipe; \
     fi
 
-# ultralytics (mivolo) and/or mediapipe pull in their own opencv-python build as a
-# transitive dependency, silently upgrading past the <5.0.0 ceiling in requirements.txt
-# and breaking Caffe model support (caffe/dex age, caffe gender, haarcascade drowsiness
-# all use cv2.dnn.readNetFromCaffe/CascadeClassifier, removed in OpenCV 5.0). Re-pin last.
-RUN pip install --no-cache-dir "opencv-python-headless>=4.8.0,<5.0.0"
+# ultralytics (mivolo) pulls in opencv-python, and mediapipe pulls in a DIFFERENT
+# package, opencv-contrib-python, both >=5.0 -- pip happily installs both alongside
+# opencv-python-headless, and whichever's "cv2" package wins the import silently lacks
+# Caffe support (removed in OpenCV 5.0), breaking caffe/dex age, caffe gender, and
+# haarcascade drowsiness (all use cv2.dnn.readNetFromCaffe/CascadeClassifier). Uninstall
+# every opencv variant before reinstalling the one pinned version, so there's no
+# ambiguity about which package's cv2 gets imported.
+RUN pip uninstall -y opencv-python opencv-python-headless opencv-contrib-python opencv-contrib-python-headless 2>/dev/null; \
+    pip install --no-cache-dir "opencv-python-headless>=4.8.0,<5.0.0"
 
 # Application code and always-required model files (face detector)
 COPY detect.py ./
