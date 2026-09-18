@@ -29,51 +29,51 @@ Face detection is required; age, gender, race, emotion, and drowsiness are each 
 ### Face Detection
 
 | Backend         | Framework            | Output                  |
-| --------------- | --------------------- | ----------------------- |
-| SSD / ResNet-10 | TensorFlow (cv2.dnn)  | bounding box (required) |
+| --------------- | -------------------- | ----------------------- |
+| SSD / ResNet-10 | TensorFlow (cv2.dnn) | bounding box (required) |
 
 ### Age
 
-| Backend       | Framework       | Output                          |
-| -------------- | --------------- | -------------------------------- |
-| `caffe`        | Caffe (cv2.dnn) | bucketed range, e.g. `(25-32)`   |
-| `insightface`  | ONNX (cv2.dnn)  | continuous age, e.g. `31`        |
-| `ssrnet`       | PyTorch         | continuous age, e.g. `31`        |
+| Backend       | Framework       | Output                         |
+| ------------- | --------------- | ------------------------------ |
+| `caffe`       | Caffe (cv2.dnn) | bucketed range, e.g. `(25-32)` |
+| `insightface` | ONNX (cv2.dnn)  | continuous age, e.g. `31`      |
+| `ssrnet`      | PyTorch         | continuous age, e.g. `31`      |
 
 CLI: `--age-model` (`caffe` or `ssrnet` only). Web app: checkbox per built model. Default: `caffe`.
 
 ### Gender
 
 | Backend            | Framework       | Output            |
-| ------------------- | --------------- | ------------------ |
-| Levi & Hassner CNN  | Caffe (cv2.dnn) | `Male` / `Female`  |
-| `insightface`       | ONNX (cv2.dnn)  | `Male` / `Female`  |
+| ------------------ | --------------- | ----------------- |
+| Levi & Hassner CNN | Caffe (cv2.dnn) | `Male` / `Female` |
+| `insightface`      | ONNX (cv2.dnn)  | `Male` / `Female` |
 
 `insightface` shares one small ONNX file (`models/insightface_genderage.onnx`) with the insightface age backend -- one model, two feature outputs. **Non-commercial research-use-only license** (CelebA-derived); not for commercial deployments.
 
 ### Race (web app only)
 
-| Backend    | Framework            | Output                                                                          |
-| ----------- | --------------------- | --------------------------------------------------------------------------------- |
-| `fairface`  | ONNX (cv2.dnn)        | 7 classes: White, Black, Latino_Hispanic, East Asian, Southeast Asian, Indian, Middle Eastern |
-| `deepface`  | Keras/TensorFlow      | 6 classes: asian, indian, black, white, middle eastern, latino hispanic          |
+| Backend    | Framework        | Output                                                                                        |
+| ---------- | ---------------- | --------------------------------------------------------------------------------------------- |
+| `fairface` | ONNX (cv2.dnn)   | 7 classes: White, Black, Latino_Hispanic, East Asian, Southeast Asian, Indian, Middle Eastern |
+| `deepface` | Keras/TensorFlow | 6 classes: asian, indian, black, white, middle eastern, latino hispanic                       |
 
 If the top-2 predicted classes are within 10 percentage points of each other, both are shown together (e.g. `White (52%)/Black (47%)`) instead of just the top class. `deepface` is by far the heaviest option in the repo: a 513MB weight file plus TensorFlow itself (~200-400MB) -- only pulled into the image if requested.
 
 ### Emotion
 
-| Backend         | Framework      | Output                                                                |
-| ---------------- | --------------- | ----------------------------------------------------------------------- |
-| `efficientnet`    | ONNX (cv2.dnn)  | 7 classes: angry, disgust, fear, happy, sad, surprise, neutral         |
-| `dan` (DAN, AffectNet-7) | PyTorch  | 7 classes: neutral, happy, sad, surprise, fear, disgust, anger        |
+| Backend                  | Framework      | Output                                                         |
+| ------------------------ | -------------- | -------------------------------------------------------------- |
+| `efficientnet`           | ONNX (cv2.dnn) | 7 classes: angry, disgust, fear, happy, sad, surprise, neutral |
+| `dan` (DAN, AffectNet-7) | PyTorch        | 7 classes: neutral, happy, sad, surprise, fear, disgust, anger |
 
 Note the class label order differs between the two backends -- each is tracked as a separate constant, never assumed to match.
 
 ### Drowsiness
 
 | Backend                   | Framework | Output             |
-| -------------------------- | ---------- | ------------------- |
-| Haar cascade eye detector  | OpenCV    | `DROWSY` / `ALERT`  |
+| ------------------------- | --------- | ------------------ |
+| Haar cascade eye detector | OpenCV    | `DROWSY` / `ALERT` |
 
 Model provenance: DAN, SSR-Net, and DeepFace's race model are vendored research code (`src/nets/`). DAN and SSR-Net have no explicit upstream license file (research/educational use). DeepFace is MIT. FairFace's ONNX conversion is MIT (underlying dataset CC BY 4.0). InsightFace's model is non-commercial research use only (see Gender above).
 
@@ -191,13 +191,13 @@ docker build \
   -t face-analyzer .
 ```
 
-| Build arg           | Options (default first)             |
-| --------------------- | -------------------------------------- |
-| `AGE_MODEL`           | `caffe`, `insightface`, `ssrnet`      |
-| `GENDER_MODEL`        | `caffe`, `insightface`                |
-| `EMOTION_MODEL`       | `efficientnet`, `dan`                 |
-| `DROWSINESS_MODEL`    | `haarcascade`                          |
-| `RACE_MODEL`          | `fairface`, `deepface`                |
+| Build arg          | Options (default first)          |
+| ------------------ | -------------------------------- |
+| `AGE_MODEL`        | `caffe`, `insightface`, `ssrnet` |
+| `GENDER_MODEL`     | `caffe`, `insightface`           |
+| `EMOTION_MODEL`    | `efficientnet`, `dan`            |
+| `DROWSINESS_MODEL` | `haarcascade`                    |
+| `RACE_MODEL`       | `fairface`, `deepface`           |
 
 Multiple models per feature (e.g. `AGE_MODEL=caffe,ssrnet`) can be built in together -- the web app sidebar shows a checkbox per built model, and checking more than one for the same feature runs and displays all of them at once.
 
