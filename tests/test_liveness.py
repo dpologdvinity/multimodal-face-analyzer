@@ -1,5 +1,6 @@
 import unittest
 from types import SimpleNamespace
+from pathlib import Path
 
 from src.liveness import (
     LivenessTracker,
@@ -10,6 +11,23 @@ from src.liveness import (
 
 
 class LivenessTests(unittest.TestCase):
+    def test_liveness_backend_contract_is_wired(self):
+        root = Path(__file__).resolve().parents[1]
+        inference_source = (root / "src" / "inference.py").read_text()
+
+        self.assertIn("liveness_nets: dict", inference_source)
+        self.assertIn('liveness_nets["mediapipe"]', inference_source)
+        self.assertIn("def _liveness_task", inference_source)
+
+    def test_liveness_build_arg_is_documented_and_forwarded(self):
+        root = Path(__file__).resolve().parents[1]
+        dockerfile = (root / "Dockerfile").read_text()
+        build_script = (root / "build-and-run.sh").read_text()
+        readme = (root / "README.md").read_text()
+
+        for text in (dockerfile, build_script, readme):
+            self.assertIn("LIVENESS_MODEL", text)
+
     def test_texture_score_flags_regular_high_frequency_pattern(self):
         smooth = [[128] * 32 for _ in range(32)]
         checkerboard = [

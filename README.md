@@ -189,7 +189,8 @@ Without both gated files present, this feature shows as offline (`RECONSTRUCTION
 
 ### Liveness / anti-spoofing
 
-Liveness uses two lightweight heuristics and needs no new model file. In webcam LIVE mode,
+Liveness has one `mediapipe` backend. It reuses `models/face_landmarker.task`, selected by
+`LIVENESS_MODEL=mediapipe`, plus two lightweight heuristics. In webcam LIVE mode,
 MediaPipe eye-blink blendshapes are tracked by the existing stable face ID; a blink transition
 increments the count and produces a blink rate per minute. Every face crop also receives a
 regular high-frequency texture score for screen, moire, or replay artifacts. A high texture
@@ -448,6 +449,7 @@ docker build \
   --build-arg DROWSINESS_MODEL=haarcascade \
   --build-arg RACE_MODEL=fairface,deepface \
   --build-arg EXPRESSION_MODEL=blendshapes \
+  --build-arg LIVENESS_MODEL=mediapipe \
   --build-arg RECOGNITION_MODEL=vggface,lbph \
   --build-arg FACIAL_HAIR_MODEL=bisenet \
   --build-arg GLASSES_MODEL=mobilenet \
@@ -468,6 +470,7 @@ docker build \
 | `DROWSINESS_MODEL` | `haarcascade`                            |
 | `RACE_MODEL`       | `fairface`, `deepface`                   |
 | `EXPRESSION_MODEL` | `blendshapes`                            |
+| `LIVENESS_MODEL` | `mediapipe` (reuses `face_landmarker.task`) |
 | `RECOGNITION_MODEL` | `vggface`, `lbph`                       |
 | `FACIAL_HAIR_MODEL` | `bisenet`                               |
 | `GLASSES_MODEL`    | `mobilenet`                              |
@@ -478,7 +481,7 @@ docker build \
 | `RECONSTRUCTION_3D_MODEL` | `deep3d` (ships no working weights, see [3D Reconstruction](#3d-reconstruction-web-app-only-ships-no-working-weights)) |
 | `YOLO_FACE_MODEL`  | `yolo` (additive -- SSD stays required/always on) |
 
-There's no `SKIN_TONE_MODEL` build ARG -- see [Skin Tone](#skin-tone-web-app-only-no-working-backend-currently-shipped) above. Hair Color and Eye Color are colorimetric heuristics with no model file and thus no build ARG either -- they're always available in the web app (Eye Color additionally needs `haarcascade_eye.xml`, already required for Drowsiness). Face Landmarks also has no build ARG -- it rides along with `EXPRESSION_MODEL=blendshapes`, reusing that same model file.
+There's no `SKIN_TONE_MODEL` build ARG -- see [Skin Tone](#skin-tone-web-app-only-no-working-backend-currently-shipped) above. Hair Color and Eye Color are colorimetric heuristics with no model file and thus no build ARG either -- they're always available in the web app (Eye Color additionally needs `haarcascade_eye.xml`, already required for Drowsiness). Face Landmarks has no build ARG -- it rides along with `EXPRESSION_MODEL=blendshapes`; Liveness uses its own `LIVENESS_MODEL=mediapipe` ARG while reusing the same model file.
 
 Multiple models per feature (e.g. `AGE_MODEL=caffe,ssrnet`) can be built in together -- the web app sidebar shows a checkbox per built model, and checking more than one for the same feature runs and displays all of them at once.
 

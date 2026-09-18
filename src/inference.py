@@ -160,6 +160,7 @@ EMOTION_MODEL_OPTIONS = ["efficientnet", "ferplus", "mini_xception", "dan"]
 DROWSINESS_MODEL_OPTIONS = ["haarcascade"]
 RACE_MODEL_OPTIONS = ["fairface", "deepface"]
 EXPRESSION_MODEL_OPTIONS = ["blendshapes"]
+LIVENESS_MODEL_OPTIONS = ["mediapipe"]
 RECOGNITION_MODEL_OPTIONS = ["vggface", "lbph"]
 FACE_DETECTOR_OPTIONS = ["ssd", "yolo"]  # ssd is the original required detector, always on
 IOU_TRACKING_THRESHOLD = 0.3  # greedy-match a track to a detection only above this IoU
@@ -270,6 +271,7 @@ class Models:
     drowsiness_nets: dict = field(default_factory=dict)
     race_nets: dict = field(default_factory=dict)
     expression_nets: dict = field(default_factory=dict)
+    liveness_nets: dict = field(default_factory=dict)
     recognition_nets: dict = field(default_factory=dict)
     facial_hair_nets: dict = field(default_factory=dict)
     skin_tone_nets: dict = field(default_factory=dict)
@@ -292,6 +294,7 @@ class Models:
                 ("AGE", self.age_nets), ("GENDER", self.gender_nets),
                 ("EMOTION", self.emotion_nets), ("DROWSINESS", self.drowsiness_nets),
                 ("RACE", self.race_nets), ("EXPRESSION", self.expression_nets),
+                ("LIVENESS", self.liveness_nets),
                 ("GAZE", self.gaze_nets),
                 ("RECOGNITION", self.recognition_nets), ("FACIAL_HAIR", self.facial_hair_nets),
                 ("SKIN_TONE", self.skin_tone_nets), ("GLASSES", self.glasses_nets),
@@ -397,6 +400,7 @@ def load_models() -> Models:
         eye_color_nets["colorimetric"] = drowsiness_nets["haarcascade"] if "haarcascade" in drowsiness_nets else cv2.CascadeClassifier(str(EYE_CASCADE_FILE))
 
     expression_nets = {}
+    liveness_nets = {}
     face_landmarks_nets = {}
     gaze_nets = {}
     if MEDIAPIPE_SUPPORTED and BLENDSHAPES_MODEL.exists():
@@ -407,6 +411,7 @@ def load_models() -> Models:
         )
         landmarker = mp.tasks.vision.FaceLandmarker.create_from_options(options)
         expression_nets["blendshapes"] = landmarker
+        liveness_nets["mediapipe"] = landmarker
         face_landmarks_nets["blendshapes"] = landmarker  # same model instance, two features
         gaze_nets["mediapipe"] = landmarker
 
@@ -462,7 +467,7 @@ def load_models() -> Models:
         yolo_face_nets["yolo"] = onnxruntime.InferenceSession(str(YOLO_FACE_MODEL), providers=["CPUExecutionProvider"])
 
     return Models(
-        face_net, age_nets, gender_nets, emotion_nets, drowsiness_nets, race_nets, expression_nets, recognition_nets,
+        face_net, age_nets, gender_nets, emotion_nets, drowsiness_nets, race_nets, expression_nets, liveness_nets, recognition_nets,
         facial_hair_nets, skin_tone_nets, glasses_nets, mask_nets, hair_color_nets, eye_color_nets, colorization_nets,
         pose_nets, face_landmarks_nets, hand_nets, reconstruction_3d_nets, yolo_face_nets,
         gaze_nets,
@@ -2166,6 +2171,7 @@ def analyze_frame(
     metrics: dict | None = None,
     tracker: "FaceTracker | None" = None,
     liveness_tracker: "LivenessTracker | None" = None,
+    active_liveness: set | None = None,
 ):
     """Detect faces and run inference for whichever model keys are active per feature.
     Multiple active models for the same feature (e.g. active_age = {"caffe", "ssrnet"})
@@ -2189,7 +2195,10 @@ def analyze_frame(
     detection-order position, so tracking is visible, not just data the caller ignores).
 
     liveness_tracker is optional for the same reason. Static callers get texture-only evidence;
-    LIVE callers also get blink transitions keyed by the stable track ID."""
+    LIVE callers also get blink transitions keyed by the stable track ID. active_liveness selects
+    the loaded liveness backend; omitted callers use every loaded backend."""
+    if active_liveness is None:
+        active_liveness = set(models.liveness_nets)
     if global_adjustments and any(global_adjustments.values()):
         frame = apply_image_adjustments(frame, global_adjustments)
 
@@ -2255,7 +2264,11 @@ def analyze_frame(
         # Expression, gaze, head pose, and drawn landmarks all consume the
         # same MediaPipe FaceLandmarker result. Detect once before dispatching
         # feature tasks so the shared model is not run repeatedly per crop.
-        face_landmarker = models.face_landmarks_nets.get("blendshapes")
+        liveness_net = models.liveness_nets.get("mediapipe") if "mediapipe" in active_liveness else None
+        face_landmarker = (
+            liveness_net if liveness_net is not None
+            else models.face_landmarks_nets.get("blendshapes")
+        )
         needs_face_landmarks = (
             "blendshapes" in active_expression
             or "mediapipe" in active_gaze
@@ -2269,10 +2282,6 @@ def analyze_frame(
         )
         texture_score = predict_texture_artifact_score(face)
         blink_score = blink_score_from_landmarker(landmarker_result)
-        if liveness_tracker is not None and track_id is not None:
-            liveness_result = liveness_tracker.update(track_id, blink_score, texture_score)
-        else:
-            liveness_result = assess_static_liveness(texture_score)
 
         blob227 = None
         if need_blob227:
@@ -2506,6 +2515,20 @@ def analyze_frame(
                 _record_model_latency(metrics, "drowsiness", key, started)
             return pairs
 
+        def _liveness_task():
+            started = time.perf_counter()
+            if liveness_net is None:
+                result = assess_static_liveness(texture_score)
+                key = "heuristic"
+            elif liveness_tracker is not None and track_id is not None:
+                result = liveness_tracker.update(track_id, blink_score, texture_score)
+                key = "mediapipe"
+            else:
+                result = assess_static_liveness(texture_score)
+                key = "mediapipe"
+            _record_model_latency(metrics, "liveness", key, started)
+            return [(key, result.summary)], result
+
         futures = {
             "age": _INFERENCE_EXECUTOR.submit(_age_task),
             "gender": _INFERENCE_EXECUTOR.submit(_gender_task),
@@ -2522,6 +2545,7 @@ def analyze_frame(
             "hair_color": _INFERENCE_EXECUTOR.submit(_hair_color_task),
             "eye_color": _INFERENCE_EXECUTOR.submit(_eye_color_task),
             "drowsiness": _INFERENCE_EXECUTOR.submit(_drowsiness_task),
+            "liveness": _INFERENCE_EXECUTOR.submit(_liveness_task),
         }
 
         age_pairs = futures["age"].result()
@@ -2539,6 +2563,7 @@ def analyze_frame(
         hair_color_pairs = futures["hair_color"].result()
         eye_color_pairs = futures["eye_color"].result()
         drowsy_pairs = futures["drowsiness"].result()
+        liveness_pairs, liveness_result = futures["liveness"].result()
 
         if metrics is not None and emotion_pairs:
             metrics.setdefault("emotion_samples", []).extend(
@@ -2573,7 +2598,7 @@ def analyze_frame(
             "eye_contact": [("derived", value) for value in eye_contact], "head_pose": head_pose_pairs,
             "skin_tone": skin_tone_pairs, "glasses": glasses_pairs, "mask": mask_pairs,
             "hair_color": hair_color_pairs, "eye_color": eye_color_pairs, "drowsiness": drowsy_pairs,
-            "liveness": [("heuristic", liveness_result.summary)],
+            "liveness": liveness_pairs,
         })
         model_results = [
             {"Feature": feature.replace("_", " ").upper(), "Model": model, "Output": str(value)}
@@ -2584,7 +2609,7 @@ def analyze_frame(
                 "head pose": head_pose_pairs,
                 "facial hair": facial_hair_pairs, "skin tone": skin_tone_pairs, "glasses": glasses_pairs,
                 "mask": mask_pairs, "hair color": hair_color_pairs, "eye color": eye_color_pairs,
-                "drowsiness": drowsy_pairs, "liveness": [("heuristic", liveness_result.summary)],
+                "drowsiness": drowsy_pairs, "liveness": liveness_pairs,
             }.items()
             for model, value in pairs
         ]

@@ -10,6 +10,7 @@ FROM python:3.11-slim
 #   DROWSINESS_MODEL:  haarcascade                  (default: haarcascade)
 #   RACE_MODEL:        fairface, deepface           (default: fairface)
 #   EXPRESSION_MODEL:  blendshapes                  (default: blendshapes)
+#   LIVENESS_MODEL:    mediapipe                     (default: mediapipe)
 #   RECOGNITION_MODEL: vggface, lbph                 (default: vggface)
 #   FACIAL_HAIR_MODEL: bisenet                       (default: bisenet)
 #   GLASSES_MODEL:     mobilenet                     (default: mobilenet)
@@ -30,8 +31,8 @@ FROM python:3.11-slim
 # on whatever's enrolled via the ENROLL button, same "trains fresh on demand" spirit as this
 # app's eigenfaces feature.
 # pose (CMU OpenPose MPI model) is ACADEMIC/NON-COMMERCIAL RESEARCH USE ONLY -- see README.
-# Face Landmarks has no build ARG of its own -- it reuses the same face_landmarker.task file
-# and mediapipe dependency as EXPRESSION_MODEL=blendshapes (one model, two features).
+# Face Landmarks has no build ARG of its own -- it reuses the same face_landmarker.task file.
+# Liveness uses LIVENESS_MODEL=mediapipe with that same file and dependency.
 # RECONSTRUCTION_3D_MODEL wires the code path (torch/torchvision/scipy + the small bundled
 # BFM landmark template) but ships NO working weights -- Deep3DFaceRecon_pytorch's checkpoint
 # and the Basel Face Model data it needs are both gated (Google Drive / university license
@@ -56,6 +57,7 @@ ARG EMOTION_MODEL=efficientnet
 ARG DROWSINESS_MODEL=haarcascade
 ARG RACE_MODEL=fairface
 ARG EXPRESSION_MODEL=blendshapes
+ARG LIVENESS_MODEL=mediapipe
 ARG RECOGNITION_MODEL=vggface
 ARG FACIAL_HAIR_MODEL=bisenet
 ARG GLASSES_MODEL=mobilenet
@@ -127,10 +129,11 @@ RUN --mount=type=cache,target=/root/.cache/pip \
         pip install ultralytics==8.1.0 timm==0.8.13.dev0 safetensors huggingface_hub; \
     fi
 
-# mediapipe is only needed for the blendshapes expression model
+# mediapipe is needed for blendshapes expression, liveness, or hand landmarks
 RUN --mount=type=cache,target=/root/.cache/pip \
-    expression_csv=",$EXPRESSION_MODEL,"; hand_csv=",$HAND_MODEL,"; need_mediapipe=false; \
+    expression_csv=",$EXPRESSION_MODEL,"; liveness_csv=",$LIVENESS_MODEL,"; hand_csv=",$HAND_MODEL,"; need_mediapipe=false; \
     case "$expression_csv" in *,blendshapes,*) need_mediapipe=true ;; esac; \
+    case "$liveness_csv" in *,mediapipe,*) need_mediapipe=true ;; esac; \
     case "$hand_csv" in *,mediapipe,*) need_mediapipe=true ;; esac; \
     if [ "$need_mediapipe" = "true" ]; then \
         pip install mediapipe; \
@@ -191,7 +194,7 @@ RUN --mount=type=bind,source=models/age_deploy.prototxt,target=/tmp/models/age_d
     --mount=type=bind,source=models/yolov8n_face.onnx,target=/tmp/models/yolov8n_face.onnx \
     set -e; \
     age_csv=",$AGE_MODEL,"; gender_csv=",$GENDER_MODEL,"; emotion_csv=",$EMOTION_MODEL,"; \
-    drowsiness_csv=",$DROWSINESS_MODEL,"; race_csv=",$RACE_MODEL,"; expression_csv=",$EXPRESSION_MODEL,"; recognition_csv=",$RECOGNITION_MODEL,"; \
+    drowsiness_csv=",$DROWSINESS_MODEL,"; race_csv=",$RACE_MODEL,"; expression_csv=",$EXPRESSION_MODEL,"; liveness_csv=",$LIVENESS_MODEL,"; recognition_csv=",$RECOGNITION_MODEL,"; \
     facial_hair_csv=",$FACIAL_HAIR_MODEL,"; glasses_csv=",$GLASSES_MODEL,"; mask_csv=",$MASK_MODEL,"; colorization_csv=",$COLORIZATION_MODEL,"; pose_csv=",$POSE_MODEL,"; hand_csv=",$HAND_MODEL,"; recon3d_csv=",$RECONSTRUCTION_3D_MODEL,"; yolo_face_csv=",$YOLO_FACE_MODEL,"; \
     case "$age_csv" in *,caffe,*) cp /tmp/models/age_deploy.prototxt /tmp/models/age_net.caffemodel models/ ;; esac; \
     case "$age_csv" in *,ssrnet,*) cp /tmp/models/ssrnet_morph2.pth models/ ;; esac; \
@@ -212,6 +215,7 @@ RUN --mount=type=bind,source=models/age_deploy.prototxt,target=/tmp/models/age_d
     case "$age_csv" in *,mivolo,*) cp /tmp/models/mivolo_v2.safetensors /tmp/models/mivolo_v2_config.json models/ ;; esac; \
     case "$gender_csv" in *,mivolo,*) cp /tmp/models/mivolo_v2.safetensors /tmp/models/mivolo_v2_config.json models/ ;; esac; \
     case "$expression_csv" in *,blendshapes,*) cp /tmp/models/face_landmarker.task models/ ;; esac; \
+    case "$liveness_csv" in *,mediapipe,*) cp /tmp/models/face_landmarker.task models/ ;; esac; \
     case "$recognition_csv" in *,vggface,*) cp /tmp/models/deepface_vgg.h5 models/ ;; esac; \
     case "$facial_hair_csv" in *,bisenet,*) cp /tmp/models/bisenet_face_parsing.onnx models/ ;; esac; \
     case "$glasses_csv" in *,mobilenet,*) cp /tmp/models/glasses_detector.onnx models/ ;; esac; \

@@ -293,6 +293,7 @@ active_race = _model_checkboxes("RACE", models.race_nets)
 active_emotion = _model_checkboxes("EMOTION", models.emotion_nets)
 active_drowsiness = _model_checkboxes("DROWSINESS", models.drowsiness_nets)
 active_expression = _model_checkboxes("EXPRESSION", models.expression_nets)
+active_liveness = _model_checkboxes("LIVENESS", models.liveness_nets)
 active_recognition = _model_checkboxes("RECOGNITION", models.recognition_nets)
 active_facial_hair = _model_checkboxes("FACIAL HAIR", models.facial_hair_nets)
 active_skin_tone = _model_checkboxes("SKIN TONE", models.skin_tone_nets)
@@ -457,6 +458,7 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
         active_recognition, st.session_state.get("gallery", {}),
         active_facial_hair, active_skin_tone, active_glasses, active_mask, active_hair_color, active_eye_color,
         active_pose, active_face_landmarks, active_hands, active_gaze, global_adjustments, face_adjustments, face_detector=active_face_detector,
+        active_liveness=active_liveness,
     )
 
     if was_colorized:
@@ -766,6 +768,7 @@ with tab_webcam:
                 global_adjustments, face_adjustments,
                 face_detector=active_face_detector, metrics=metrics, tracker=face_tracker,
                 liveness_tracker=liveness_tracker,
+                active_liveness=active_liveness,
             )
             metrics["frame_ms"] = (time.perf_counter() - frame_started) * 1000
             metrics["timestamp"] = time.monotonic()
