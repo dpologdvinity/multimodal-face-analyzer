@@ -65,16 +65,18 @@ AGE_PROTO = MODEL_DIR / "age_deploy.prototxt"
 AGE_MODEL = MODEL_DIR / "age_net.caffemodel"
 GENDER_PROTO = MODEL_DIR / "gender_deploy.prototxt"
 GENDER_MODEL = MODEL_DIR / "gender_net.caffemodel"
+EYE_CASCADE_FILE = MODEL_DIR / "haarcascade_eye.xml"
 
 MODEL_MEAN_VALUES = (78.4263377603, 87.768914374, 114.895847746)
 AGE_LIST = ['(0-2)', '(4-6)', '(8-12)', '(15-20)', '(25-32)', '(38-43)', '(48-53)', '(60-100)']
 GENDER_LIST = ['Male', 'Female']
+MIN_EYES_OPEN = 2
 
 
 @st.cache_resource
 def load_models():
     """Load neural network files into memory."""
-    required_files = [FACE_PROTO, FACE_MODEL, AGE_PROTO, AGE_MODEL, GENDER_PROTO, GENDER_MODEL]
+    required_files = [FACE_PROTO, FACE_MODEL, AGE_PROTO, AGE_MODEL, GENDER_PROTO, GENDER_MODEL, EYE_CASCADE_FILE]
     for file_path in required_files:
         if not file_path.exists():
             raise FileNotFoundError(f"Missing weight/config file: {file_path}")
@@ -82,11 +84,12 @@ def load_models():
     face_net = cv2.dnn.readNet(str(FACE_MODEL), str(FACE_PROTO))
     age_net = cv2.dnn.readNet(str(AGE_MODEL), str(AGE_PROTO))
     gender_net = cv2.dnn.readNet(str(GENDER_MODEL), str(GENDER_PROTO))
-    return face_net, age_net, gender_net
+    eye_cascade = cv2.CascadeClassifier(str(EYE_CASCADE_FILE))
+    return face_net, age_net, gender_net, eye_cascade
 
 
 try:
-    face_net, age_net, gender_net = load_models()
+    face_net, age_net, gender_net, eye_cascade = load_models()
 except Exception as e:
     st.error(f"[SYSTEM ERROR] Failed to load models: {e}")
     st.stop()
@@ -121,6 +124,19 @@ def predict_age(blob: np.ndarray) -> str:
     return AGE_LIST[age_net.forward()[0].argmax()]
 
 
+def _draw_outlined_text(frame: np.ndarray, text: str, org: tuple[int, int], color: tuple[int, int, int]) -> None:
+    """Draw text with a black outline so it stays readable over any background."""
+    cv2.putText(frame, text, org, cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 5, cv2.LINE_AA)
+    cv2.putText(frame, text, org, cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2, cv2.LINE_AA)
+
+
+def detect_drowsiness(face_bgr: np.ndarray) -> bool:
+    """Return True if fewer than MIN_EYES_OPEN eyes are visible (eyes likely closed)."""
+    face_gray = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2GRAY)
+    eyes = eye_cascade.detectMultiScale(face_gray, scaleFactor=1.1, minNeighbors=6, minSize=(20, 20))
+    return len(eyes) < MIN_EYES_OPEN
+
+
 # Sidebar Interface Controls
 st.sidebar.markdown("### CONTROL PANEL")
 crop_toggle = st.sidebar.toggle("CROP FACE TARGETS ONLY", value=False)
@@ -138,6 +154,7 @@ def process_and_display(frame: np.ndarray, identifier: str, crop_toggle: bool, c
         return
 
     cropped_faces = []
+    any_drowsy = False
 
     for idx, (x1, y1, x2, y2) in enumerate(face_boxes, 1):
         y1_crop = max(0, y1 - 20)
@@ -152,35 +169,24 @@ def process_and_display(frame: np.ndarray, identifier: str, crop_toggle: bool, c
         blob = cv2.dnn.blobFromImage(face, 1.0, (227, 227), MODEL_MEAN_VALUES, swapRB=False)
         gender = predict_gender(blob)
         age = predict_age(blob)
+        drowsy = detect_drowsiness(face)
+        any_drowsy = any_drowsy or drowsy
 
         label = f"{gender}, {age}"
+        status_label = "DROWSY" if drowsy else "ALERT"
+        status_color = (0, 0, 255) if drowsy else (0, 255, 0)
 
         # Draw green box and cyan overlay text with black outline for readability
         cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), (0, 255, 0), int(round(frame.shape[0] / 150)), 8)
-        cv2.putText(
-            annotated_frame,
-            label,
-            (x1, y1 - 10),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.8,
-            (0, 0, 0),
-            5,
-            cv2.LINE_AA,
-        )
-        cv2.putText(
-            annotated_frame,
-            label,
-            (x1, y1 - 10),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.8,
-            (0, 255, 255),
-            2,
-            cv2.LINE_AA,
-        )
+        _draw_outlined_text(annotated_frame, label, (x1, y1 - 10), (0, 255, 255))
+        _draw_outlined_text(annotated_frame, status_label, (x1, y1 + (y2 - y1) + 30), status_color)
 
-        cropped_faces.append((f"TARGET_{idx}: {label}", cv2.cvtColor(face, cv2.COLOR_BGR2RGB)))
+        cropped_faces.append((f"TARGET_{idx}: {label} | {status_label}", cv2.cvtColor(face, cv2.COLOR_BGR2RGB)))
 
     st.markdown(f"#### ANALYSIS RESULT: `{identifier}`")
+
+    if any_drowsy:
+        st.error("[ALERT] DROWSINESS DETECTED -- SUBJECT EYES CLOSED")
 
     # Toggle Display Output Mode
     if crop_toggle:
