@@ -167,6 +167,7 @@ face_adjustments = _adjustment_sliders(
 
 st.session_state.setdefault("gallery", inference.load_gallery())
 
+search_gallery = {}
 if models.recognition_nets:
     st.sidebar.markdown("### GALLERY")
     gallery = st.session_state["gallery"]
@@ -179,6 +180,24 @@ if models.recognition_nets:
             del st.session_state["gallery"][name]
             inference.save_gallery(st.session_state["gallery"])
             st.rerun()
+
+    st.sidebar.markdown("### IDENTITY SEARCH")
+    st.sidebar.caption("Local directory matching only -- no live internet search.")
+    custom_search_dir = st.sidebar.text_input(
+        "SEARCH DIRECTORY (optional)", value="", placeholder="/path/to/reference/photos",
+        help="Extra directory of named reference photos to search, in addition to the bundled known_people/.",
+    )
+
+    @st.cache_resource
+    def _load_known_people_gallery():
+        net = models.recognition_nets.get("vggface")
+        return inference.build_gallery_from_directory(models.face_net, net, inference.KNOWN_PEOPLE_DIR) if net else {}
+
+    search_gallery = dict(_load_known_people_gallery())
+    if custom_search_dir:
+        net = models.recognition_nets.get("vggface")
+        if net is not None:
+            search_gallery.update(inference.build_gallery_from_directory(models.face_net, net, custom_search_dir))
 
 # Sidebar Interface Controls
 st.sidebar.markdown("### CONTROL PANEL")
@@ -247,6 +266,16 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
                     st.session_state["gallery"][enroll_name] = np.array(face["embedding"], dtype=np.float32)
                     inference.save_gallery(st.session_state["gallery"])
                     st.rerun()
+
+                if st.button("SEARCH", key=f"search_btn_{identifier}_{face['idx']}"):
+                    if not search_gallery:
+                        st.warning("[ NO MATCH ] -- search gallery is empty (no bundled or directory photos with a detected face)")
+                    else:
+                        match = inference.match_face_identity(np.array(face["embedding"], dtype=np.float32), search_gallery)
+                        if match:
+                            st.success(f"[ MATCH ] {match[0]} ({match[1] * 100:.0f}%)")
+                        else:
+                            st.warning("[ NO MATCH ] -- no known face cleared the similarity threshold")
 
 
 tab_upload, tab_webcam = st.tabs(["[ FILE UPLOAD ]", "[ LIVE WEBCAM ]"])

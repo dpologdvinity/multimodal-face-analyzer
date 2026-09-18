@@ -14,6 +14,7 @@
 
 - **Multi-model face analysis:** face detection, age, gender, race, emotion, expression (blendshapes), drowsiness, facial hair, glasses, face mask, colorimetric hair/eye color, face landmarks, plus whole-frame auto-colorization, body pose estimation, and hand landmarks -- most features have 2+ selectable model backends.
 - **Image adjustments, two stages:** 11 Lightroom-style sliders (exposure, contrast, shadows/highlights, saturation/vibrance, sharpness, noise reduction, etc.) -- one panel applied to the whole image before face detection, a second applied to each detected face crop before classification.
+- **Identity search:** SEARCH button per detected face, matching against bundled reference photos (`known_people/`, a few famous people out of the box) plus an optional user-specified directory. Local matching only, no live internet search.
 - **Docker-packaged Streamlit app:** `src/app.py`, all features including race and expression.
 - **Build-time feature toggles:** disable any model at Docker build time to shrink the image (see [Docker](#docker-web-app)).
 - **Graceful degradation:** any model missing at runtime (file or dependency not present) is skipped, not a crash -- the rest of the pipeline keeps working.
@@ -99,6 +100,16 @@ Raw output of Google's MediaPipe Face Landmarker (Apache 2.0), a separate featur
 Reuses the same VGGFace backbone as the deepface race/gender heads (`src/nets/deepface_common.py`), truncated to its 4096-d penultimate layer as a face embedding (`src/nets/deepface_recognition.py`) instead of a classification head -- same represent+verify shape as the original DeepFace paper. Embeddings are L2-normalized; identity is decided by cosine similarity against every enrolled face in the gallery, with a match only reported above `RECOGNITION_COSINE_THRESHOLD = 0.68` (deepface's own default VGG-Face verification threshold). Needs TensorFlow, like deepface race/gender.
 
 Enrollment happens in the web app: under any detected face with a computed embedding, enter a name and click ENROLL. The gallery is stored as `gallery/known_faces.json` (one L2-normalized 4096-d vector per name), created on first enrollment and gitignored as runtime user data. It survives app restarts; Docker users should volume-mount `gallery/` (e.g. `-v $(pwd)/gallery:/app/gallery`) to persist enrollments across container restarts. Sidebar has a GALLERY section listing enrolled names with a delete button per entry.
+
+**Known issue:** `models/deepface_vgg.h5` (the recognition/identity-search weight file) is not currently present in this repo -- it was never committed. Recognition and Identity Search are wired and ready but non-functional until that file is sourced and added.
+
+### Identity Search (web app only)
+
+A SEARCH button next to ENROLL on every detected face's card. Unlike Recognition's gallery (which you build yourself via ENROLL), Identity Search matches against a small set of *bundled* reference photos in `known_people/` -- shipped with the repo so it works out of the box for a few famous people (currently: Barack Obama, Joe Biden, Donald Trump, all public-domain official White House photos). Clicking SEARCH runs the same cosine-similarity match as Recognition (`RECOGNITION_COSINE_THRESHOLD`), against the bundled photos plus, optionally, a second directory you point it at via the sidebar's "SEARCH DIRECTORY" field.
+
+To add more known people, drop a photo with one clear face into `known_people/` named `First_Last.jpg` (underscores become the displayed name, e.g. `Ada_Lovelace.jpg` -> "Ada Lovelace"). Each photo is face-detected and embedded on demand (cached for the bundled directory; a custom directory is rescanned on each search since its contents can change between runs).
+
+**This does not search the internet.** There is no live reverse-image-search or web-scraping component -- matching is strictly against local image files (bundled or user-specified directory). Needs the same `vggface` recognition model as Recognition above (and inherits its "not currently functional" known issue -- see above).
 
 ### Drowsiness
 
@@ -247,6 +258,9 @@ multimodal-face-analyzer/
 │   ├── hand_landmarker.task                     # hand landmarks: mediapipe backend
 │   # face_landmarker.task (above) is also reused for the Face Landmarks toggle
 │   # (no skin_tone_mobilenetv2.h5 -- no working weight file exists yet, see README)
+│   # (no deepface_vgg.h5 -- never committed, Recognition/Identity Search are non-functional until it's sourced)
+│
+├── known_people/           # bundled reference photos for Identity Search (First_Last.jpg)
 │
 └── src/                    # Streamlit app module
     ├── app.py              # UI only (page layout, sidebar, tabs)
