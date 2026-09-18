@@ -9,6 +9,7 @@ FROM python:3.11-slim
 #   EMOTION_MODEL:     efficientnet, ferplus, mini_xception, dan (default: efficientnet)
 #   DROWSINESS_MODEL:  haarcascade                  (default: haarcascade)
 #   RACE_MODEL:        fairface, deepface           (default: fairface)
+#   EXPRESSION_MODEL:  blendshapes                  (default: blendshapes)
 # insightface's genderage.onnx provides BOTH age and gender from one file
 # (non-commercial research license -- see README). deepface's race model
 # needs TensorFlow (~200-400MB) and a 513MB weight file, much heavier
@@ -21,6 +22,7 @@ ARG GENDER_MODEL=caffe
 ARG EMOTION_MODEL=efficientnet
 ARG DROWSINESS_MODEL=haarcascade
 ARG RACE_MODEL=fairface
+ARG EXPRESSION_MODEL=blendshapes
 
 # Install system dependencies for OpenCV
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -60,6 +62,13 @@ RUN age_csv=",$AGE_MODEL,"; gender_csv=",$GENDER_MODEL,"; need_mivolo=false; \
         pip install --no-cache-dir ultralytics==8.1.0 timm==0.8.13.dev0 safetensors huggingface_hub; \
     fi
 
+# mediapipe is only needed for the blendshapes expression model
+RUN expression_csv=",$EXPRESSION_MODEL,"; need_mediapipe=false; \
+    case "$expression_csv" in *,blendshapes,*) need_mediapipe=true ;; esac; \
+    if [ "$need_mediapipe" = "true" ]; then \
+        pip install --no-cache-dir mediapipe; \
+    fi
+
 # Application code and always-required model files (face detector)
 COPY detect.py ./
 COPY src/ src/
@@ -84,9 +93,10 @@ RUN --mount=type=bind,source=models/age_deploy.prototxt,target=/tmp/models/age_d
     --mount=type=bind,source=models/dex_age.caffemodel,target=/tmp/models/dex_age.caffemodel \
     --mount=type=bind,source=models/mivolo_v2.safetensors,target=/tmp/models/mivolo_v2.safetensors \
     --mount=type=bind,source=models/mivolo_v2_config.json,target=/tmp/models/mivolo_v2_config.json \
+    --mount=type=bind,source=models/face_landmarker.task,target=/tmp/models/face_landmarker.task \
     set -e; \
     age_csv=",$AGE_MODEL,"; gender_csv=",$GENDER_MODEL,"; emotion_csv=",$EMOTION_MODEL,"; \
-    drowsiness_csv=",$DROWSINESS_MODEL,"; race_csv=",$RACE_MODEL,"; \
+    drowsiness_csv=",$DROWSINESS_MODEL,"; race_csv=",$RACE_MODEL,"; expression_csv=",$EXPRESSION_MODEL,"; \
     case "$age_csv" in *,caffe,*) cp /tmp/models/age_deploy.prototxt /tmp/models/age_net.caffemodel models/ ;; esac; \
     case "$age_csv" in *,ssrnet,*) cp /tmp/models/ssrnet_morph2.pth models/ ;; esac; \
     case "$gender_csv" in *,caffe,*) cp /tmp/models/gender_deploy.prototxt /tmp/models/gender_net.caffemodel models/ ;; esac; \
@@ -104,7 +114,8 @@ RUN --mount=type=bind,source=models/age_deploy.prototxt,target=/tmp/models/age_d
     case "$race_csv" in *,fairface,*) cp /tmp/models/fairface_7class.onnx models/ ;; esac; \
     case "$race_csv" in *,deepface,*) cp /tmp/models/deepface_race.h5 models/ ;; esac; \
     case "$age_csv" in *,mivolo,*) cp /tmp/models/mivolo_v2.safetensors /tmp/models/mivolo_v2_config.json models/ ;; esac; \
-    case "$gender_csv" in *,mivolo,*) cp /tmp/models/mivolo_v2.safetensors /tmp/models/mivolo_v2_config.json models/ ;; esac
+    case "$gender_csv" in *,mivolo,*) cp /tmp/models/mivolo_v2.safetensors /tmp/models/mivolo_v2_config.json models/ ;; esac; \
+    case "$expression_csv" in *,blendshapes,*) cp /tmp/models/face_landmarker.task models/ ;; esac
 
 # Expose default Streamlit port
 EXPOSE 8501
