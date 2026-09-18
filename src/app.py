@@ -7,7 +7,7 @@ from streamlit_webrtc import webrtc_streamer
 import inference
 
 # Page setup & surveillance-terminal style injection
-st.set_page_config(page_title="AGE_GENDER_DETECTOR", layout="wide")
+st.set_page_config(page_title="MULTIMODAL_FACE_ANALYZER", layout="wide")
 
 st.markdown(
     """
@@ -54,26 +54,38 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.title("AGE & GENDER INFERENCE")
-st.caption("[ STATUS: ONLINE ] -- Deep Neural Network Image Analysis")
-
-st.sidebar.markdown("### MODEL CONFIG")
-age_backend = st.sidebar.selectbox(
-    "AGE MODEL",
-    options=inference.AGE_BACKENDS,
-    format_func=lambda b: "CAFFE (bucketed ranges)" if b == "caffe" else "SSR-NET (continuous age)",
-)
+st.title("MULTIMODAL FACE ANALYZER")
+st.caption("[ STATUS: ONLINE ] -- Multi-Model Face Analysis")
 
 load_models = st.cache_resource(inference.load_models)
 
 try:
-    models = load_models(age_backend)
+    models = load_models()
 except Exception as e:
     st.error(f"[SYSTEM ERROR] Failed to load models: {e}")
     st.stop()
 
 if models.offline_features:
     st.sidebar.caption(f"[ OFFLINE: {', '.join(models.offline_features)} ] -- image built without these model file(s)")
+
+
+def _model_checkboxes(label: str, nets: dict) -> set:
+    """Render one checkbox per loaded model for a feature; return the set of checked keys."""
+    active = set()
+    if not nets:
+        return active
+    st.sidebar.markdown(f"**{label}**")
+    for key in nets:
+        if st.sidebar.checkbox(key.upper(), value=True, key=f"chk_{label}_{key}"):
+            active.add(key)
+    return active
+
+
+st.sidebar.markdown("### MODEL SELECTION")
+active_age = _model_checkboxes("AGE", models.age_nets)
+active_gender = _model_checkboxes("GENDER", models.gender_nets)
+active_emotion = _model_checkboxes("EMOTION", models.emotion_nets)
+active_drowsiness = _model_checkboxes("DROWSINESS", models.drowsiness_nets)
 
 # Sidebar Interface Controls
 st.sidebar.markdown("### CONTROL PANEL")
@@ -83,7 +95,9 @@ conf_threshold = st.sidebar.slider("CONFIDENCE THRESHOLD", 0.1, 1.0, 0.7)
 
 def process_and_display(frame: np.ndarray, identifier: str, crop_toggle: bool, conf_threshold: float) -> None:
     """Run detection/inference on frame and render result in Streamlit."""
-    annotated_frame, cropped_faces, any_drowsy, has_faces = inference.analyze_frame(models, frame, conf_threshold)
+    annotated_frame, cropped_faces, any_drowsy, has_faces = inference.analyze_frame(
+        models, frame, conf_threshold, active_age, active_gender, active_emotion, active_drowsiness
+    )
 
     if not has_faces:
         st.warning(f"[TARGET MISSING] Zero targets detected in file: {identifier}")
@@ -135,7 +149,9 @@ with tab_webcam:
 
         def _video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
             img = frame.to_ndarray(format="bgr24")
-            annotated_frame, _, _, _ = inference.analyze_frame(models, img, conf_threshold)
+            annotated_frame, _, _, _ = inference.analyze_frame(
+                models, img, conf_threshold, active_age, active_gender, active_emotion, active_drowsiness
+            )
             return av.VideoFrame.from_ndarray(annotated_frame, format="bgr24")
 
         webrtc_streamer(

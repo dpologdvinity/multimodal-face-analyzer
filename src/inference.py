@@ -4,7 +4,7 @@ Deliberately not shared with detect.py -- the CLI and the app duplicate the
 pipeline on purpose (see CLAUDE.md); this module only exists to keep app.py
 itself from growing unbounded as more model backends are added.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import cv2
@@ -39,65 +39,71 @@ EMOTION_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 EMOTION_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 SSRNET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 SSRNET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
-AGE_BACKENDS = ("caffe", "ssrnet")
 MIN_EYES_OPEN = 2
+
+# Model keys per feature, in quickest-to-build order (first = default).
+# Must match the numbered options in build-and-run.sh and the Dockerfile ARGs.
+AGE_MODEL_OPTIONS = ["caffe", "ssrnet"]
+GENDER_MODEL_OPTIONS = ["caffe"]
+EMOTION_MODEL_OPTIONS = ["dan"]
+DROWSINESS_MODEL_OPTIONS = ["haarcascade"]
 
 
 @dataclass
 class Models:
     face_net: cv2.dnn.Net
-    age_net: object
-    age_backend: str
-    gender_net: object
-    eye_cascade: object
-    emotion_net: object
+    age_nets: dict = field(default_factory=dict)
+    gender_nets: dict = field(default_factory=dict)
+    emotion_nets: dict = field(default_factory=dict)
+    drowsiness_nets: dict = field(default_factory=dict)
 
     @property
     def offline_features(self) -> list[str]:
         return [
-            name for name, net in [
-                ("AGE", self.age_net), ("GENDER", self.gender_net),
-                ("DROWSINESS", self.eye_cascade), ("EMOTION", self.emotion_net),
-            ] if net is None
+            name for name, nets in [
+                ("AGE", self.age_nets), ("GENDER", self.gender_nets),
+                ("EMOTION", self.emotion_nets), ("DROWSINESS", self.drowsiness_nets),
+            ] if not nets
         ]
 
 
-def load_models(age_backend: str) -> Models:
-    """Load neural network files into memory. Face detection is required; age, gender, drowsiness,
-    and emotion are each optional and skipped (returned as None) if their model file(s) aren't
-    present, so the app degrades gracefully to whichever features were built in. age_backend
-    selects which age model to load: "caffe" (bucketed) or "ssrnet" (continuous)."""
+def load_models() -> Models:
+    """Load every model whose file(s)/dependencies are present. Face detection is required;
+    age, gender, emotion, and drowsiness are each optional per-model-key -- a model is only
+    present in its feature's dict if it loaded successfully, so the app degrades gracefully
+    to whichever models were built in. Which of the loaded models are actually used per frame
+    is chosen at runtime by the caller (see analyze_frame's active_* arguments)."""
     if not FACE_PROTO.exists() or not FACE_MODEL.exists():
         raise FileNotFoundError(f"Missing face detector file(s) in {MODEL_DIR}: {FACE_PROTO.name}, {FACE_MODEL.name} (required).")
     face_net = cv2.dnn.readNet(str(FACE_MODEL), str(FACE_PROTO))
 
-    age_net = None
-    if age_backend == "caffe":
-        if AGE_PROTO.exists() and AGE_MODEL.exists():
-            age_net = cv2.dnn.readNet(str(AGE_MODEL), str(AGE_PROTO))
-    elif age_backend == "ssrnet":
-        if TORCH_SUPPORTED and SSRNET_MODEL.exists():
-            age_net = SSRNet()
-            checkpoint = torch.load(str(SSRNET_MODEL), map_location="cpu")
-            age_net.load_state_dict(checkpoint["state_dict"])
-            age_net.eval()
+    age_nets = {}
+    if AGE_PROTO.exists() and AGE_MODEL.exists():
+        age_nets["caffe"] = cv2.dnn.readNet(str(AGE_MODEL), str(AGE_PROTO))
+    if TORCH_SUPPORTED and SSRNET_MODEL.exists():
+        net = SSRNet()
+        checkpoint = torch.load(str(SSRNET_MODEL), map_location="cpu")
+        net.load_state_dict(checkpoint["state_dict"])
+        net.eval()
+        age_nets["ssrnet"] = net
 
-    gender_net = None
+    gender_nets = {}
     if GENDER_PROTO.exists() and GENDER_MODEL.exists():
-        gender_net = cv2.dnn.readNet(str(GENDER_MODEL), str(GENDER_PROTO))
+        gender_nets["caffe"] = cv2.dnn.readNet(str(GENDER_MODEL), str(GENDER_PROTO))
 
-    eye_cascade = None
-    if EYE_CASCADE_FILE.exists():
-        eye_cascade = cv2.CascadeClassifier(str(EYE_CASCADE_FILE))
-
-    emotion_net = None
+    emotion_nets = {}
     if TORCH_SUPPORTED and EMOTION_MODEL.exists():
-        emotion_net = DAN(num_class=7, num_head=4, pretrained=False)
+        net = DAN(num_class=7, num_head=4, pretrained=False)
         checkpoint = torch.load(str(EMOTION_MODEL), map_location="cpu")
-        emotion_net.load_state_dict(checkpoint["model_state_dict"])
-        emotion_net.eval()
+        net.load_state_dict(checkpoint["model_state_dict"])
+        net.eval()
+        emotion_nets["dan"] = net
 
-    return Models(face_net, age_net, age_backend, gender_net, eye_cascade, emotion_net)
+    drowsiness_nets = {}
+    if EYE_CASCADE_FILE.exists():
+        drowsiness_nets["haarcascade"] = cv2.CascadeClassifier(str(EYE_CASCADE_FILE))
+
+    return Models(face_net, age_nets, gender_nets, emotion_nets, drowsiness_nets)
 
 
 def detect_faces(net: cv2.dnn.Net, frame: np.ndarray, conf_threshold: float = 0.7) -> list[list[int]]:
@@ -119,37 +125,37 @@ def detect_faces(net: cv2.dnn.Net, frame: np.ndarray, conf_threshold: float = 0.
     return face_boxes
 
 
-def predict_gender(gender_net, blob: np.ndarray) -> str:
-    gender_net.setInput(blob)
-    return GENDER_LIST[gender_net.forward()[0].argmax()]
+def predict_gender_caffe(net, blob: np.ndarray) -> str:
+    net.setInput(blob)
+    return GENDER_LIST[net.forward()[0].argmax()]
 
 
-def predict_age_caffe(age_net, blob: np.ndarray) -> str:
-    age_net.setInput(blob)
-    return AGE_LIST[age_net.forward()[0].argmax()]
+def predict_age_caffe(net, blob: np.ndarray) -> str:
+    net.setInput(blob)
+    return AGE_LIST[net.forward()[0].argmax()]
 
 
-def predict_age_ssrnet(age_net, face_bgr: np.ndarray) -> str:
+def predict_age_ssrnet(net, face_bgr: np.ndarray) -> str:
     """Predict a continuous age with SSR-Net and format it as a label string."""
     face_rgb = cv2.cvtColor(cv2.resize(face_bgr, (64, 64)), cv2.COLOR_BGR2RGB)
     face_norm = (face_rgb.astype(np.float32) / 255.0 - SSRNET_MEAN) / SSRNET_STD
     tensor = torch.from_numpy(face_norm.transpose(2, 0, 1)).unsqueeze(0).float()
     with torch.no_grad():
-        age = age_net(tensor).item()
+        age = net(tensor).item()
     return f"{age:.0f}"
 
 
-def predict_emotion(emotion_net, face_bgr: np.ndarray) -> str:
+def predict_emotion_dan(net, face_bgr: np.ndarray) -> str:
     """Classify facial expression into one of EMOTION_LABELS."""
     face_rgb = cv2.cvtColor(cv2.resize(face_bgr, (224, 224)), cv2.COLOR_BGR2RGB)
     face_norm = (face_rgb.astype(np.float32) / 255.0 - EMOTION_MEAN) / EMOTION_STD
     tensor = torch.from_numpy(face_norm.transpose(2, 0, 1)).unsqueeze(0).float()
     with torch.no_grad():
-        logits, _, _ = emotion_net(tensor)
+        logits, _, _ = net(tensor)
     return EMOTION_LABELS[logits[0].argmax().item()]
 
 
-def detect_drowsiness(eye_cascade, face_bgr: np.ndarray) -> bool:
+def detect_drowsiness_haarcascade(eye_cascade, face_bgr: np.ndarray) -> bool:
     """Return True if fewer than MIN_EYES_OPEN eyes are visible (eyes likely closed)."""
     face_gray = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2GRAY)
     eyes = eye_cascade.detectMultiScale(face_gray, scaleFactor=1.1, minNeighbors=6, minSize=(20, 20))
@@ -171,12 +177,25 @@ def draw_outlined_text(frame: np.ndarray, text: str, org: tuple[int, int], color
     cv2.putText(frame, text, org, font, scale, color, thickness, cv2.LINE_AA)
 
 
-def analyze_frame(models: Models, frame: np.ndarray, conf_threshold: float):
-    """Detect faces and run age/gender/drowsiness/emotion inference. No Streamlit calls (safe for background threads)."""
+def analyze_frame(
+    models: Models,
+    frame: np.ndarray,
+    conf_threshold: float,
+    active_age: set,
+    active_gender: set,
+    active_emotion: set,
+    active_drowsiness: set,
+):
+    """Detect faces and run inference for whichever model keys are active per feature.
+    Multiple active models for the same feature (e.g. active_age = {"caffe", "ssrnet"})
+    all run and are shown together. No Streamlit calls (safe for background threads)."""
     annotated_frame = frame.copy()
     face_boxes = detect_faces(models.face_net, frame, conf_threshold)
     cropped_faces = []
     any_drowsy = False
+
+    need_blob227 = ("caffe" in active_age and "caffe" in models.age_nets) or \
+                   ("caffe" in active_gender and "caffe" in models.gender_nets)
 
     for idx, (x1, y1, x2, y2) in enumerate(face_boxes, 1):
         y1_crop = max(0, y1 - 20)
@@ -188,21 +207,46 @@ def analyze_frame(models: Models, frame: np.ndarray, conf_threshold: float):
         if face.size == 0:
             continue
 
-        gender, age = None, None
-        if models.gender_net is not None or (models.age_net is not None and models.age_backend == "caffe"):
-            blob = cv2.dnn.blobFromImage(face, 1.0, (227, 227), MODEL_MEAN_VALUES, swapRB=False)
-            if models.gender_net is not None:
-                gender = predict_gender(models.gender_net, blob)
-            if models.age_net is not None and models.age_backend == "caffe":
-                age = predict_age_caffe(models.age_net, blob)
-        if models.age_net is not None and models.age_backend == "ssrnet":
-            age = predict_age_ssrnet(models.age_net, face)
+        blob227 = None
+        if need_blob227:
+            blob227 = cv2.dnn.blobFromImage(face, 1.0, (227, 227), MODEL_MEAN_VALUES, swapRB=False)
 
-        emotion = predict_emotion(models.emotion_net, face) if models.emotion_net is not None else None
-        drowsy = detect_drowsiness(models.eye_cascade, face) if models.eye_cascade is not None else None
-        any_drowsy = any_drowsy or bool(drowsy)
+        age_parts = []
+        for key in active_age:
+            net = models.age_nets.get(key)
+            if net is None:
+                continue
+            value = predict_age_caffe(net, blob227) if key == "caffe" else predict_age_ssrnet(net, face)
+            age_parts.append(f"{key}={value}")
 
-        label_parts = [p for p in (gender, age, emotion) if p is not None]
+        gender_parts = []
+        for key in active_gender:
+            net = models.gender_nets.get(key)
+            if net is None:
+                continue
+            value = predict_gender_caffe(net, blob227)
+            gender_parts.append(f"{key}={value}")
+
+        emotion_parts = []
+        for key in active_emotion:
+            net = models.emotion_nets.get(key)
+            if net is None:
+                continue
+            value = predict_emotion_dan(net, face)
+            emotion_parts.append(f"{key}={value}")
+
+        drowsy_parts = []
+        face_drowsy = False
+        for key in active_drowsiness:
+            net = models.drowsiness_nets.get(key)
+            if net is None:
+                continue
+            drowsy = detect_drowsiness_haarcascade(net, face)
+            face_drowsy = face_drowsy or drowsy
+            drowsy_parts.append(f"{key}={'DROWSY' if drowsy else 'ALERT'}")
+        any_drowsy = any_drowsy or face_drowsy
+
+        label_parts = age_parts + gender_parts + emotion_parts
         label = ", ".join(label_parts) if label_parts else "Face"
 
         # Draw green box and cyan overlay text with black outline for readability
@@ -210,9 +254,9 @@ def analyze_frame(models: Models, frame: np.ndarray, conf_threshold: float):
         draw_outlined_text(annotated_frame, label, (x1, y1 - 10), (0, 255, 255))
 
         status_label = None
-        if drowsy is not None:
-            status_label = "DROWSY" if drowsy else "ALERT"
-            status_color = (0, 0, 255) if drowsy else (0, 255, 0)
+        if drowsy_parts:
+            status_label = ", ".join(drowsy_parts)
+            status_color = (0, 0, 255) if face_drowsy else (0, 255, 0)
             draw_outlined_text(annotated_frame, status_label, (x1, y1 + (y2 - y1) + 30), status_color)
 
         caption = f"TARGET_{idx}: {label}" + (f" | {status_label}" if status_label else "")
