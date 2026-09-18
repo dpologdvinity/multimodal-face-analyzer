@@ -131,6 +131,39 @@ active_emotion = _model_checkboxes("EMOTION", models.emotion_nets)
 active_drowsiness = _model_checkboxes("DROWSINESS", models.drowsiness_nets)
 active_expression = _model_checkboxes("EXPRESSION", models.expression_nets)
 active_recognition = _model_checkboxes("RECOGNITION", models.recognition_nets)
+active_facial_hair = _model_checkboxes("FACIAL HAIR", models.facial_hair_nets)
+active_skin_tone = _model_checkboxes("SKIN TONE", models.skin_tone_nets)
+active_glasses = _model_checkboxes("GLASSES", models.glasses_nets)
+active_mask = _model_checkboxes("MASK", models.mask_nets)
+active_hair_color = _model_checkboxes("HAIR COLOR", models.hair_color_nets)
+active_eye_color = _model_checkboxes("EYE COLOR", models.eye_color_nets)
+active_colorization = _model_checkboxes("AUTO-COLORIZE B&W", models.colorization_nets)
+active_pose = _model_checkboxes("POSE ESTIMATION", models.pose_nets)
+active_face_landmarks = _model_checkboxes("FACE LANDMARKS", models.face_landmarks_nets)
+active_hands = _model_checkboxes("HAND LANDMARKS", models.hand_nets)
+
+
+def _adjustment_sliders(section_label: str, caption: str, key_prefix: str) -> dict:
+    st.sidebar.markdown(f"### {section_label}")
+    st.sidebar.caption(caption)
+    values = {}
+    for adj_key, (adj_min, adj_max, adj_default) in inference.IMAGE_ADJUSTMENT_RANGES.items():
+        values[adj_key] = st.sidebar.slider(
+            adj_key.replace("_", " ").upper(), adj_min, adj_max, adj_default, key=f"{key_prefix}_{adj_key}"
+        )
+    return values
+
+
+global_adjustments = _adjustment_sliders(
+    "GLOBAL IMAGE ADJUSTMENTS",
+    "Applied to the whole image first, before face detection. Visible in every output.",
+    "global_adj",
+)
+face_adjustments = _adjustment_sliders(
+    "PER-FACE IMAGE ADJUSTMENTS",
+    "Applied to each detected face individually, after detection, before classification.",
+    "face_adj",
+)
 
 st.session_state.setdefault("gallery", inference.load_gallery())
 
@@ -156,7 +189,12 @@ def _target_card_html(face: dict) -> str:
     """Render one face's results as a HUD-style dossier card (native markup, not pixel text --
     keeps results legible no matter how many faces are packed into one image)."""
     rows = ""
-    for label, values in (("AGE", face["age"]), ("GENDER", face["gender"]), ("RACE", face["race"]), ("MOOD", face["emotion"]), ("EXPR", face["expression"]), ("IDENTITY", face["identity"])):
+    for label, values in (
+        ("AGE", face["age"]), ("GENDER", face["gender"]), ("RACE", face["race"]), ("MOOD", face["emotion"]),
+        ("EXPR", face["expression"]), ("IDENTITY", face["identity"]), ("FACIAL HAIR", face["facial_hair"]),
+        ("SKIN TONE", face["skin_tone"]), ("GLASSES", face["glasses"]), ("MASK", face["mask"]),
+        ("HAIR COLOR", face["hair_color"]), ("EYE COLOR", face["eye_color"]),
+    ):
         if values:
             rows += f'<div class="target-card-row"><span class="k">{label}</span><span class="v">{" / ".join(values)}</span></div>'
     if face["status"] is not None:
@@ -170,14 +208,25 @@ def _target_card_html(face: dict) -> str:
 
 def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: float) -> None:
     """Run detection/inference on frame and render result in Streamlit."""
-    annotated_frame, cropped_faces, any_drowsy, has_faces = inference.analyze_frame(
+    frame, was_colorized = inference.maybe_colorize(models, frame, active_colorization)
+
+    annotated_frame, cropped_faces, any_drowsy, has_faces, pose_detected, hands_detected = inference.analyze_frame(
         models, frame, conf_threshold, active_age, active_gender, active_emotion, active_drowsiness, active_race, active_expression,
         active_recognition, st.session_state.get("gallery", {}),
+        active_facial_hair, active_skin_tone, active_glasses, active_mask, active_hair_color, active_eye_color,
+        active_pose, active_face_landmarks, active_hands, global_adjustments, face_adjustments,
     )
+
+    if was_colorized:
+        st.caption("[ AUTO-COLORIZED ] -- source detected as grayscale")
+    if pose_detected:
+        st.caption("[ POSE DETECTED ] -- skeleton overlay drawn")
+    if hands_detected:
+        st.caption("[ HANDS DETECTED ] -- landmark overlay drawn")
 
     if not has_faces:
         st.warning(f"[TARGET MISSING] Zero targets detected in file: {identifier}")
-        st.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), caption=identifier, use_container_width=True)
+        st.image(cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB), caption=identifier, use_container_width=True)
         return
 
     st.markdown(f"#### ANALYSIS RESULT: `{identifier}`")
@@ -230,9 +279,12 @@ with tab_webcam:
 
         def _video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
             img = frame.to_ndarray(format="bgr24")
-            annotated_frame, _, _, _ = inference.analyze_frame(
+            img, _ = inference.maybe_colorize(models, img, active_colorization)
+            annotated_frame, _, _, _, _, _ = inference.analyze_frame(
                 models, img, conf_threshold, active_age, active_gender, active_emotion, active_drowsiness, active_race, active_expression,
                 active_recognition, st.session_state.get("gallery", {}),
+                active_facial_hair, active_skin_tone, active_glasses, active_mask, active_hair_color, active_eye_color,
+                active_pose, active_face_landmarks, active_hands, global_adjustments, face_adjustments,
             )
             return av.VideoFrame.from_ndarray(annotated_frame, format="bgr24")
 

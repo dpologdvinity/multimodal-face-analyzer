@@ -11,10 +11,25 @@ FROM python:3.11-slim
 #   RACE_MODEL:        fairface, deepface           (default: fairface)
 #   EXPRESSION_MODEL:  blendshapes                  (default: blendshapes)
 #   RECOGNITION_MODEL: vggface                       (default: vggface)
+#   FACIAL_HAIR_MODEL: bisenet                       (default: bisenet)
+#   GLASSES_MODEL:     mobilenet                     (default: mobilenet)
+#   MASK_MODEL:        mobilenetv2                   (default: mobilenetv2)
+#   COLORIZATION_MODEL: eccv16                        (default: eccv16)
+#   POSE_MODEL:         mpi                            (default: mpi)
+#   HAND_MODEL:         mediapipe                       (default: mediapipe)
+# pose (CMU OpenPose MPI model) is ACADEMIC/NON-COMMERCIAL RESEARCH USE ONLY -- see README.
+# Face Landmarks has no build ARG of its own -- it reuses the same face_landmarker.task file
+# and mediapipe dependency as EXPRESSION_MODEL=blendshapes (one model, two features).
 # insightface's genderage.onnx provides BOTH age and gender from one file
 # (non-commercial research license -- see README). deepface's race model
 # needs TensorFlow (~200-400MB) and a 513MB weight file, much heavier
-# than fairface -- only pulled in if requested.
+# than fairface -- only pulled in if requested. mask also needs TensorFlow
+# (Keras .h5 weights); facial_hair and glasses are plain ONNX.
+# No SKIN_TONE_MODEL ARG -- the only known source for this feature
+# (behra527/Skin-Tone-Classification-model) ships a corrupted weight file
+# that doesn't load under any Keras version tried; see README's Known Issues.
+# The Python-side plumbing exists (src/inference.py) for whenever a working
+# weight file is found, but there's nothing to build into the image yet.
 # e.g. --build-arg AGE_MODEL=caffe,ssrnet builds both age backends so the web
 # app can switch between them at runtime. See build-and-run.sh for a guided
 # prompt instead of typing these by hand.
@@ -25,6 +40,12 @@ ARG DROWSINESS_MODEL=haarcascade
 ARG RACE_MODEL=fairface
 ARG EXPRESSION_MODEL=blendshapes
 ARG RECOGNITION_MODEL=vggface
+ARG FACIAL_HAIR_MODEL=bisenet
+ARG GLASSES_MODEL=mobilenet
+ARG MASK_MODEL=mobilenetv2
+ARG COLORIZATION_MODEL=eccv16
+ARG POSE_MODEL=mpi
+ARG HAND_MODEL=mediapipe
 
 # Install system dependencies for OpenCV and MediaPipe (libegl1/libgles2 needed by
 # mediapipe's face landmarker even in CPU-only/headless use)
@@ -56,11 +77,13 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # tensorflow/tf-keras are only needed for the deepface race, deepface gender,
 # and/or mini_xception emotion models
 RUN --mount=type=cache,target=/root/.cache/pip \
-    race_csv=",$RACE_MODEL,"; gender_csv=",$GENDER_MODEL,"; emotion_csv=",$EMOTION_MODEL,"; recognition_csv=",$RECOGNITION_MODEL,"; need_tf=false; \
+    race_csv=",$RACE_MODEL,"; gender_csv=",$GENDER_MODEL,"; emotion_csv=",$EMOTION_MODEL,"; recognition_csv=",$RECOGNITION_MODEL,"; \
+    mask_csv=",$MASK_MODEL,"; need_tf=false; \
     case "$race_csv" in *,deepface,*) need_tf=true ;; esac; \
     case "$gender_csv" in *,deepface,*) need_tf=true ;; esac; \
     case "$emotion_csv" in *,mini_xception,*) need_tf=true ;; esac; \
     case "$recognition_csv" in *,vggface,*) need_tf=true ;; esac; \
+    case "$mask_csv" in *,mobilenetv2,*) need_tf=true ;; esac; \
     if [ "$need_tf" = "true" ]; then pip install tensorflow-cpu tf-keras; fi
 
 # MiVOLO dependencies (ultralytics, timm) are only needed for the mivolo age and/or gender models
@@ -74,8 +97,9 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 # mediapipe is only needed for the blendshapes expression model
 RUN --mount=type=cache,target=/root/.cache/pip \
-    expression_csv=",$EXPRESSION_MODEL,"; need_mediapipe=false; \
+    expression_csv=",$EXPRESSION_MODEL,"; hand_csv=",$HAND_MODEL,"; need_mediapipe=false; \
     case "$expression_csv" in *,blendshapes,*) need_mediapipe=true ;; esac; \
+    case "$hand_csv" in *,mediapipe,*) need_mediapipe=true ;; esac; \
     if [ "$need_mediapipe" = "true" ]; then \
         pip install mediapipe; \
     fi
@@ -117,9 +141,19 @@ RUN --mount=type=bind,source=models/age_deploy.prototxt,target=/tmp/models/age_d
     --mount=type=bind,source=models/mivolo_v2.safetensors,target=/tmp/models/mivolo_v2.safetensors \
     --mount=type=bind,source=models/mivolo_v2_config.json,target=/tmp/models/mivolo_v2_config.json \
     --mount=type=bind,source=models/face_landmarker.task,target=/tmp/models/face_landmarker.task \
+    --mount=type=bind,source=models/bisenet_face_parsing.onnx,target=/tmp/models/bisenet_face_parsing.onnx \
+    --mount=type=bind,source=models/glasses_detector.onnx,target=/tmp/models/glasses_detector.onnx \
+    --mount=type=bind,source=models/mask_detector.h5,target=/tmp/models/mask_detector.h5 \
+    --mount=type=bind,source=models/colorization_deploy_v2.prototxt,target=/tmp/models/colorization_deploy_v2.prototxt \
+    --mount=type=bind,source=models/colorization_release_v2.caffemodel,target=/tmp/models/colorization_release_v2.caffemodel \
+    --mount=type=bind,source=models/pts_in_hull.npy,target=/tmp/models/pts_in_hull.npy \
+    --mount=type=bind,source=models/pose_deploy_linevec_faster_4_stages.prototxt,target=/tmp/models/pose_deploy_linevec_faster_4_stages.prototxt \
+    --mount=type=bind,source=models/pose_iter_160000.caffemodel,target=/tmp/models/pose_iter_160000.caffemodel \
+    --mount=type=bind,source=models/hand_landmarker.task,target=/tmp/models/hand_landmarker.task \
     set -e; \
     age_csv=",$AGE_MODEL,"; gender_csv=",$GENDER_MODEL,"; emotion_csv=",$EMOTION_MODEL,"; \
     drowsiness_csv=",$DROWSINESS_MODEL,"; race_csv=",$RACE_MODEL,"; expression_csv=",$EXPRESSION_MODEL,"; recognition_csv=",$RECOGNITION_MODEL,"; \
+    facial_hair_csv=",$FACIAL_HAIR_MODEL,"; glasses_csv=",$GLASSES_MODEL,"; mask_csv=",$MASK_MODEL,"; colorization_csv=",$COLORIZATION_MODEL,"; pose_csv=",$POSE_MODEL,"; hand_csv=",$HAND_MODEL,"; \
     case "$age_csv" in *,caffe,*) cp /tmp/models/age_deploy.prototxt /tmp/models/age_net.caffemodel models/ ;; esac; \
     case "$age_csv" in *,ssrnet,*) cp /tmp/models/ssrnet_morph2.pth models/ ;; esac; \
     case "$gender_csv" in *,caffe,*) cp /tmp/models/gender_deploy.prototxt /tmp/models/gender_net.caffemodel models/ ;; esac; \
@@ -139,7 +173,13 @@ RUN --mount=type=bind,source=models/age_deploy.prototxt,target=/tmp/models/age_d
     case "$age_csv" in *,mivolo,*) cp /tmp/models/mivolo_v2.safetensors /tmp/models/mivolo_v2_config.json models/ ;; esac; \
     case "$gender_csv" in *,mivolo,*) cp /tmp/models/mivolo_v2.safetensors /tmp/models/mivolo_v2_config.json models/ ;; esac; \
     case "$expression_csv" in *,blendshapes,*) cp /tmp/models/face_landmarker.task models/ ;; esac; \
-    case "$recognition_csv" in *,vggface,*) cp /tmp/models/deepface_vgg.h5 models/ ;; esac
+    case "$recognition_csv" in *,vggface,*) cp /tmp/models/deepface_vgg.h5 models/ ;; esac; \
+    case "$facial_hair_csv" in *,bisenet,*) cp /tmp/models/bisenet_face_parsing.onnx models/ ;; esac; \
+    case "$glasses_csv" in *,mobilenet,*) cp /tmp/models/glasses_detector.onnx models/ ;; esac; \
+    case "$mask_csv" in *,mobilenetv2,*) cp /tmp/models/mask_detector.h5 models/ ;; esac; \
+    case "$colorization_csv" in *,eccv16,*) cp /tmp/models/colorization_deploy_v2.prototxt /tmp/models/colorization_release_v2.caffemodel /tmp/models/pts_in_hull.npy models/ ;; esac; \
+    case "$pose_csv" in *,mpi,*) cp /tmp/models/pose_deploy_linevec_faster_4_stages.prototxt /tmp/models/pose_iter_160000.caffemodel models/ ;; esac; \
+    case "$hand_csv" in *,mediapipe,*) cp /tmp/models/hand_landmarker.task models/ ;; esac
 
 # Expose default Streamlit port
 EXPOSE 8501
