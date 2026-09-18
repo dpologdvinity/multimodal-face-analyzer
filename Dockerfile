@@ -37,39 +37,44 @@ WORKDIR /app
 
 # Copy requirements and install python packages (opencv/streamlit etc. -- shared by all features)
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -r requirements.txt
 
 # torch/torchvision are needed for ssrnet, dan, and/or mivolo models
-RUN age_csv=",$AGE_MODEL,"; gender_csv=",$GENDER_MODEL,"; emotion_csv=",$EMOTION_MODEL,"; need_torch=false; \
+RUN --mount=type=cache,target=/root/.cache/pip \
+    age_csv=",$AGE_MODEL,"; gender_csv=",$GENDER_MODEL,"; emotion_csv=",$EMOTION_MODEL,"; need_torch=false; \
     case "$age_csv" in *,ssrnet,*) need_torch=true ;; esac; \
     case "$age_csv" in *,mivolo,*) need_torch=true ;; esac; \
     case "$gender_csv" in *,mivolo,*) need_torch=true ;; esac; \
     case "$emotion_csv" in *,dan,*) need_torch=true ;; esac; \
     if [ "$need_torch" = "true" ]; then \
-        pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu torch torchvision; \
+        pip install --extra-index-url https://download.pytorch.org/whl/cpu torch torchvision; \
     fi
 
 # tensorflow/tf-keras are only needed for the deepface race, deepface gender,
 # and/or mini_xception emotion models
-RUN race_csv=",$RACE_MODEL,"; gender_csv=",$GENDER_MODEL,"; emotion_csv=",$EMOTION_MODEL,"; need_tf=false; \
+RUN --mount=type=cache,target=/root/.cache/pip \
+    race_csv=",$RACE_MODEL,"; gender_csv=",$GENDER_MODEL,"; emotion_csv=",$EMOTION_MODEL,"; need_tf=false; \
     case "$race_csv" in *,deepface,*) need_tf=true ;; esac; \
     case "$gender_csv" in *,deepface,*) need_tf=true ;; esac; \
     case "$emotion_csv" in *,mini_xception,*) need_tf=true ;; esac; \
-    if [ "$need_tf" = "true" ]; then pip install --no-cache-dir tensorflow-cpu tf-keras; fi
+    if [ "$need_tf" = "true" ]; then pip install tensorflow-cpu tf-keras; fi
 
 # MiVOLO dependencies (ultralytics, timm) are only needed for the mivolo age and/or gender models
-RUN age_csv=",$AGE_MODEL,"; gender_csv=",$GENDER_MODEL,"; need_mivolo=false; \
+RUN --mount=type=cache,target=/root/.cache/pip \
+    age_csv=",$AGE_MODEL,"; gender_csv=",$GENDER_MODEL,"; need_mivolo=false; \
     case "$age_csv" in *,mivolo,*) need_mivolo=true ;; esac; \
     case "$gender_csv" in *,mivolo,*) need_mivolo=true ;; esac; \
     if [ "$need_mivolo" = "true" ]; then \
-        pip install --no-cache-dir ultralytics==8.1.0 timm==0.8.13.dev0 safetensors huggingface_hub; \
+        pip install ultralytics==8.1.0 timm==0.8.13.dev0 safetensors huggingface_hub; \
     fi
 
 # mediapipe is only needed for the blendshapes expression model
-RUN expression_csv=",$EXPRESSION_MODEL,"; need_mediapipe=false; \
+RUN --mount=type=cache,target=/root/.cache/pip \
+    expression_csv=",$EXPRESSION_MODEL,"; need_mediapipe=false; \
     case "$expression_csv" in *,blendshapes,*) need_mediapipe=true ;; esac; \
     if [ "$need_mediapipe" = "true" ]; then \
-        pip install --no-cache-dir mediapipe; \
+        pip install mediapipe; \
     fi
 
 # ultralytics (mivolo) pulls in opencv-python, and mediapipe pulls in a DIFFERENT
@@ -79,8 +84,9 @@ RUN expression_csv=",$EXPRESSION_MODEL,"; need_mediapipe=false; \
 # haarcascade drowsiness (all use cv2.dnn.readNetFromCaffe/CascadeClassifier). Uninstall
 # every opencv variant before reinstalling the one pinned version, so there's no
 # ambiguity about which package's cv2 gets imported.
-RUN pip uninstall -y opencv-python opencv-python-headless opencv-contrib-python opencv-contrib-python-headless 2>/dev/null; \
-    pip install --no-cache-dir "opencv-python-headless>=4.8.0,<5.0.0"
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip uninstall -y opencv-python opencv-python-headless opencv-contrib-python opencv-contrib-python-headless 2>/dev/null; \
+    pip install "opencv-python-headless>=4.8.0,<5.0.0"
 
 # Application code and always-required model files (face detector)
 COPY detect.py ./
