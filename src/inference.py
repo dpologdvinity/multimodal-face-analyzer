@@ -20,6 +20,7 @@ except ImportError:
 
 try:
     from nets.deepface_race import build_race_model
+    from nets.deepface_gender import build_gender_model
     TF_SUPPORTED = True
 except ImportError:
     TF_SUPPORTED = False
@@ -40,6 +41,7 @@ INSIGHTFACE_MODEL = MODEL_DIR / "insightface_genderage.onnx"
 EFFICIENTNET_EMOTION_MODEL = MODEL_DIR / "efficientnet_b0_fer.onnx"
 FAIRFACE_MODEL = MODEL_DIR / "fairface_7class.onnx"
 DEEPFACE_RACE_MODEL = MODEL_DIR / "deepface_race.h5"
+DEEPFACE_GENDER_MODEL = MODEL_DIR / "deepface_gender.h5"
 
 MODEL_MEAN_VALUES = (78.4263377603, 87.768914374, 114.895847746)
 AGE_LIST = ['(0-2)', '(4-6)', '(8-12)', '(15-20)', '(25-32)', '(38-43)', '(48-53)', '(60-100)']
@@ -58,7 +60,7 @@ RACE_CLOSE_MARGIN = 0.10  # show top-2 race classes together if within this prob
 # Model keys per feature, in quickest-to-build order (first = default).
 # Must match the numbered options in build-and-run.sh and the Dockerfile ARGs.
 AGE_MODEL_OPTIONS = ["caffe", "insightface", "ssrnet"]
-GENDER_MODEL_OPTIONS = ["caffe", "insightface"]
+GENDER_MODEL_OPTIONS = ["caffe", "insightface", "deepface"]
 EMOTION_MODEL_OPTIONS = ["efficientnet", "dan"]
 DROWSINESS_MODEL_OPTIONS = ["haarcascade"]
 RACE_MODEL_OPTIONS = ["fairface", "deepface"]
@@ -112,6 +114,9 @@ def load_models() -> Models:
         insightface_net = cv2.dnn.readNetFromONNX(str(INSIGHTFACE_MODEL))
         age_nets["insightface"] = insightface_net
         gender_nets["insightface"] = insightface_net
+
+    if TF_SUPPORTED and DEEPFACE_GENDER_MODEL.exists():
+        gender_nets["deepface"] = build_gender_model(str(DEEPFACE_GENDER_MODEL))
 
     emotion_nets = {}
     if TORCH_SUPPORTED and EMOTION_MODEL.exists():
@@ -281,6 +286,14 @@ def predict_race_deepface(net, face_bgr: np.ndarray) -> str:
     return _format_race_label(probs, RACE_LABELS_DEEPFACE)
 
 
+def predict_gender_deepface(net, face_bgr: np.ndarray) -> str:
+    # Same VGGFace-backbone preprocessing as predict_race_deepface: 224x224 BGR, unnormalized [0,255].
+    face_resized = cv2.resize(face_bgr, (224, 224)).astype(np.float32)
+    probs = net.predict(face_resized[np.newaxis, ...], verbose=0).flatten()
+    # deepface's GENDER_LABELS = ["Woman", "Man"]; normalize to this repo's Male/Female convention.
+    return "Male" if np.argmax(probs) == 1 else "Female"
+
+
 def draw_outlined_text(frame: np.ndarray, text: str, org: tuple[int, int], color: tuple[int, int, int]) -> None:
     """Draw text with a black outline so it stays readable over any background. Clamps origin
     so text stays inside the frame, and shrinks the font if the text is wider than the frame
@@ -356,7 +369,12 @@ def analyze_frame(
             net = models.gender_nets.get(key)
             if net is None:
                 continue
-            value = predict_gender_caffe(net, blob227) if key == "caffe" else predict_gender_insightface(net, frame, (x1, y1, x2, y2))
+            if key == "caffe":
+                value = predict_gender_caffe(net, blob227)
+            elif key == "deepface":
+                value = predict_gender_deepface(net, face)
+            else:
+                value = predict_gender_insightface(net, frame, (x1, y1, x2, y2))
             gender_pairs.append((key, value))
 
         emotion_pairs = []

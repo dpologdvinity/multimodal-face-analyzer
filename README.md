@@ -44,12 +44,13 @@ CLI: `--age-model` (`caffe` or `ssrnet` only). Web app: checkbox per built model
 
 ### Gender
 
-| Backend            | Framework       | Output            |
-| ------------------ | --------------- | ----------------- |
-| Levi & Hassner CNN | Caffe (cv2.dnn) | `Male` / `Female` |
-| `insightface`      | ONNX (cv2.dnn)  | `Male` / `Female` |
+| Backend            | Framework            | Output            |
+| ------------------ | -------------------- | ----------------- |
+| Levi & Hassner CNN | Caffe (cv2.dnn)       | `Male` / `Female` |
+| `insightface`      | ONNX (cv2.dnn)        | `Male` / `Female` |
+| `deepface`         | Keras/TensorFlow      | `Male` / `Female` |
 
-`insightface` shares one small ONNX file (`models/insightface_genderage.onnx`) with the insightface age backend -- one model, two feature outputs. **Non-commercial research-use-only license** (CelebA-derived); not for commercial deployments.
+`insightface` shares one small ONNX file (`models/insightface_genderage.onnx`) with the insightface age backend -- one model, two feature outputs. **Non-commercial research-use-only license** (CelebA-derived); not for commercial deployments. `deepface` shares its VGGFace backbone code (`src/nets/deepface_common.py`) with the deepface race backend, but is a separate 537MB weight file (`models/deepface_gender.h5`) and needs TensorFlow like deepface race does.
 
 ### Race (web app only)
 
@@ -99,6 +100,7 @@ multimodal-face-analyzer/
 │   ├── efficientnet_b0_fer.onnx                 # emotion: efficientnet backend
 │   ├── fairface_7class.onnx                     # race: fairface backend
 │   ├── deepface_race.h5                         # race: deepface backend
+│   ├── deepface_gender.h5                       # gender: deepface backend
 │   └── haarcascade_eye.xml                      # drowsiness
 │
 └── src/                    # Streamlit app module
@@ -107,7 +109,9 @@ multimodal-face-analyzer/
     └── nets/               # vendored model architectures (code, not weights)
         ├── dan_model.py
         ├── ssrnet_model.py
-        └── deepface_race.py
+        ├── deepface_common.py                   # shared VGGFace backbone
+        ├── deepface_race.py
+        └── deepface_gender.py
 ```
 
 `detect.py` (CLI) and `src/app.py`+`src/inference.py` (web app) intentionally duplicate the detection pipeline rather than sharing one module.
@@ -124,7 +128,7 @@ pip install -r requirements.txt
 # needed for: ssrnet age, dan emotion
 pip install torch torchvision --extra-index-url https://download.pytorch.org/whl/cpu
 
-# needed for: deepface race only (heavy -- ~200-400MB)
+# needed for: deepface race and/or deepface gender (heavy -- ~200-400MB)
 pip install tensorflow-cpu tf-keras
 ```
 
@@ -184,7 +188,7 @@ Each build ARG takes a comma-separated list of model keys for that feature, or e
 ```bash
 docker build \
   --build-arg AGE_MODEL=caffe,insightface,ssrnet \
-  --build-arg GENDER_MODEL=caffe,insightface \
+  --build-arg GENDER_MODEL=caffe,insightface,deepface \
   --build-arg EMOTION_MODEL=efficientnet,dan \
   --build-arg DROWSINESS_MODEL=haarcascade \
   --build-arg RACE_MODEL=fairface,deepface \
@@ -194,7 +198,7 @@ docker build \
 | Build arg          | Options (default first)          |
 | ------------------ | -------------------------------- |
 | `AGE_MODEL`        | `caffe`, `insightface`, `ssrnet` |
-| `GENDER_MODEL`     | `caffe`, `insightface`           |
+| `GENDER_MODEL`     | `caffe`, `insightface`, `deepface` |
 | `EMOTION_MODEL`    | `efficientnet`, `dan`            |
 | `DROWSINESS_MODEL` | `haarcascade`                    |
 | `RACE_MODEL`       | `fairface`, `deepface`           |
