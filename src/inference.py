@@ -47,6 +47,12 @@ except ImportError:
     MEDIAPIPE_SUPPORTED = False
 
 try:
+    import onnxruntime
+    ONNXRUNTIME_SUPPORTED = True
+except ImportError:
+    ONNXRUNTIME_SUPPORTED = False
+
+try:
     from nets.deep3d_recon import (
         build_deep3d_recon_model, ParametricFaceModel, load_lm3d_template,
         landmarks_5pt_from_mediapipe, reconstruct_face_3d, mesh_to_obj_str,
@@ -60,6 +66,7 @@ MODEL_DIR = BASE_DIR / "models"
 
 FACE_PROTO = MODEL_DIR / "opencv_face_detector.pbtxt"
 FACE_MODEL = MODEL_DIR / "opencv_face_detector_uint8.pb"
+YOLO_FACE_MODEL = MODEL_DIR / "yolov8n_face.onnx"
 AGE_PROTO = MODEL_DIR / "age_deploy.prototxt"
 AGE_MODEL = MODEL_DIR / "age_net.caffemodel"
 GENDER_PROTO = MODEL_DIR / "gender_deploy.prototxt"
@@ -112,6 +119,9 @@ RACE_CLOSE_MARGIN = 0.10  # show top-2 race classes together if within this prob
 RECOGNITION_COSINE_THRESHOLD = 0.68  # deepface's own default VGG-Face verification threshold
 DEX_MEAN_VALUES = (103.939, 116.779, 123.68)  # VGG-16 ImageNet BGR mean, per DEX's own preprocessing
 GALLERY_FILE = BASE_DIR / "gallery" / "known_faces.json"
+LBPH_GALLERY_DIR = BASE_DIR / "gallery" / "lbph"
+LBPH_FACE_SIZE = (200, 200)
+LBPH_CONFIDENCE_THRESHOLD = 80.0  # LBPH's own distance metric -- LOWER is a better match (opposite of cosine similarity)
 KNOWN_PEOPLE_DIR = BASE_DIR / "known_people"  # bundled reference photos for identity search (see README)
 IMAGE_FILE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 FACES_DB_FILE = BASE_DIR / "db" / "faces.db"  # sparse-column SQLite database, see save_face()
@@ -129,7 +139,11 @@ EMOTION_MODEL_OPTIONS = ["efficientnet", "ferplus", "mini_xception", "dan"]
 DROWSINESS_MODEL_OPTIONS = ["haarcascade"]
 RACE_MODEL_OPTIONS = ["fairface", "deepface"]
 EXPRESSION_MODEL_OPTIONS = ["blendshapes"]
-RECOGNITION_MODEL_OPTIONS = ["vggface"]
+RECOGNITION_MODEL_OPTIONS = ["vggface", "lbph"]
+FACE_DETECTOR_OPTIONS = ["ssd", "yolo"]  # ssd is the original required detector, always on
+YOLO_FACE_INPUT_SIZE = 640
+YOLO_FACE_STRIDES = (8, 16, 32)
+YOLO_FACE_IOU_THRESHOLD = 0.45
 FACIAL_HAIR_MODEL_OPTIONS = ["bisenet"]
 SKIN_TONE_MODEL_OPTIONS = ["mobilenetv2"]
 GLASSES_MODEL_OPTIONS = ["mobilenet"]
@@ -209,6 +223,7 @@ class Models:
     face_landmarks_nets: dict = field(default_factory=dict)
     hand_nets: dict = field(default_factory=dict)
     reconstruction_3d_nets: dict = field(default_factory=dict)
+    yolo_face_nets: dict = field(default_factory=dict)
 
     @property
     def offline_features(self) -> list[str]:
@@ -223,6 +238,7 @@ class Models:
                 ("EYE_COLOR", self.eye_color_nets), ("COLORIZATION", self.colorization_nets),
                 ("POSE", self.pose_nets), ("FACE_LANDMARKS", self.face_landmarks_nets),
                 ("HANDS", self.hand_nets), ("RECONSTRUCTION_3D", self.reconstruction_3d_nets),
+                ("FACE_DETECTOR_YOLO", self.yolo_face_nets),
             ] if not nets
         ]
 
@@ -264,6 +280,8 @@ def load_models() -> Models:
     recognition_nets = {}
     if TF_SUPPORTED and DEEPFACE_RECOGNITION_MODEL.exists():
         recognition_nets["vggface"] = build_recognition_model(str(DEEPFACE_RECOGNITION_MODEL))
+    if hasattr(cv2, "face"):
+        recognition_nets["lbph"] = True  # no pretrained weights -- trains fresh from gallery/lbph/ on demand
 
     if MIVOLO_SUPPORTED and MIVOLO_MODEL.exists():
         mivolo_config = MODEL_DIR / "mivolo_v2_config.json"
@@ -376,11 +394,93 @@ def load_models() -> Models:
         lm3d_template = load_lm3d_template(str(BFM_DIR))
         reconstruction_3d_nets["deep3d"] = (recon_net, bfm_model, lm3d_template)
 
+    yolo_face_nets = {}
+    if ONNXRUNTIME_SUPPORTED and YOLO_FACE_MODEL.exists():
+        yolo_face_nets["yolo"] = onnxruntime.InferenceSession(str(YOLO_FACE_MODEL), providers=["CPUExecutionProvider"])
+
     return Models(
         face_net, age_nets, gender_nets, emotion_nets, drowsiness_nets, race_nets, expression_nets, recognition_nets,
         facial_hair_nets, skin_tone_nets, glasses_nets, mask_nets, hair_color_nets, eye_color_nets, colorization_nets,
-        pose_nets, face_landmarks_nets, hand_nets, reconstruction_3d_nets,
+        pose_nets, face_landmarks_nets, hand_nets, reconstruction_3d_nets, yolo_face_nets,
     )
+
+
+def _yolo_letterbox(image: np.ndarray, target_size: int = YOLO_FACE_INPUT_SIZE) -> tuple[np.ndarray, float, tuple[float, float]]:
+    """Vendored from yakhyo/yolov8-face-onnx-inference's utils/general.py: resize preserving
+    aspect ratio + pad to a square target_size."""
+    h, w = image.shape[:2]
+    scale = min(target_size / h, target_size / w)
+    new_w, new_h = int(w * scale), int(h * scale)
+    resized = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+    dw, dh = (target_size - new_w) / 2, (target_size - new_h) / 2
+    top, bottom = int(dh), int(target_size - new_h - int(dh))
+    left, right = int(dw), int(target_size - new_w - int(dw))
+    padded = cv2.copyMakeBorder(resized, top, bottom, left, right, cv2.BORDER_CONSTANT, value=(114, 114, 114))
+    return padded, scale, (dw, dh)
+
+
+def _yolo_softmax(x: np.ndarray, axis: int = -1) -> np.ndarray:
+    exp_x = np.exp(x - np.max(x, axis=axis, keepdims=True))
+    return exp_x / np.sum(exp_x, axis=axis, keepdims=True)
+
+
+def detect_faces_yolo(session, frame: np.ndarray, conf_threshold: float = 0.5) -> list[list[int]]:
+    """YOLOv8-Face (yakhyo/yolov8-face-onnx-inference, weights unlicensed -- see README) via
+    onnxruntime -- cv2.dnn cannot load this ONNX export (verified: fails identically on both
+    OpenCV 4.10 and 5.0 with a mixed-dtype Cast/Mul error in its DFL decode subgraph), so this
+    feature needs onnxruntime specifically rather than this repo's usual cv2.dnn ONNX
+    convention. Decodes the raw 3-feature-map DFL output (strides 8/16/32) matching upstream's
+    own models/yolov8.py exactly, but only for boxes/scores -- the 5-point facial landmarks
+    this model also predicts aren't decoded since nothing downstream uses them. Returns boxes
+    in the same [x1, y1, x2, y2] int-list contract as detect_faces(), so it's a drop-in swap."""
+    letterboxed, scale, (dw, dh) = _yolo_letterbox(frame)
+    blob = cv2.cvtColor(letterboxed, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
+    blob = blob.transpose(2, 0, 1)[np.newaxis, ...]
+
+    input_name = session.get_inputs()[0].name
+    outputs = session.run(None, {input_name: blob})
+
+    all_boxes, all_scores = [], []
+    for pred, stride in zip(outputs, YOLO_FACE_STRIDES):
+        _, channels, h, w = pred.shape
+        pred = pred.reshape(1, channels, -1).transpose(0, 2, 1)[0]  # (H*W, 80)
+
+        grid_y, grid_x = np.meshgrid(np.arange(h) + 0.5, np.arange(w) + 0.5, indexing="ij")
+        grid_x, grid_y = grid_x.flatten(), grid_y.flatten()
+
+        bbox_pred = pred[:, :64].reshape(-1, 4, 16)
+        bbox_dist = _yolo_softmax(bbox_pred, axis=-1) @ np.arange(16)
+        cls_conf = 1 / (1 + np.exp(-pred[:, 64]))  # sigmoid
+
+        x1 = (grid_x - bbox_dist[:, 0]) * stride
+        y1 = (grid_y - bbox_dist[:, 1]) * stride
+        x2 = (grid_x + bbox_dist[:, 2]) * stride
+        y2 = (grid_y + bbox_dist[:, 3]) * stride
+        all_boxes.append(np.stack([x1, y1, x2, y2], axis=-1))
+        all_scores.append(cls_conf)
+
+    boxes = np.concatenate(all_boxes, axis=0)
+    scores = np.concatenate(all_scores, axis=0)
+    mask = scores >= conf_threshold
+    boxes, scores = boxes[mask], scores[mask]
+    if len(boxes) == 0:
+        return []
+
+    nms_boxes = [[x1, y1, x2 - x1, y2 - y1] for x1, y1, x2, y2 in boxes]  # cv2.dnn.NMSBoxes wants (x, y, w, h)
+    keep = cv2.dnn.NMSBoxes(nms_boxes, scores.tolist(), conf_threshold, YOLO_FACE_IOU_THRESHOLD)
+    if len(keep) == 0:
+        return []
+    boxes = boxes[np.array(keep).flatten()]
+
+    # Undo the letterbox padding/scale to map back to frame's own coordinates.
+    boxes[:, [0, 2]] -= dw
+    boxes[:, [1, 3]] -= dh
+    boxes[:, :4] /= scale
+    frame_h, frame_w = frame.shape[:2]
+    boxes[:, [0, 2]] = boxes[:, [0, 2]].clip(0, frame_w)
+    boxes[:, [1, 3]] = boxes[:, [1, 3]].clip(0, frame_h)
+
+    return boxes.astype(int).tolist()
 
 
 def detect_faces(net: cv2.dnn.Net, frame: np.ndarray, conf_threshold: float = 0.7) -> list[list[int]]:
@@ -833,6 +933,58 @@ def load_gallery() -> dict:
 def save_gallery(gallery: dict) -> None:
     GALLERY_FILE.parent.mkdir(parents=True, exist_ok=True)
     GALLERY_FILE.write_text(json.dumps({name: vec.tolist() for name, vec in gallery.items()}))
+
+
+def _lbph_preprocess(face_bgr: np.ndarray) -> np.ndarray:
+    """Grayscale + resize to a fixed size -- LBPH compares histograms computed over a fixed
+    cell grid, so training and query images need consistent dimensions."""
+    return cv2.resize(cv2.cvtColor(face_bgr, cv2.COLOR_BGR2GRAY), LBPH_FACE_SIZE)
+
+
+def enroll_lbph_face(name: str, face_bgr: np.ndarray) -> None:
+    """LBPH's enrollment (see ideas/lbph.md): unlike vggface's single embedding per name,
+    LBPH trains directly on raw face images, so ENROLL saves the actual (grayscale, fixed-
+    size) crop -- one file per enrollment click, accumulating under gallery/lbph/<name>/.
+    More enrolled photos per person generally improves LBPH's accuracy."""
+    person_dir = LBPH_GALLERY_DIR / name
+    person_dir.mkdir(parents=True, exist_ok=True)
+    existing = len(list(person_dir.glob("*.png")))
+    cv2.imwrite(str(person_dir / f"{existing:04d}.png"), _lbph_preprocess(face_bgr))
+
+
+def train_lbph_recognizer():
+    """Train an LBPHFaceRecognizer fresh from gallery/lbph/ (same 'no persisted model, retrain
+    on demand' spirit as this app's eigenfaces feature -- cheap at the scale of a personal
+    enrolled gallery). Returns (recognizer, label_names) where label_names[i] is the enrolled
+    name for numeric label i, or None if opencv-contrib's cv2.face isn't available or nothing
+    is enrolled yet."""
+    if not hasattr(cv2, "face") or not LBPH_GALLERY_DIR.is_dir():
+        return None
+
+    label_names = sorted(p.name for p in LBPH_GALLERY_DIR.iterdir() if p.is_dir())
+    if not label_names:
+        return None
+
+    features, labels = [], []
+    for label, name in enumerate(label_names):
+        for path in (LBPH_GALLERY_DIR / name).glob("*.png"):
+            img = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
+            if img is not None:
+                features.append(img)
+                labels.append(label)
+    if not features:
+        return None
+
+    recognizer = cv2.face.LBPHFaceRecognizer_create()
+    recognizer.train(features, np.array(labels))
+    return recognizer, label_names
+
+
+def predict_identity_lbph(recognizer, label_names: list[str], face_bgr: np.ndarray) -> tuple[str, float] | None:
+    """LOWER LBPH confidence is a better match (opposite convention from vggface's cosine
+    similarity) -- accept only below LBPH_CONFIDENCE_THRESHOLD."""
+    label, confidence = recognizer.predict(_lbph_preprocess(face_bgr))
+    return (label_names[label], confidence) if confidence < LBPH_CONFIDENCE_THRESHOLD else None
 
 
 def _sanitize_column_name(feature: str, model_key: str) -> str:
@@ -1326,6 +1478,7 @@ def analyze_frame(
     active_hands: set,
     global_adjustments: dict,
     face_adjustments: dict,
+    face_detector: str = "ssd",
 ):
     """Detect faces and run inference for whichever model keys are active per feature.
     Multiple active models for the same feature (e.g. active_age = {"caffe", "ssrnet"})
@@ -1335,12 +1488,21 @@ def analyze_frame(
     every output derived from this call (the annotated image, every face crop, every
     classification) sees the adjusted pixels. face_adjustments apply again, per detected
     face, to that face's own crop only, after detection but before classification -- they
-    affect just that one face's thumbnail/attributes, not the shared frame or other faces."""
+    affect just that one face's thumbnail/attributes, not the shared frame or other faces.
+
+    face_detector picks which face detection backend runs (unlike every other feature,
+    exactly one runs per frame -- running two detectors and merging their boxes would just
+    produce duplicate/overlapping faces, not a meaningfully combined result). "yolo" falls
+    back to "ssd" (the always-required detector) if the YOLO model isn't loaded."""
     if global_adjustments and any(global_adjustments.values()):
         frame = apply_image_adjustments(frame, global_adjustments)
 
     annotated_frame = frame.copy()
-    face_boxes = detect_faces(models.face_net, frame, conf_threshold)
+    yolo_net = models.yolo_face_nets.get("yolo")
+    if face_detector == "yolo" and yolo_net is not None:
+        face_boxes = detect_faces_yolo(yolo_net, frame, conf_threshold)
+    else:
+        face_boxes = detect_faces(models.face_net, frame, conf_threshold)
     cropped_faces = []
     any_drowsy = False
 
@@ -1364,6 +1526,10 @@ def analyze_frame(
                    ("caffe" in active_gender and "caffe" in models.gender_nets)
 
     eye_cascade = models.drowsiness_nets.get("haarcascade")
+
+    # Trained once per frame, not once per face -- LBPH has no persisted model, retraining per
+    # face would multiply an already-nontrivial cost by the face count for no benefit.
+    lbph_trained = train_lbph_recognizer() if "lbph" in active_recognition and models.recognition_nets.get("lbph") else None
 
     for idx, (x1, y1, x2, y2) in enumerate(face_boxes, 1):
         # Correct in-plane roll (tilted head) before cropping/classifying, using the same
@@ -1466,9 +1632,17 @@ def analyze_frame(
             net = models.recognition_nets.get(key)
             if net is None:
                 continue
-            face_embedding = compute_face_embedding(net, face)
-            match = match_face_identity(face_embedding, gallery)
-            value = f"{match[0]} ({match[1] * 100:.0f}%)" if match else "UNKNOWN"
+            if key == "lbph":
+                if lbph_trained is None:
+                    value = "UNKNOWN"
+                else:
+                    recognizer, label_names = lbph_trained
+                    match = predict_identity_lbph(recognizer, label_names, face)
+                    value = f"{match[0]} ({match[1]:.0f})" if match else "UNKNOWN"
+            else:
+                face_embedding = compute_face_embedding(net, face)
+                match = match_face_identity(face_embedding, gallery)
+                value = f"{match[0]} ({match[1] * 100:.0f}%)" if match else "UNKNOWN"
             recognition_pairs.append((key, value))
 
         facial_hair_pairs = []

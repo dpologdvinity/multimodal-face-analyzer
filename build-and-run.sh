@@ -71,7 +71,7 @@ RACE_MODEL="$REPLY_MODEL"
 prompt_feature "EXPRESSION" blendshapes
 EXPRESSION_MODEL="$REPLY_MODEL"
 
-prompt_feature "RECOGNITION" vggface
+prompt_feature "RECOGNITION" vggface lbph
 RECOGNITION_MODEL="$REPLY_MODEL"
 
 prompt_feature "FACIAL HAIR" bisenet
@@ -95,6 +95,9 @@ HAND_MODEL="$REPLY_MODEL"
 prompt_feature "3D RECONSTRUCTION (ships no working weights -- see README)" deep3d
 RECONSTRUCTION_3D_MODEL="$REPLY_MODEL"
 
+prompt_feature "YOLO FACE DETECTOR (additive -- SSD detector stays required/always on)" yolo
+YOLO_FACE_MODEL="$REPLY_MODEL"
+
 echo "" >&2
 echo "Building ${IMAGE_TAG} with:" >&2
 echo "  AGE_MODEL=${AGE_MODEL}" >&2
@@ -111,6 +114,7 @@ echo "  COLORIZATION_MODEL=${COLORIZATION_MODEL}" >&2
 echo "  POSE_MODEL=${POSE_MODEL}" >&2
 echo "  HAND_MODEL=${HAND_MODEL}" >&2
 echo "  RECONSTRUCTION_3D_MODEL=${RECONSTRUCTION_3D_MODEL}" >&2
+echo "  YOLO_FACE_MODEL=${YOLO_FACE_MODEL}" >&2
 echo "" >&2
 
 docker build \
@@ -128,6 +132,7 @@ docker build \
     --build-arg POSE_MODEL="$POSE_MODEL" \
     --build-arg HAND_MODEL="$HAND_MODEL" \
     --build-arg RECONSTRUCTION_3D_MODEL="$RECONSTRUCTION_3D_MODEL" \
+    --build-arg YOLO_FACE_MODEL="$YOLO_FACE_MODEL" \
     -t "$IMAGE_TAG" .
 
 echo "" >&2

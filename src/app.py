@@ -124,6 +124,14 @@ def _model_checkboxes(label: str, nets: dict) -> set:
 
 
 st.sidebar.markdown("### MODEL SELECTION")
+
+active_face_detector = "ssd"
+if models.yolo_face_nets:
+    active_face_detector = st.sidebar.selectbox(
+        "FACE DETECTOR", ["ssd", "yolo"], index=0,
+        help="Exactly one detector runs per frame -- ssd is the original TensorFlow SSD/ResNet-10 detector (always available), yolo is YOLOv8-Face.",
+    )
+
 active_age = _model_checkboxes("AGE", models.age_nets)
 active_gender = _model_checkboxes("GENDER", models.gender_nets)
 active_race = _model_checkboxes("RACE", models.race_nets)
@@ -233,7 +241,7 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
         models, frame, conf_threshold, active_age, active_gender, active_emotion, active_drowsiness, active_race, active_expression,
         active_recognition, st.session_state.get("gallery", {}),
         active_facial_hair, active_skin_tone, active_glasses, active_mask, active_hair_color, active_eye_color,
-        active_pose, active_face_landmarks, active_hands, global_adjustments, face_adjustments,
+        active_pose, active_face_landmarks, active_hands, global_adjustments, face_adjustments, face_detector=active_face_detector,
     )
 
     if was_colorized:
@@ -275,11 +283,15 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
         with cols[i % 4]:
             st.image(face["image"], use_container_width=True)
             st.markdown(_target_card_html(face), unsafe_allow_html=True)
-            if face["embedding"] is not None:
+            lbph_available = models.recognition_nets.get("lbph") is not None
+            if face["embedding"] is not None or lbph_available:
                 enroll_name = st.text_input("ENROLL AS", key=f"enroll_name_{identifier}_{face['idx']}", label_visibility="collapsed", placeholder="ENROLL AS...")
                 if st.button("ENROLL", key=f"enroll_btn_{identifier}_{face['idx']}") and enroll_name:
-                    st.session_state["gallery"][enroll_name] = np.array(face["embedding"], dtype=np.float32)
-                    inference.save_gallery(st.session_state["gallery"])
+                    if face["embedding"] is not None:
+                        st.session_state["gallery"][enroll_name] = np.array(face["embedding"], dtype=np.float32)
+                        inference.save_gallery(st.session_state["gallery"])
+                    if lbph_available:
+                        inference.enroll_lbph_face(enroll_name, cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR))
                     st.rerun()
 
             col_search, col_save = st.columns(2)
@@ -353,7 +365,7 @@ with tab_webcam:
                 models, img, conf_threshold, active_age, active_gender, active_emotion, active_drowsiness, active_race, active_expression,
                 active_recognition, st.session_state.get("gallery", {}),
                 active_facial_hair, active_skin_tone, active_glasses, active_mask, active_hair_color, active_eye_color,
-                active_pose, active_face_landmarks, active_hands, global_adjustments, face_adjustments,
+                active_pose, active_face_landmarks, active_hands, global_adjustments, face_adjustments, face_detector=active_face_detector,
             )
             return av.VideoFrame.from_ndarray(annotated_frame, format="bgr24")
 
