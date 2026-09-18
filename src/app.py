@@ -5,6 +5,7 @@ from collections import deque
 import csv
 import io
 import json
+import re
 from html import escape
 
 import av
@@ -385,6 +386,20 @@ def _comparison_rows(face: dict) -> list[dict[str, str]]:
     return sorted(face["model_results"], key=lambda row: (row["Feature"], row["Model"]))
 
 
+def _render_confidence(rows: list[dict[str, str]]) -> None:
+    """Render explicit percentage scores only; labels are not confidence."""
+    scored = []
+    for row in rows:
+        match = re.search(r"(\d+(?:\.\d+)?)%", row["Output"])
+        if match:
+            scored.append((row, min(100.0, float(match.group(1)))))
+    if not scored:
+        st.caption("Confidence unavailable: active backend returned labels without calibrated scores.")
+        return
+    for row, score in scored:
+        st.progress(score / 100, text=f"{row['Feature']} / {row['Model']}: {score:.0f}%")
+
+
 def _hoverable_face_image(frame_bgr: np.ndarray, faces: list[dict]) -> str:
     """Render the annotated frame with focusable hover regions over detected boxes."""
     height, width = frame_bgr.shape[:2]
@@ -512,6 +527,7 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
         if rows:
             st.caption(f"Face {face['idx']:02d}")
             st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+            _render_confidence(rows)
 
     if st.button("SCAN ALL FACES: RECOGNIZED / UNRECOGNIZED", key=f"scan_btn_{identifier}"):
         faces_bgr = [cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR) for face in cropped_faces]
