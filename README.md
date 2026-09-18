@@ -6,13 +6,13 @@
 ![Streamlit](https://img.shields.io/badge/Streamlit-UI-00ff66?style=flat-square&logo=streamlit&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Ready-00ff66?style=flat-square&logo=docker&logoColor=white)
 
-> Computer vision pipeline for face detection with age, gender, race, emotion, expression (blendshapes), drowsiness, facial hair, glasses, mask, and hair/eye color inference. A containerized Streamlit web app.
+> Computer vision pipeline for face detection with age, gender, race, emotion, expression (blendshapes), gaze, drowsiness, facial hair, glasses, mask, and hair/eye color inference. A containerized Streamlit web app.
 
 ---
 
 ## Key Features
 
-- **Multi-model face analysis:** face detection, age, gender, race, emotion, expression (blendshapes), drowsiness, facial hair, glasses, face mask, colorimetric hair/eye color, face landmarks, plus whole-frame auto-colorization, body pose estimation, and hand landmarks -- most features have 2+ selectable model backends.
+- **Multi-model face analysis:** face detection, age, gender, race, emotion, expression (blendshapes), gaze, drowsiness, facial hair, glasses, face mask, colorimetric hair/eye color, face landmarks, plus whole-frame auto-colorization, body pose estimation, and hand landmarks -- most features have 2+ selectable model backends.
 - **Image adjustments:** 11 Lightroom-style sliders (exposure, contrast, shadows/highlights, saturation/vibrance, sharpness, noise reduction, etc.) for the whole image, all face crops before classification, and each detected face's preview separately.
 - **Face details on hover:** Hover or focus a detected face box in the annotated image to see its analysis results; full face cards remain below the image.
 - **Identity search:** SEARCH button per detected face, matching against bundled reference photos (`known_people/`, a few famous people out of the box) plus an optional user-specified directory. Local matching only, no live internet search.
@@ -24,6 +24,7 @@
 - **Build-time feature toggles:** disable any model at Docker build time to shrink the image (see [Docker](#docker-web-app)).
 - **Graceful degradation:** any model missing at runtime (file or dependency not present) is skipped, not a crash -- the rest of the pipeline keeps working.
 - **Cyberpunk web interface:** terminal-styled drag-and-drop Streamlit UI, plus snapshot/live webcam tabs.
+- **Live performance metrics:** webcam LIVE mode reports recent FPS and average latency for each active feature/model pair.
 
 ---
 
@@ -100,6 +101,16 @@ Note the class label order (and count) differs between backends -- each is track
 | `blendshapes`  | MediaPipe | Top 3 facial muscle coefficients, e.g. `mouthSmileLeft 0.82, jawOpen 0.15, browDownRight 0.09` |
 
 Raw output of Google's MediaPipe Face Landmarker (Apache 2.0), a separate feature from Emotion. BlendShapes outputs 52 continuous facial-muscle-movement coefficients (e.g. mouthSmileLeft, browDownRight, jawOpen, eyeBlinkLeft, etc.) tracking individual facial movements, whereas Emotion backends predict discrete emotion classes (angry, happy, sad, etc.). There is no validated mapping from blendshapes to emotion labels, so Expression surfaces the raw top-N-scoring blendshape coefficients as-is.
+
+### Gaze (web app only)
+
+| Backend | Framework | Output |
+| ------- | --------- | ------ |
+| `mediapipe` | MediaPipe Face Landmarker | coarse direction such as `left/level` or `center/down` |
+
+Gaze reuses the same Face Landmarker model as Expression and Face Landmarks. It estimates
+coarse direction from iris and eye geometry within each face crop; the result is an attention
+cue, not a calibrated eye tracker.
 
 ### Recognition (web app only)
 
