@@ -245,6 +245,12 @@ def _get_face_tracker() -> inference.FaceTracker:
 
 
 @st.cache_resource
+def _get_liveness_tracker() -> inference.LivenessTracker:
+    """Keep blink history stable across Streamlit reruns for the LIVE webcam stream."""
+    return inference.LivenessTracker()
+
+
+@st.cache_resource
 def _get_voice_fusion() -> inference.VoiceFaceFusion:
     """#10: same caching reasoning as _get_face_tracker() above -- the audio callback and the
     video callback are different threads and need to share the SAME buffer instance."""
@@ -384,6 +390,7 @@ def _target_card_html(face: dict) -> str:
         ("EXPR", face["expression"]), ("GAZE", face["gaze"]), ("EYE CONTACT", face["eye_contact"]), ("HEAD POSE", face["head_pose"]), ("MAKEUP", face["makeup"]), ("IDENTITY", face["identity"]), ("FACIAL HAIR", face["facial_hair"]),
         ("SKIN TONE", face["skin_tone"]), ("GLASSES", face["glasses"]), ("MASK", face["mask"]),
         ("HAIR COLOR", face["hair_color"]), ("EYE COLOR", face["eye_color"]),
+        ("LIVENESS", face["liveness"]),
     ):
         if values:
             rows += f'<div class="target-card-row"><span class="k">{label}</span><span class="v">{escape(" / ".join(values))}</span></div>'
@@ -713,9 +720,11 @@ with tab_webcam:
         frame_counter = {"n": 0}
         _NO_MODELS: set = set()
         face_tracker = _get_face_tracker()
+        liveness_tracker = _get_liveness_tracker()
         reset_col, voice_col = st.columns([1, 2])
         if reset_col.button("RESET TRACKING IDS", key="reset_tracking_ids"):
             face_tracker.reset()
+            liveness_tracker.reset()
 
         # #10: off by default -- requesting the microphone is a permission prompt the user
         # didn't ask for just by opening the webcam tab, so it needs its own explicit opt-in
@@ -756,6 +765,7 @@ with tab_webcam:
                 active_gaze if run_classifiers else _NO_MODELS,
                 global_adjustments, face_adjustments,
                 face_detector=active_face_detector, metrics=metrics, tracker=face_tracker,
+                liveness_tracker=liveness_tracker,
             )
             metrics["frame_ms"] = (time.perf_counter() - frame_started) * 1000
             metrics["timestamp"] = time.monotonic()

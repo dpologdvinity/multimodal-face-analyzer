@@ -22,6 +22,21 @@ import cv2
 import numpy as np
 
 try:
+    from .liveness import (
+        LivenessTracker,
+        assess_static_liveness,
+        blink_score_from_landmarker,
+        texture_artifact_score,
+    )
+except ImportError:  # app.py runs with src/ on sys.path in the container
+    from liveness import (
+        LivenessTracker,
+        assess_static_liveness,
+        blink_score_from_landmarker,
+        texture_artifact_score,
+    )
+
+try:
     import torch
     from nets.dan_model import DAN
     from nets.ssrnet_model import SSRNet
@@ -1767,6 +1782,13 @@ def _detect_face_landmarker(landmarker, face_bgr: np.ndarray):
         return landmarker.detect(mp_image)
 
 
+def predict_texture_artifact_score(face_bgr: np.ndarray) -> float:
+    """Score regular high-frequency texture in a face crop as a replay cue."""
+    gray = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2GRAY)
+    sample = cv2.resize(gray, (32, 32), interpolation=cv2.INTER_AREA)
+    return texture_artifact_score(sample.tolist())
+
+
 def predict_expression_blendshapes(landmarker, face_bgr: np.ndarray, result=None) -> str:
     """Predict facial expression via MediaPipe's BlendShapes (52 continuous muscle coefficients).
     Returns the top 3 highest-scoring blendshapes as a comma-separated string,
@@ -2143,6 +2165,7 @@ def analyze_frame(
     face_detector: str = "ssd",
     metrics: dict | None = None,
     tracker: "FaceTracker | None" = None,
+    liveness_tracker: "LivenessTracker | None" = None,
 ):
     """Detect faces and run inference for whichever model keys are active per feature.
     Multiple active models for the same feature (e.g. active_age = {"caffe", "ssrnet"})
@@ -2163,7 +2186,10 @@ def analyze_frame(
     "next frame" for an ID to persist into). When a FaceTracker is passed -- video/webcam LIVE
     mode only -- each face's dict also carries a stable "track_id" (see FaceTracker), and the
     number burned into the annotated frame is that track_id instead of this frame's
-    detection-order position, so tracking is visible, not just data the caller ignores."""
+    detection-order position, so tracking is visible, not just data the caller ignores).
+
+    liveness_tracker is optional for the same reason. Static callers get texture-only evidence;
+    LIVE callers also get blink transitions keyed by the stable track ID."""
     if global_adjustments and any(global_adjustments.values()):
         frame = apply_image_adjustments(frame, global_adjustments)
 
@@ -2234,12 +2260,19 @@ def analyze_frame(
             "blendshapes" in active_expression
             or "mediapipe" in active_gaze
             or "blendshapes" in active_face_landmarks
+            or face_landmarker is not None
         )
         landmarker_result = (
             _detect_face_landmarker(face_landmarker, face)
             if face_landmarker is not None and needs_face_landmarks
             else None
         )
+        texture_score = predict_texture_artifact_score(face)
+        blink_score = blink_score_from_landmarker(landmarker_result)
+        if liveness_tracker is not None and track_id is not None:
+            liveness_result = liveness_tracker.update(track_id, blink_score, texture_score)
+        else:
+            liveness_result = assess_static_liveness(texture_score)
 
         blob227 = None
         if need_blob227:
@@ -2540,6 +2573,7 @@ def analyze_frame(
             "eye_contact": [("derived", value) for value in eye_contact], "head_pose": head_pose_pairs,
             "skin_tone": skin_tone_pairs, "glasses": glasses_pairs, "mask": mask_pairs,
             "hair_color": hair_color_pairs, "eye_color": eye_color_pairs, "drowsiness": drowsy_pairs,
+            "liveness": [("heuristic", liveness_result.summary)],
         })
         model_results = [
             {"Feature": feature.replace("_", " ").upper(), "Model": model, "Output": str(value)}
@@ -2550,7 +2584,7 @@ def analyze_frame(
                 "head pose": head_pose_pairs,
                 "facial hair": facial_hair_pairs, "skin tone": skin_tone_pairs, "glasses": glasses_pairs,
                 "mask": mask_pairs, "hair color": hair_color_pairs, "eye color": eye_color_pairs,
-                "drowsiness": drowsy_pairs,
+                "drowsiness": drowsy_pairs, "liveness": [("heuristic", liveness_result.summary)],
             }.items()
             for model, value in pairs
         ]
@@ -2576,6 +2610,12 @@ def analyze_frame(
             "mask": _format_results(mask_pairs),
             "hair_color": _format_results(hair_color_pairs),
             "eye_color": _format_results(eye_color_pairs),
+            "liveness": [liveness_result.summary],
+            "liveness_status": liveness_result.status,
+            "blink_count": liveness_result.blink_count,
+            "blink_rate": liveness_result.blink_rate,
+            "texture_score": liveness_result.texture_score,
+            "texture_artifact": liveness_result.texture_artifact,
             "embedding": face_embedding.tolist() if face_embedding is not None else None,
             "raw_columns": raw_columns,
             "model_results": model_results,

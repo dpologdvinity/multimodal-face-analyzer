@@ -26,6 +26,7 @@
 - **Input validation:** empty or invalid image uploads show a clear error, and LBPH enrollment names are restricted to safe single directory names.
 - **Cyberpunk web interface:** terminal-styled drag-and-drop Streamlit UI, plus snapshot/live webcam tabs.
 - **Live performance metrics:** webcam LIVE mode reports recent FPS and average latency for each active feature/model pair.
+- **Liveness / anti-spoofing:** webcam LIVE mode tracks blink transitions per face and all modes score regular high-frequency texture as a replay/screen cue. Results show `LIVE`, `SUSPECTED SPOOF`, or `INCONCLUSIVE`.
 - **Crowd count / demographics:** opt-in (off by default), whole-image age/gender/race breakdown aggregated from per-face results, no new model.
 - **Performance controls:** LIVE-mode classifier frame skip, plus content-hash caching of per-face classifier outputs (see [Performance](#performance)).
 
@@ -185,6 +186,18 @@ Without both gated files present, this feature shows as offline (`RECONSTRUCTION
 | Backend                   | Framework | Output             |
 | ------------------------- | --------- | ------------------ |
 | Haar cascade eye detector | OpenCV    | `DROWSY` / `ALERT` |
+
+### Liveness / anti-spoofing
+
+Liveness uses two lightweight heuristics and needs no new model file. In webcam LIVE mode,
+MediaPipe eye-blink blendshapes are tracked by the existing stable face ID; a blink transition
+increments the count and produces a blink rate per minute. Every face crop also receives a
+regular high-frequency texture score for screen, moire, or replay artifacts. A high texture
+score takes precedence and reports `SUSPECTED SPOOF`; a blink reports `LIVE`; no temporal blink
+evidence on an image or new track reports `INCONCLUSIVE`.
+
+These are screening cues, not biometric proof. Lighting, compression, makeup, camera focus, and
+display hardware can produce false positives or false negatives.
 
 ### Facial Hair (web app only)
 
