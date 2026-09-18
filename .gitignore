@@ -1,0 +1,31 @@
+# Byte-compiled / optimized / Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Environments
+.venv/
+venv/
+ENV/
+env/
+.env
+
+# Output & processed media
+output/
+outputs/
+*.log
+
+# Streamlit local state
+.streamlit/
+
+# IDE & OS system files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Enrolled-face gallery (runtime user data, not source)
+gallery/
