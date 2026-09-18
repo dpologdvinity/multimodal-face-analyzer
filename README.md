@@ -268,6 +268,28 @@ Eleven Lightroom-style sliders, all defaulting to 0 (no-op). Pure OpenCV/numpy -
 
 Both panels use the same 11 sliders and the same underlying `apply_image_adjustments()` function; an untouched slider is skipped entirely, so leaving either panel at defaults costs nothing extra per frame.
 
+### Select Region & Transform (web app only)
+
+| Backend | Framework | Output |
+| ------- | --------- | ------ |
+| Rectangle crop and geometric transform | OpenCV | Transformed PNG |
+
+Open **SELECT REGION & TRANSFORM** beneath an uploaded image or webcam snapshot, enter rectangle bounds, choose translate, reflect, rotate, scale, or shear, then apply and download the result. Coordinates use the image's pixel dimensions; an empty rectangle is rejected. Translation, reflection, and rotation retain the crop size, while scaling and shearing can change it. This works even when no face is detected. No model file or Docker build argument is needed.
+
+### Per-Face Image Operations (web app only)
+
+| Operation | Framework | Methods |
+| --------- | --------- | ------- |
+| Intensity | OpenCV | negative, log, gamma, contrast stretch |
+| Enhance | OpenCV | brightness, contrast, luminance equalization |
+| Sharpen | OpenCV | Laplacian, high boost |
+| Color correct | OpenCV | LAB contrast adjustment |
+| Denoise | OpenCV | Gaussian, median, non-local means |
+| Bilateral filter | OpenCV | edge-preserving smoothing |
+| Wavelet denoise | PyWavelets | wavelet soft thresholding |
+
+Each detected face has one **IMAGE OP** selector and **APPLY IMAGE OP** button. Operations act on that face's displayed crop; the result can be downloaded as a PNG. Intensity, sharpen, and denoise expose a method selector. These operations need no model files or Docker build arguments. CNN and GAN denoising are not included because trained weights are not supplied.
+
 Model provenance: DAN, SSR-Net, and DeepFace's race model are vendored research code (`src/nets/`). DAN and SSR-Net have no explicit upstream license file (research/educational use). DeepFace (race, gender, and recognition/`deepface_vgg.h5`) is MIT. FairFace's ONNX conversion is MIT (underlying dataset CC BY 4.0). InsightFace's model is non-commercial research use only (see Gender above). BiSeNet face-parsing (facial hair) and Face-Mask-Detection (mask) are MIT; the glasses detector's license is unstated.
 
 ---

@@ -676,6 +676,193 @@ def apply_image_adjustments(face_bgr: np.ndarray, adjustments: dict) -> np.ndarr
     return np.clip(img, 0, 255).astype(np.uint8)
 
 
+# --- Rectangle-select geometric transforms (ideas/transform.md, ideas/geo-transform.md) ---
+# Applied to an arbitrary user-selected sub-rectangle of the whole image, independent of face
+# detection -- these operate on any region, not just faces.
+GEOMETRIC_TRANSFORM_OPTIONS = ["translate", "reflect", "rotate", "scale", "shear"]
+
+
+def crop_region(frame: np.ndarray, x1: int, y1: int, x2: int, y2: int) -> np.ndarray:
+    """Crop an arbitrary rectangle, clamped to frame bounds."""
+    h, w = frame.shape[:2]
+    x1, x2 = sorted((max(0, min(x1, w)), max(0, min(x2, w))))
+    y1, y2 = sorted((max(0, min(y1, h)), max(0, min(y2, h))))
+    return frame[y1:y2, x1:x2]
+
+
+def apply_geometric_transform(region: np.ndarray, transform_type: str, **params) -> np.ndarray:
+    """Apply one geometric transform to a cropped region. Matches the matrices in
+    ideas/transform.md / ideas/geo-transform.md directly (translation, reflection, rotation,
+    scaling, shearing)."""
+    h, w = region.shape[:2]
+
+    if transform_type == "translate":
+        dx, dy = params.get("dx", 0), params.get("dy", 0)
+        m = np.float32([[1, 0, dx], [0, 1, dy]])
+        return cv2.warpAffine(region, m, (w, h))
+
+    if transform_type == "reflect":
+        axis = params.get("axis", "horizontal")
+        return cv2.flip(region, 1 if axis == "horizontal" else 0)
+
+    if transform_type == "rotate":
+        angle, scale = params.get("angle", 0.0), params.get("scale", 1.0)
+        m = cv2.getRotationMatrix2D((w / 2, h / 2), angle, scale)
+        return cv2.warpAffine(region, m, (w, h))
+
+    if transform_type == "scale":
+        fx, fy = params.get("fx", 1.0), params.get("fy", 1.0)
+        interp = cv2.INTER_AREA if fx < 1 and fy < 1 else cv2.INTER_CUBIC
+        return cv2.resize(region, None, fx=fx, fy=fy, interpolation=interp)
+
+    if transform_type == "shear":
+        axis, factor = params.get("axis", "x"), params.get("factor", 0.0)
+        if axis == "x":
+            out_w, out_h = max(1, int(np.ceil(w + abs(factor) * h))), h
+            m = np.float32([[1, factor, max(0, -factor * h)], [0, 1, 0], [0, 0, 1]])
+        else:
+            out_w, out_h = w, max(1, int(np.ceil(h + abs(factor) * w)))
+            m = np.float32([[1, 0, 0], [factor, 1, max(0, -factor * w)], [0, 0, 1]])
+        return cv2.warpPerspective(region, m, (out_w, out_h))
+
+    raise ValueError(f"Unknown transform_type: {transform_type}")
+
+
+# --- Per-face one-click image operations (ideas/intensity.md, enhance.md, sharpen.md,
+# color-correct.md, denoise.md, bilateral-filter.md, wavelet-denoise.md) ---
+IMAGE_OP_OPTIONS = ["intensity", "enhance", "sharpen", "color_correct", "denoise", "bilateral_filter", "wavelet_denoise"]
+INTENSITY_METHODS = ["negative", "log", "gamma", "contrast_stretch"]
+SHARPEN_METHODS = ["laplacian", "high_boost"]
+DENOISE_METHODS = ["gaussian", "median", "nlm"]
+
+
+def apply_intensity_transform(face_bgr: np.ndarray, method: str = "gamma", gamma: float = 0.7, r1: int = 70, s1: int = 0, r2: int = 140, s2: int = 255) -> np.ndarray:
+    """Intensity transformations (ideas/intensity.md): negative (s = L-1-r), log (s =
+    c*log(1+r), expands dark detail), gamma/power-law (s = c*r^gamma, gamma<1 brightens,
+    gamma>1 darkens), or piecewise-linear contrast stretching."""
+    img = face_bgr.astype(np.float32)
+
+    if method == "negative":
+        return (255 - img).astype(np.uint8)
+
+    if method == "log":
+        c = 255.0 / np.log(1 + img.max()) if img.max() > 0 else 1.0
+        return np.clip(c * np.log(1 + img), 0, 255).astype(np.uint8)
+
+    if method == "gamma":
+        return np.clip(255.0 * (img / 255.0) ** gamma, 0, 255).astype(np.uint8)
+
+    if method == "contrast_stretch":
+        out = np.empty_like(img)
+        low = img <= r1
+        mid = (img > r1) & (img <= r2)
+        high = img > r2
+        out[low] = (s1 / r1) * img[low] if r1 else 0
+        out[mid] = ((s2 - s1) / (r2 - r1)) * (img[mid] - r1) + s1
+        out[high] = ((255 - s2) / (255 - r2)) * (img[high] - r2) + s2
+        return np.clip(out, 0, 255).astype(np.uint8)
+
+    raise ValueError(f"Unknown intensity method: {method}")
+
+
+def apply_enhance(face_bgr: np.ndarray, brightness: float = 10.0, contrast: float = 1.3) -> np.ndarray:
+    """General enhancement (ideas/enhance.md): brightness/contrast adjustment
+    (cv2.addWeighted) followed by luminance histogram equalization (LAB's L channel, so color
+    isn't distorted the way equalizing each BGR channel independently would)."""
+    adjusted = cv2.addWeighted(face_bgr, contrast, np.zeros_like(face_bgr), 0, brightness)
+    lab = cv2.cvtColor(adjusted, cv2.COLOR_BGR2LAB)
+    l, a, b = cv2.split(lab)
+    l = cv2.equalizeHist(l)
+    return cv2.cvtColor(cv2.merge((l, a, b)), cv2.COLOR_LAB2BGR)
+
+
+def apply_sharpen(face_bgr: np.ndarray, method: str = "laplacian") -> np.ndarray:
+    """Sharpening (ideas/sharpen.md): basic Laplacian kernel, or a stronger high-boost filter
+    (larger center coefficient -> more pronounced edge emphasis)."""
+    if method == "high_boost":
+        kernel = np.array([[0, -1, 0], [-1, 6, -1], [0, -1, 0]])
+    else:
+        kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
+    return cv2.filter2D(face_bgr, -1, kernel)
+
+
+def apply_color_correct(face_bgr: np.ndarray) -> np.ndarray:
+    """Color correction (ideas/color-correct.md): BGR -> LAB, CLAHE (adaptive histogram
+    equalization) on the L channel only, back to BGR -- corrects contrast/color balance
+    without the color-shifting artifacts of equalizing in RGB/BGR space directly."""
+    lab = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2LAB)
+    l, a, b = cv2.split(lab)
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+    l = clahe.apply(l)
+    return cv2.cvtColor(cv2.merge((l, a, b)), cv2.COLOR_LAB2BGR)
+
+
+def apply_denoise(face_bgr: np.ndarray, method: str = "nlm") -> np.ndarray:
+    """Classical denoising (ideas/denoise.md): Gaussian (smooths Gaussian/sensor noise,
+    slightly blurs edges), median (strong against salt-and-pepper/impulse noise, better edge
+    preservation), or Non-Local Means (searches the whole image for similar patches, best
+    texture preservation, slowest). CNN/GAN-based methods from the same doc are skipped --
+    they need trained weights this repo doesn't have a source for (same category of gap as
+    skin_tone/deep3d elsewhere in this app)."""
+    if method == "gaussian":
+        return cv2.GaussianBlur(face_bgr, (5, 5), 1.5)
+    if method == "median":
+        return cv2.medianBlur(face_bgr, 5)
+    if method == "nlm":
+        return cv2.fastNlMeansDenoisingColored(face_bgr, h=10, hColor=10, templateWindowSize=7, searchWindowSize=21)
+    raise ValueError(f"Unknown denoise method: {method}")
+
+
+def apply_bilateral_filter(face_bgr: np.ndarray, diameter: int = 15, sigma_color: float = 75.0, sigma_space: float = 75.0) -> np.ndarray:
+    """Edge-preserving denoise (ideas/bilateral-filter.md.md): weights nearby pixels by both
+    spatial closeness and intensity similarity, so edges (large intensity jumps) are preserved
+    while flat/noisy regions get smoothed -- unlike Gaussian blur, which smooths everything
+    uniformly regardless of edges."""
+    return cv2.bilateralFilter(face_bgr, diameter, sigma_color, sigma_space)
+
+
+def apply_wavelet_denoise(face_bgr: np.ndarray, threshold: float = 0.05, wavelet: str = "db1") -> np.ndarray:
+    """Wavelet denoising (ideas/wavelet-denoise.md): the source doc uses ImageMagick/Wand's
+    wavelet_denoise(); this app has no ImageMagick dependency, so this is the equivalent
+    operation via PyWavelets instead -- a multi-level discrete wavelet decomposition per
+    channel, soft-thresholding the detail (noise-dominated) coefficients, then reconstructing.
+    threshold is fractional (0-1), scaled against each channel's own coefficient magnitude
+    range so it behaves similarly across images regardless of absolute brightness."""
+    import pywt
+
+    channels = cv2.split(face_bgr.astype(np.float32))
+    denoised_channels = []
+    for channel in channels:
+        coeffs = pywt.wavedec2(channel, wavelet, level=2)
+        detail_coeffs = coeffs[1:]
+        max_detail = max((np.abs(d).max() for level in detail_coeffs for d in level), default=1.0) or 1.0
+        abs_threshold = threshold * max_detail
+        thresholded = [coeffs[0]] + [
+            tuple(pywt.threshold(d, abs_threshold, mode="soft") for d in level) for level in detail_coeffs
+        ]
+        reconstructed = pywt.waverec2(thresholded, wavelet)
+        denoised_channels.append(reconstructed[:channel.shape[0], :channel.shape[1]])
+
+    return np.clip(cv2.merge(denoised_channels), 0, 255).astype(np.uint8)
+
+
+def apply_image_op(face_bgr: np.ndarray, op: str, **params) -> np.ndarray:
+    """Dispatch for the per-face IMAGE OP button -- one entry point for all 7 one-click
+    operations, so the caller doesn't need to know each function's name."""
+    dispatch = {
+        "intensity": apply_intensity_transform,
+        "enhance": apply_enhance,
+        "sharpen": apply_sharpen,
+        "color_correct": apply_color_correct,
+        "denoise": apply_denoise,
+        "bilateral_filter": apply_bilateral_filter,
+        "wavelet_denoise": apply_wavelet_denoise,
+    }
+    if op not in dispatch:
+        raise ValueError(f"Unknown image op: {op}")
+    return dispatch[op](face_bgr, **params)
+
+
 def predict_gender_caffe(net, blob: np.ndarray) -> str:
     net.setInput(blob)
     return GENDER_LIST[net.forward()[0].argmax()]

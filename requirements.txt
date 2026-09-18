@@ -4,3 +4,4 @@ numpy
 pillow
 streamlit-webrtc
 av
+PyWavelets
