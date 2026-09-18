@@ -46,6 +46,15 @@ try:
 except ImportError:
     MEDIAPIPE_SUPPORTED = False
 
+try:
+    from nets.deep3d_recon import (
+        build_deep3d_recon_model, ParametricFaceModel, load_lm3d_template,
+        landmarks_5pt_from_mediapipe, reconstruct_face_3d, mesh_to_obj_str,
+    )
+    TORCHVISION_SUPPORTED = True
+except ImportError:
+    TORCHVISION_SUPPORTED = False
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 MODEL_DIR = BASE_DIR / "models"
 
@@ -80,6 +89,10 @@ COLORIZATION_PTS = MODEL_DIR / "pts_in_hull.npy"
 POSE_PROTO = MODEL_DIR / "pose_deploy_linevec_faster_4_stages.prototxt"
 POSE_MODEL = MODEL_DIR / "pose_iter_160000.caffemodel"
 HAND_LANDMARKER_MODEL = MODEL_DIR / "hand_landmarker.task"
+BFM_DIR = MODEL_DIR / "BFM"
+DEEP3D_RECON_MODEL = MODEL_DIR / "deep3d_recon_resnet50.pth"  # gated, not bundled -- see README
+BFM_MODEL_PATH = BFM_DIR / "BFM_model_front.mat"  # gated, not bundled -- see README
+BFM_LM3D_PATH = BFM_DIR / "similarity_Lm3D_all.mat"  # bundled (MIT, small landmark template)
 
 MODEL_MEAN_VALUES = (78.4263377603, 87.768914374, 114.895847746)
 AGE_LIST = ['(0-2)', '(4-6)', '(8-12)', '(15-20)', '(25-32)', '(38-43)', '(48-53)', '(60-100)']
@@ -138,6 +151,7 @@ MPI_POSE_PAIRS = [
 MPI_POSE_NUM_POINTS = 15
 FACE_LANDMARKS_MODEL_OPTIONS = ["blendshapes"]  # reuses the same FaceLandmarker model as Expression
 HAND_MODEL_OPTIONS = ["mediapipe"]
+RECONSTRUCTION_3D_MODEL_OPTIONS = ["deep3d"]
 # Standard MediaPipe 21-point hand skeleton (HandLandmark enum order, see ideas/hands.md)
 HAND_CONNECTIONS = [
     (0, 1), (1, 2), (2, 3), (3, 4),          # thumb
@@ -194,6 +208,7 @@ class Models:
     pose_nets: dict = field(default_factory=dict)
     face_landmarks_nets: dict = field(default_factory=dict)
     hand_nets: dict = field(default_factory=dict)
+    reconstruction_3d_nets: dict = field(default_factory=dict)
 
     @property
     def offline_features(self) -> list[str]:
@@ -207,7 +222,7 @@ class Models:
                 ("MASK", self.mask_nets), ("HAIR_COLOR", self.hair_color_nets),
                 ("EYE_COLOR", self.eye_color_nets), ("COLORIZATION", self.colorization_nets),
                 ("POSE", self.pose_nets), ("FACE_LANDMARKS", self.face_landmarks_nets),
-                ("HANDS", self.hand_nets),
+                ("HANDS", self.hand_nets), ("RECONSTRUCTION_3D", self.reconstruction_3d_nets),
             ] if not nets
         ]
 
@@ -354,10 +369,17 @@ def load_models() -> Models:
         )
         hand_nets["mediapipe"] = mp.tasks.vision.HandLandmarker.create_from_options(hand_options)
 
+    reconstruction_3d_nets = {}
+    if TORCHVISION_SUPPORTED and DEEP3D_RECON_MODEL.exists() and BFM_MODEL_PATH.exists() and BFM_LM3D_PATH.exists():
+        recon_net = build_deep3d_recon_model(str(DEEP3D_RECON_MODEL))
+        bfm_model = ParametricFaceModel(str(BFM_MODEL_PATH))
+        lm3d_template = load_lm3d_template(str(BFM_DIR))
+        reconstruction_3d_nets["deep3d"] = (recon_net, bfm_model, lm3d_template)
+
     return Models(
         face_net, age_nets, gender_nets, emotion_nets, drowsiness_nets, race_nets, expression_nets, recognition_nets,
         facial_hair_nets, skin_tone_nets, glasses_nets, mask_nets, hair_color_nets, eye_color_nets, colorization_nets,
-        pose_nets, face_landmarks_nets, hand_nets,
+        pose_nets, face_landmarks_nets, hand_nets, reconstruction_3d_nets,
     )
 
 
@@ -1191,6 +1213,27 @@ def predict_face_landmarks_mediapipe(landmarker, face_bgr: np.ndarray) -> list[t
     if not result.face_landmarks:
         return None
     return [(lm.x, lm.y) for lm in result.face_landmarks[0]]
+
+
+def run_3d_reconstruction(models: "Models", face_bgr: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
+    """Deep3DFaceRecon_pytorch-based 3D reconstruction (see src/nets/deep3d_recon.py) for one
+    face crop. Reuses the same FaceLandmarker instance as Expression/Face Landmarks to derive
+    the 5-point alignment landmarks this pipeline needs. Returns (vertices, faces, per-vertex
+    RGB colors) or None if the deep3d model, the BFM data, or the face landmarker aren't
+    available, or if no face landmarks were found in this crop."""
+    bundle = models.reconstruction_3d_nets.get("deep3d")
+    landmarker = models.face_landmarks_nets.get("blendshapes")
+    if bundle is None or landmarker is None:
+        return None
+
+    recon_net, bfm_model, lm3d_template = bundle
+    points = predict_face_landmarks_mediapipe(landmarker, face_bgr)
+    if points is None:
+        return None
+
+    h, w = face_bgr.shape[:2]
+    landmarks_5pt = landmarks_5pt_from_mediapipe(points, w, h)
+    return reconstruct_face_3d(recon_net, bfm_model, face_bgr, landmarks_5pt, lm3d_template)
 
 
 def draw_face_landmarks(frame: np.ndarray, points_normalized: list[tuple[float, float]], box: tuple[int, int, int, int]) -> None:

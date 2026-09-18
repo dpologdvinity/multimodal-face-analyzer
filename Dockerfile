@@ -17,9 +17,15 @@ FROM python:3.11-slim
 #   COLORIZATION_MODEL: eccv16                        (default: eccv16)
 #   POSE_MODEL:         mpi                            (default: mpi)
 #   HAND_MODEL:         mediapipe                       (default: mediapipe)
+#   RECONSTRUCTION_3D_MODEL: deep3d                      (default: deep3d)
 # pose (CMU OpenPose MPI model) is ACADEMIC/NON-COMMERCIAL RESEARCH USE ONLY -- see README.
 # Face Landmarks has no build ARG of its own -- it reuses the same face_landmarker.task file
 # and mediapipe dependency as EXPRESSION_MODEL=blendshapes (one model, two features).
+# RECONSTRUCTION_3D_MODEL wires the code path (torch/torchvision/scipy + the small bundled
+# BFM landmark template) but ships NO working weights -- Deep3DFaceRecon_pytorch's checkpoint
+# and the Basel Face Model data it needs are both gated (Google Drive / university license
+# registration respectively); this ARG alone will never produce a working reconstruction.
+# See README's Known Issues for what the user must supply themselves.
 # insightface's genderage.onnx provides BOTH age and gender from one file
 # (non-commercial research license -- see README). deepface's race model
 # needs TensorFlow (~200-400MB) and a 513MB weight file, much heavier
@@ -46,6 +52,7 @@ ARG MASK_MODEL=mobilenetv2
 ARG COLORIZATION_MODEL=eccv16
 ARG POSE_MODEL=mpi
 ARG HAND_MODEL=mediapipe
+ARG RECONSTRUCTION_3D_MODEL=deep3d
 
 # Install system dependencies for OpenCV and MediaPipe (libegl1/libgles2 needed by
 # mediapipe's face landmarker even in CPU-only/headless use)
@@ -65,14 +72,21 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 # torch/torchvision are needed for ssrnet, dan, and/or mivolo models
 RUN --mount=type=cache,target=/root/.cache/pip \
-    age_csv=",$AGE_MODEL,"; gender_csv=",$GENDER_MODEL,"; emotion_csv=",$EMOTION_MODEL,"; need_torch=false; \
+    age_csv=",$AGE_MODEL,"; gender_csv=",$GENDER_MODEL,"; emotion_csv=",$EMOTION_MODEL,"; \
+    recon3d_csv=",$RECONSTRUCTION_3D_MODEL,"; need_torch=false; \
     case "$age_csv" in *,ssrnet,*) need_torch=true ;; esac; \
     case "$age_csv" in *,mivolo,*) need_torch=true ;; esac; \
     case "$gender_csv" in *,mivolo,*) need_torch=true ;; esac; \
     case "$emotion_csv" in *,dan,*) need_torch=true ;; esac; \
+    case "$recon3d_csv" in *,deep3d,*) need_torch=true ;; esac; \
     if [ "$need_torch" = "true" ]; then \
         pip install --extra-index-url https://download.pytorch.org/whl/cpu torch torchvision; \
     fi
+
+# scipy is only needed for RECONSTRUCTION_3D_MODEL=deep3d (loading .mat files)
+RUN --mount=type=cache,target=/root/.cache/pip \
+    recon3d_csv=",$RECONSTRUCTION_3D_MODEL,"; \
+    case "$recon3d_csv" in *,deep3d,*) pip install scipy ;; esac
 
 # tensorflow/tf-keras are only needed for the deepface race, deepface gender,
 # and/or mini_xception emotion models
@@ -150,10 +164,11 @@ RUN --mount=type=bind,source=models/age_deploy.prototxt,target=/tmp/models/age_d
     --mount=type=bind,source=models/pose_deploy_linevec_faster_4_stages.prototxt,target=/tmp/models/pose_deploy_linevec_faster_4_stages.prototxt \
     --mount=type=bind,source=models/pose_iter_160000.caffemodel,target=/tmp/models/pose_iter_160000.caffemodel \
     --mount=type=bind,source=models/hand_landmarker.task,target=/tmp/models/hand_landmarker.task \
+    --mount=type=bind,source=models/BFM/similarity_Lm3D_all.mat,target=/tmp/models/BFM/similarity_Lm3D_all.mat \
     set -e; \
     age_csv=",$AGE_MODEL,"; gender_csv=",$GENDER_MODEL,"; emotion_csv=",$EMOTION_MODEL,"; \
     drowsiness_csv=",$DROWSINESS_MODEL,"; race_csv=",$RACE_MODEL,"; expression_csv=",$EXPRESSION_MODEL,"; recognition_csv=",$RECOGNITION_MODEL,"; \
-    facial_hair_csv=",$FACIAL_HAIR_MODEL,"; glasses_csv=",$GLASSES_MODEL,"; mask_csv=",$MASK_MODEL,"; colorization_csv=",$COLORIZATION_MODEL,"; pose_csv=",$POSE_MODEL,"; hand_csv=",$HAND_MODEL,"; \
+    facial_hair_csv=",$FACIAL_HAIR_MODEL,"; glasses_csv=",$GLASSES_MODEL,"; mask_csv=",$MASK_MODEL,"; colorization_csv=",$COLORIZATION_MODEL,"; pose_csv=",$POSE_MODEL,"; hand_csv=",$HAND_MODEL,"; recon3d_csv=",$RECONSTRUCTION_3D_MODEL,"; \
     case "$age_csv" in *,caffe,*) cp /tmp/models/age_deploy.prototxt /tmp/models/age_net.caffemodel models/ ;; esac; \
     case "$age_csv" in *,ssrnet,*) cp /tmp/models/ssrnet_morph2.pth models/ ;; esac; \
     case "$gender_csv" in *,caffe,*) cp /tmp/models/gender_deploy.prototxt /tmp/models/gender_net.caffemodel models/ ;; esac; \
@@ -179,7 +194,8 @@ RUN --mount=type=bind,source=models/age_deploy.prototxt,target=/tmp/models/age_d
     case "$mask_csv" in *,mobilenetv2,*) cp /tmp/models/mask_detector.h5 models/ ;; esac; \
     case "$colorization_csv" in *,eccv16,*) cp /tmp/models/colorization_deploy_v2.prototxt /tmp/models/colorization_release_v2.caffemodel /tmp/models/pts_in_hull.npy models/ ;; esac; \
     case "$pose_csv" in *,mpi,*) cp /tmp/models/pose_deploy_linevec_faster_4_stages.prototxt /tmp/models/pose_iter_160000.caffemodel models/ ;; esac; \
-    case "$hand_csv" in *,mediapipe,*) cp /tmp/models/hand_landmarker.task models/ ;; esac
+    case "$hand_csv" in *,mediapipe,*) cp /tmp/models/hand_landmarker.task models/ ;; esac; \
+    case "$recon3d_csv" in *,deep3d,*) mkdir -p models/BFM && cp /tmp/models/BFM/similarity_Lm3D_all.mat models/BFM/ ;; esac
 
 # Expose default Streamlit port
 EXPOSE 8501

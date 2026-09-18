@@ -92,6 +92,9 @@ POSE_MODEL="$REPLY_MODEL"
 prompt_feature "HAND LANDMARKS" mediapipe
 HAND_MODEL="$REPLY_MODEL"
 
+prompt_feature "3D RECONSTRUCTION (ships no working weights -- see README)" deep3d
+RECONSTRUCTION_3D_MODEL="$REPLY_MODEL"
+
 echo "" >&2
 echo "Building ${IMAGE_TAG} with:" >&2
 echo "  AGE_MODEL=${AGE_MODEL}" >&2
@@ -107,6 +110,7 @@ echo "  MASK_MODEL=${MASK_MODEL}" >&2
 echo "  COLORIZATION_MODEL=${COLORIZATION_MODEL}" >&2
 echo "  POSE_MODEL=${POSE_MODEL}" >&2
 echo "  HAND_MODEL=${HAND_MODEL}" >&2
+echo "  RECONSTRUCTION_3D_MODEL=${RECONSTRUCTION_3D_MODEL}" >&2
 echo "" >&2
 
 docker build \
@@ -123,6 +127,7 @@ docker build \
     --build-arg COLORIZATION_MODEL="$COLORIZATION_MODEL" \
     --build-arg POSE_MODEL="$POSE_MODEL" \
     --build-arg HAND_MODEL="$HAND_MODEL" \
+    --build-arg RECONSTRUCTION_3D_MODEL="$RECONSTRUCTION_3D_MODEL" \
     -t "$IMAGE_TAG" .
 
 echo "" >&2
