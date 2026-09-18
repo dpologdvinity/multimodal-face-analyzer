@@ -510,6 +510,11 @@ echo "Installing ${OPENCV_PACKAGE} (selected OpenCV runtime)" >&2
 echo "" >&2
 echo "Running at http://localhost:${PORT}" >&2
 echo "Press Ctrl-C to stop Streamlit." >&2
+export AGE_MODEL GENDER_MODEL RACE_MODEL EMOTION_MODEL RECOGNITION_MODEL \
+    DROWSINESS_MODEL EXPRESSION_MODEL LIVENESS_MODEL FACIAL_HAIR_MODEL \
+    GLASSES_MODEL MASK_MODEL COLORIZATION_MODEL POSE_MODEL HAND_MODEL \
+    RECONSTRUCTION_3D_MODEL AGE_PROGRESSION_MODEL YOLO_FACE_MODEL \
+    SCRFD_FACE_MODEL RETINAFACE_MODEL
 exec "${VENV_PYTHON}" -m streamlit run src/app.py \
     --server.address=127.0.0.1 \
     --server.port="${PORT}" \
