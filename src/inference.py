@@ -824,6 +824,145 @@ def apply_image_adjustments(face_bgr: np.ndarray, adjustments: dict) -> np.ndarr
     return np.clip(img, 0, 255).astype(np.uint8)
 
 
+# --- #10: voice+face multimodal fusion (webcam LIVE mode only) --------------------------------
+# Design decision: this repo has shipped features before whose only known trained-weights
+# source was broken/gated/unlicensed ("no working weights shipped" is an established pattern
+# here) -- a speech-emotion-recognition model is
+# exactly that kind of risk, and there's no way to vet a specific checkpoint's license/quality
+# from inside this session. So there is no voice EMOTION classifier here. Instead, voice
+# contributes one honestly-scoped signal -- short-term loudness (RMS energy), a heuristic
+# exactly like this file's existing hair_color/eye_color "colorimetric" functions (not ML,
+# documented as rough) -- and fusion means cross-checking that signal against the face's
+# already-computed emotion label, not inventing a new blended "emotion" that would imply
+# accuracy neither signal actually has.
+#
+# Scope: webcam LIVE mode only. Upload/snapshot are single static images with no audio
+# alongside them in this app, so voice fusion has nothing to sync against there.
+#
+# Sync model: audio arrives via its own streamlit-webrtc callback, on its own thread, at its
+# own rate -- independent of video_frame_callback's rate. This is NOT frame-accurate
+# lip-sync; it answers "how loud has the mic been for the last ~AUDIO_AROUSAL_WINDOW_SECONDS",
+# which the video callback reads at whatever instant a video frame arrives. That's the right
+# granularity for "is this person currently speaking with energy" -- finer sync isn't
+# meaningful for a loudness-only signal anyway.
+AUDIO_AROUSAL_WINDOW_SECONDS = 1.5
+AUDIO_AROUSAL_QUIET_RMS = 0.02   # below this normalized RMS: treat as silence/background noise
+AUDIO_AROUSAL_LOUD_RMS = 0.15    # at/above this: "loud" rather than just "speaking"
+# Coarse arousal bucketing per emotion label, independent of which emotion backend produced it
+# (DAN/EfficientNet/FERPlus/mini_xception all use different label spellings -- this maps every
+# label spelling this app can produce). Loosely follows Russell's circumplex model (high-arousal
+# vs. low-arousal quadrants) -- a cross-check heuristic, not a validated psychological measure.
+EMOTION_HIGH_AROUSAL_LABELS = {
+    "happy", "happiness", "surprise", "anger", "angry", "fear", "disgust",
+}
+EMOTION_LOW_AROUSAL_LABELS = {"neutral", "sad", "sadness"}
+
+
+def audio_frame_to_mono_float(samples: np.ndarray) -> np.ndarray:
+    """Normalize whatever shape/dtype PyAV's AudioFrame.to_ndarray() handed back into a 1-D
+    float32 array in [-1, 1]: mixes multi-channel audio down to mono (av's ndarray is
+    channel-major for planar formats, i.e. shape (channels, samples), so averaging axis 0
+    is correct there; a already-1-D array is left as-is)."""
+    if np.issubdtype(samples.dtype, np.integer):
+        max_value = float(np.iinfo(samples.dtype).max)
+        samples = samples.astype(np.float32) / max_value
+    else:
+        samples = samples.astype(np.float32)
+    if samples.ndim == 2 and samples.shape[0] <= 8:
+        samples = samples.mean(axis=0)
+    return samples.flatten()
+
+
+def classify_voice_arousal(rms: float) -> str:
+    """Bucket a normalized RMS energy level into QUIET / SPEAKING / LOUD."""
+    if rms >= AUDIO_AROUSAL_LOUD_RMS:
+        return "LOUD"
+    if rms >= AUDIO_AROUSAL_QUIET_RMS:
+        return "SPEAKING"
+    return "QUIET"
+
+
+def _emotion_arousal_category(emotion_label: str) -> str | None:
+    label = emotion_label.lower()
+    if label in EMOTION_HIGH_AROUSAL_LABELS:
+        return "high"
+    if label in EMOTION_LOW_AROUSAL_LABELS:
+        return "low"
+    return None  # composite labels (e.g. blendshapes' "jawOpen 0.82, ...") aren't mapped
+
+
+def fuse_voice_and_emotion(voice_arousal: str, emotion_label: str) -> str | None:
+    """Cross-check voice loudness against one face's emotion label. Returns "consistent" if
+    the two roughly agree on high/low arousal, "inconsistent" if they roughly disagree, or
+    None if emotion_label isn't one this heuristic can categorize (see
+    _emotion_arousal_category) -- None means "no opinion", not "disagreement"."""
+    emotion_category = _emotion_arousal_category(emotion_label)
+    if emotion_category is None:
+        return None
+    voice_category = "low" if voice_arousal == "QUIET" else "high"
+    return "consistent" if voice_category == emotion_category else "inconsistent"
+
+
+class VoiceFaceFusion:
+    """Thread-safe rolling audio buffer for #10. One instance per webcam LIVE stream: the
+    audio_frame_callback (streamlit-webrtc's own audio thread) appends samples via
+    ingest_audio(); the video_frame_callback (a different thread, different rate) calls
+    current_arousal() to read "how loud has the mic been recently" at the instant a video
+    frame arrives. Same "module-level/st.cache_resource-held thread-safe buffer" pattern as
+    #9's emotion-over-time buffer and #2's FaceTracker -- this is the third feature needing
+    exactly this shape of cross-thread state, all solved the same way for consistency."""
+
+    def __init__(self, window_seconds: float = AUDIO_AROUSAL_WINDOW_SECONDS):
+        self._lock = threading.Lock()
+        self._window_seconds = window_seconds
+        self._samples: list[np.ndarray] = []
+        self._buffered_seconds = 0.0
+        self._sample_rate: int | None = None
+        self._latest_status: dict | None = None
+
+    def ingest_audio(self, samples: np.ndarray, sample_rate: int) -> None:
+        """Append one audio frame's samples (mono float32, see audio_frame_to_mono_float) to
+        the rolling window, dropping the oldest samples once the window exceeds
+        window_seconds -- bounds memory the same way #9's buffer caps its sample count."""
+        if samples.size == 0 or sample_rate <= 0:
+            return
+        with self._lock:
+            self._sample_rate = sample_rate
+            self._samples.append(samples)
+            self._buffered_seconds += samples.size / sample_rate
+            while self._buffered_seconds > self._window_seconds and len(self._samples) > 1:
+                oldest = self._samples.pop(0)
+                self._buffered_seconds -= oldest.size / self._sample_rate
+
+    def current_arousal(self) -> str:
+        """Return QUIET / SPEAKING / LOUD for the current buffered window, or "QUIET" if no
+        audio has been ingested yet (e.g. mic permission not granted, or fusion just enabled)."""
+        with self._lock:
+            if not self._samples:
+                return "QUIET"
+            window = np.concatenate(self._samples)
+        rms = float(np.sqrt(np.mean(np.square(window)))) if window.size else 0.0
+        return classify_voice_arousal(rms)
+
+    def set_latest_status(self, status: dict) -> None:
+        """Stash the video callback's most recent fusion result for the main Streamlit script
+        thread to read on its next rerun (see the module docstring's "no per-face text burned
+        onto the shared image" convention -- this is the same shared-state-read-on-rerun
+        pattern as #9's buffer, applied to a single status dict instead of a time series)."""
+        with self._lock:
+            self._latest_status = status
+
+    def get_latest_status(self) -> dict | None:
+        with self._lock:
+            return self._latest_status
+
+    def reset(self) -> None:
+        with self._lock:
+            self._samples = []
+            self._buffered_seconds = 0.0
+            self._latest_status = None
+
+
 # --- Rectangle-select geometric transforms (ideas/transform.md, ideas/geo-transform.md) ---
 # Applied to an arbitrary user-selected sub-rectangle of the whole image, independent of face
 # detection -- these operate on any region, not just faces.

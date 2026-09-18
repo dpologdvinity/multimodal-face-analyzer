@@ -243,6 +243,13 @@ def _get_face_tracker() -> inference.FaceTracker:
     callback thread -- same reasoning as load_models() above, see FaceTracker's docstring."""
     return inference.FaceTracker()
 
+
+@st.cache_resource
+def _get_voice_fusion() -> inference.VoiceFaceFusion:
+    """#10: same caching reasoning as _get_face_tracker() above -- the audio callback and the
+    video callback are different threads and need to share the SAME buffer instance."""
+    return inference.VoiceFaceFusion()
+
 try:
     models = load_models()
 except Exception as e:
@@ -693,8 +700,22 @@ with tab_webcam:
         frame_counter = {"n": 0}
         _NO_MODELS: set = set()
         face_tracker = _get_face_tracker()
-        if st.button("RESET TRACKING IDS", key="reset_tracking_ids"):
+        reset_col, voice_col = st.columns([1, 2])
+        if reset_col.button("RESET TRACKING IDS", key="reset_tracking_ids"):
             face_tracker.reset()
+
+        # #10: off by default -- requesting the microphone is a permission prompt the user
+        # didn't ask for just by opening the webcam tab, so it needs its own explicit opt-in
+        # rather than riding along with LIVE mode's existing camera request.
+        enable_voice_fusion = voice_col.checkbox(
+            "Enable voice+face fusion (uses microphone)", value=False, key="enable_voice_fusion",
+            help="Heuristic only: cross-checks mic loudness against the largest face's emotion "
+                 "label. Not a trained speech-emotion model -- see src/inference.py's "
+                 "VoiceFaceFusion docstring for why.",
+        )
+        voice_fusion = _get_voice_fusion() if enable_voice_fusion else None
+        if voice_fusion is not None and voice_col.button("RESET VOICE BUFFER", key="reset_voice_buffer"):
+            voice_fusion.reset()
 
         def _video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
             frame_started = time.perf_counter()
@@ -703,7 +724,7 @@ with tab_webcam:
             img, _ = inference.maybe_colorize(models, img, active_colorization)
             frame_counter["n"] += 1
             run_classifiers = frame_counter["n"] % frame_skip == 0
-            annotated_frame, _, _, _, _, _ = inference.analyze_frame(
+            annotated_frame, cropped_faces, _, _, _, _ = inference.analyze_frame(
                 models, img, conf_threshold,
                 active_age if run_classifiers else _NO_MODELS,
                 active_gender if run_classifiers else _NO_MODELS,
@@ -727,14 +748,47 @@ with tab_webcam:
             metrics["timestamp"] = time.monotonic()
             with LIVE_METRICS_LOCK:
                 LIVE_METRICS.append(metrics)
+            if voice_fusion is not None and cropped_faces:
+                # v1 scope (matches #9's own "largest face only" precedent): fuse against the
+                # single largest detected face, not a per-face history -- multi-face voice
+                # attribution would need knowing WHICH face is speaking, which this app has no
+                # signal for (that's a lip-sync/diarization problem, out of scope here). If this
+                # is a skipped (non-classifier) frame, emotion is simply absent this frame --
+                # same "no interpolation" tradeoff CLASSIFIER FRAME SKIP already documents.
+                largest = max(cropped_faces, key=lambda f: (f["box"][2] - f["box"][0]) * (f["box"][3] - f["box"][1]))
+                emotion_label = largest["emotion"][0] if largest["emotion"] else None
+                voice_arousal = voice_fusion.current_arousal()
+                voice_fusion.set_latest_status({
+                    "voice_arousal": voice_arousal,
+                    "emotion": emotion_label,
+                    "consistency": inference.fuse_voice_and_emotion(voice_arousal, emotion_label) if emotion_label else None,
+                })
             return av.VideoFrame.from_ndarray(annotated_frame, format="bgr24")
+
+        def _audio_frame_callback(frame: av.AudioFrame) -> av.AudioFrame:
+            if voice_fusion is not None:
+                samples = inference.audio_frame_to_mono_float(frame.to_ndarray())
+                voice_fusion.ingest_audio(samples, frame.sample_rate)
+            return frame
 
         webrtc_streamer(
             key="live-drowsiness-feed",
             video_frame_callback=_video_frame_callback,
-            media_stream_constraints={"video": True, "audio": False},
+            audio_frame_callback=_audio_frame_callback if enable_voice_fusion else None,
+            media_stream_constraints={"video": True, "audio": enable_voice_fusion},
             rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
         )
+
+        if voice_fusion is not None:
+            status = voice_fusion.get_latest_status()
+            if status is None:
+                st.caption("[ VOICE FUSION ] waiting for audio + a detected face...")
+            else:
+                consistency_text = status["consistency"] or "n/a (emotion label not categorized)"
+                st.caption(
+                    f"[ VOICE FUSION ] mic: {status['voice_arousal']} | largest face emotion: "
+                    f"{status['emotion']} | {consistency_text}"
+                )
 
         with LIVE_METRICS_LOCK:
             live_metrics = list(LIVE_METRICS)
