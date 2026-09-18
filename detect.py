@@ -4,27 +4,48 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-# Global constants required by the models
+# Directory & Model Paths
+BASE_DIR = Path(__file__).resolve().parent
+MODEL_DIR = BASE_DIR / "models"
+
+FACE_PROTO = MODEL_DIR / "opencv_face_detector.pbtxt"
+FACE_MODEL = MODEL_DIR / "opencv_face_detector_uint8.pb"
+AGE_PROTO = MODEL_DIR / "age_deploy.prototxt"
+AGE_MODEL = MODEL_DIR / "age_net.caffemodel"
+GENDER_PROTO = MODEL_DIR / "gender_deploy.prototxt"
+GENDER_MODEL = MODEL_DIR / "gender_net.caffemodel"
+
+# Constants
 MODEL_MEAN_VALUES = (78.4263377603, 87.768914374, 114.895847746)
-age_list = ['(0-2)', '(4-6)', '(8-12)', '(15-20)', '(25-32)', '(38-43)', '(48-53)', '(60-100)']
+AGE_LIST = ['(0-2)', '(4-6)', '(8-12)', '(15-20)', '(25-32)', '(38-43)', '(48-53)', '(60-100)']
+GENDER_LIST = ['Male', 'Female']
 
-# Load the pre-trained models
-face_proto = "opencv_face_detector.pbtxt"
-face_model = "opencv_face_detector_uint8.pb"
-age_proto = "age_deploy.prototxt"
-age_model = "age_net.caffemodel"
 
-# Read the face detection and age prediction models into OpenCV
-face_net = cv2.dnn.readNetFromTensorflow(face_model, face_proto)
-age_net = cv2.dnn.readNetFromCaffe(age_proto, age_model)
+def load_networks():
+    """Verify paths and load DNN models into OpenCV."""
+    required_files = [FACE_PROTO, FACE_MODEL, AGE_PROTO, AGE_MODEL, GENDER_PROTO, GENDER_MODEL]
+    for file_path in required_files:
+        if not file_path.exists():
+            raise FileNotFoundError(
+                f"Missing model file: {file_path}\n"
+                f"Ensure all weights and configs are placed inside: {MODEL_DIR}"
+            )
+
+    face_net = cv2.dnn.readNetFromTensorflow(str(FACE_MODEL), str(FACE_PROTO))
+    age_net = cv2.dnn.readNetFromCaffe(str(AGE_PROTO), str(AGE_MODEL))
+    gender_net = cv2.dnn.readNetFromCaffe(str(GENDER_PROTO), str(GENDER_MODEL))
+
+    return face_net, age_net, gender_net
 
 
 def detect_faces(net, frame, conf_threshold=0.7):
+    """Detect faces and return bounding box coordinates."""
     frame_height, frame_width = frame.shape[:2]
     blob = cv2.dnn.blobFromImage(frame, 1.0, (300, 300), [104, 117, 123], False, False)
     net.setInput(blob)
     detections = net.forward()
     face_boxes = []
+
     for i in range(detections.shape[2]):
         confidence = detections[0, 0, i, 2]
         if confidence > conf_threshold:
@@ -33,32 +54,27 @@ def detect_faces(net, frame, conf_threshold=0.7):
             x2 = int(detections[0, 0, i, 5] * frame_width)
             y2 = int(detections[0, 0, i, 6] * frame_height)
             face_boxes.append([x1, y1, x2, y2])
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), int(round(frame_height / 150)), 8)
-    return frame, face_boxes
+    return face_boxes
 
 
-def predict_age(face, net):
-    blob = cv2.dnn.blobFromImage(face, 1.0, (227, 227), MODEL_MEAN_VALUES, swapRB=False)
-    net.setInput(blob)
-    age_preds = net.forward()
-    return age_list[age_preds[0].argmax()]
-
-
-def process_image(image_path, show=True, save=False, output_dir="output"):
-    # Load the image from the specified path
+def process_image(image_path, face_net, age_net, gender_net, crop_only=False, show=True, save=False, output_dir="output", conf_threshold=0.7):
+    """Run face detection, age prediction, and gender prediction on an image."""
     frame = cv2.imread(str(image_path))
-    
-    # Check if the image is loaded correctly
     if frame is None:
         print(f"Error: Unable to load image at {image_path}")
         return
 
-    # Detect faces in the image
-    frame, face_boxes = detect_faces(face_net, frame)
+    face_boxes = detect_faces(face_net, frame, conf_threshold)
 
-    # Process each detected face
-    for x1, y1, x2, y2 in face_boxes:
-        # Prevent indexing out of image bounds
+    if not face_boxes:
+        print(f"[{image_path.name}] No faces detected.")
+        return
+
+    annotated_frame = frame.copy()
+    out_path_dir = Path(output_dir)
+
+    for idx, (x1, y1, x2, y2) in enumerate(face_boxes, 1):
+        # Bound padding checks
         y1_crop = max(0, y1 - 20)
         y2_crop = min(y2 + 20, frame.shape[0] - 1)
         x1_crop = max(0, x1 - 20)
@@ -68,11 +84,23 @@ def process_image(image_path, show=True, save=False, output_dir="output"):
         if face.size == 0:
             continue
 
-        age = predict_age(face, age_net)
-        # Add the predicted age as text on the image.
+        blob = cv2.dnn.blobFromImage(face, 1.0, (227, 227), MODEL_MEAN_VALUES, swapRB=False)
+
+        # Predict Gender
+        gender_net.setInput(blob)
+        gender = GENDER_LIST[gender_net.forward()[0].argmax()]
+
+        # Predict Age
+        age_net.setInput(blob)
+        age = AGE_LIST[age_net.forward()[0].argmax()]
+
+        label = f"{gender}, {age}"
+
+        # Draw box and text on main image frame
+        cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), (0, 255, 0), int(round(frame.shape[0] / 150)), 8)
         cv2.putText(
-            frame,
-            f"Age: {age}",
+            annotated_frame,
+            label,
             (x1, y1 - 10),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.8,
@@ -81,31 +109,67 @@ def process_image(image_path, show=True, save=False, output_dir="output"):
             cv2.LINE_AA,
         )
 
-    if save:
-        os.makedirs(output_dir, exist_ok=True)
-        out_path = Path(output_dir) / image_path.name
-        cv2.imwrite(str(out_path), frame)
-        print(f"Saved result: {out_path}")
+        # Save cropped face
+        if save and crop_only:
+            os.makedirs(out_path_dir, exist_ok=True)
+            crop_out_path = out_path_dir / f"{image_path.stem}_face_{idx}{image_path.suffix}"
+            cv2.imwrite(str(crop_out_path), face)
+            print(f"Saved crop: {crop_out_path}")
 
-    if show:
-        cv2.imshow("Age Detection", frame)
-        print("Press any key to show the next image or exit...")
+        # Display cropped face window
+        if show and crop_only:
+            cv2.imshow(f"Cropped Face #{idx} - {label}", face)
+            print("Press any key to view next face or image...")
+            cv2.waitKey(0)
+            cv2.destroyAllWindows()
+
+    # Save full annotated image
+    if save and not crop_only:
+        os.makedirs(out_path_dir, exist_ok=True)
+        full_out_path = out_path_dir / image_path.name
+        cv2.imwrite(str(full_out_path), annotated_frame)
+        print(f"Saved annotated image: {full_out_path}")
+
+    # Display full annotated image window
+    if show and not crop_only:
+        cv2.imshow("Age & Gender Detection", annotated_frame)
+        print("Press any key to show next image or exit...")
         cv2.waitKey(0)
         cv2.destroyAllWindows()
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Age Detection script for single images or directories.")
-    parser.add_argument("path", type=str, help="Path to an image file or directory containing images")
-    parser.add_argument("--save", action="store_true", help="Save output images to disk")
-    parser.add_argument("--no-show", action="store_true", help="Do not open display window")
+    parser = argparse.ArgumentParser(description="CLI tool for Age and Gender Detection from images or folders.")
+    parser.add_argument("path", type=str, help="Path to image file or directory containing images")
+    parser.add_argument("--crop", action="store_true", help="Display/Save cropped face(s) instead of full image")
+    parser.add_argument("--save", action="store_true", help="Save output image(s) to disk")
+    parser.add_argument("--no-show", action="store_true", help="Disable GUI pop-up window")
+    parser.add_argument("--out-dir", type=str, default="output", help="Directory where results are saved (default: output)")
+    parser.add_argument("--conf", type=float, default=0.7, help="Face detection confidence threshold (default: 0.7)")
+
     args = parser.parse_args()
+
+    try:
+        face_net, age_net, gender_net = load_networks()
+    except Exception as e:
+        print(f"Error: {e}")
+        return
 
     input_path = Path(args.path)
     valid_extensions = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 
     if input_path.is_file():
-        process_image(input_path, show=not args.no_show, save=args.save)
+        process_image(
+            input_path,
+            face_net,
+            age_net,
+            gender_net,
+            crop_only=args.crop,
+            show=not args.no_show,
+            save=args.save,
+            output_dir=args.out_dir,
+            conf_threshold=args.conf,
+        )
     elif input_path.is_dir():
         image_files = [f for f in input_path.iterdir() if f.suffix.lower() in valid_extensions]
         if not image_files:
@@ -113,9 +177,19 @@ def main():
             return
         for img_path in image_files:
             print(f"Processing: {img_path.name}")
-            process_image(img_path, show=not args.no_show, save=args.save)
+            process_image(
+                img_path,
+                face_net,
+                age_net,
+                gender_net,
+                crop_only=args.crop,
+                show=not args.no_show,
+                save=args.save,
+                output_dir=args.out_dir,
+                conf_threshold=args.conf,
+            )
     else:
-        print(f"Error: {input_path} is not a valid file or directory.")
+        print(f"Error: Path '{input_path}' is not a valid file or directory.")
 
 
 if __name__ == "__main__":
