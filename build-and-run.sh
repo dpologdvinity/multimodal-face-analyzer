@@ -85,8 +85,22 @@ docker build \
     --build-arg RACE_MODEL="$RACE_MODEL" \
     -t "$IMAGE_TAG" .
 
+echo "" >&2
+read -rp "Live-mount src/ + detect.py for code edits without rebuilding? (testing only, code changes only -- not for Dockerfile/model/dependency changes) [y/N]: " dev_mount
+dev_mount="${dev_mount:-n}"
+
 docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
-docker run -d -p "${PORT}:8501" --name "$CONTAINER_NAME" "$IMAGE_TAG"
+
+if [[ "$dev_mount" =~ ^[Yy] ]]; then
+    docker run -d -p "${PORT}:8501" --name "$CONTAINER_NAME" \
+        -v "$(pwd)/src:/app/src" \
+        -v "$(pwd)/detect.py:/app/detect.py" \
+        "$IMAGE_TAG"
+    echo "" >&2
+    echo "Dev mode: edit src/*.py locally, Streamlit auto-reruns in the container." >&2
+else
+    docker run -d -p "${PORT}:8501" --name "$CONTAINER_NAME" "$IMAGE_TAG"
+fi
 
 echo "" >&2
 echo "Running at http://localhost:${PORT}" >&2
