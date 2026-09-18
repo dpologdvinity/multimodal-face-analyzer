@@ -6,6 +6,7 @@ itself from growing unbounded as more model backends are added.
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -23,6 +24,7 @@ except ImportError:
 try:
     from nets.deepface_race import build_race_model
     from nets.deepface_gender import build_gender_model
+    from nets.deepface_recognition import build_recognition_model
     from nets.mini_xception_model import build_mini_xception
     TF_SUPPORTED = True
 except ImportError:
@@ -59,6 +61,7 @@ FERPLUS_MODEL = MODEL_DIR / "emotion_ferplus.onnx"
 FAIRFACE_MODEL = MODEL_DIR / "fairface_7class.onnx"
 DEEPFACE_RACE_MODEL = MODEL_DIR / "deepface_race.h5"
 DEEPFACE_GENDER_MODEL = MODEL_DIR / "deepface_gender.h5"
+DEEPFACE_RECOGNITION_MODEL = MODEL_DIR / "deepface_vgg.h5"
 DEX_PROTO = MODEL_DIR / "dex_age.prototxt"
 DEX_MODEL = MODEL_DIR / "dex_age.caffemodel"
 MIVOLO_MODEL = MODEL_DIR / "mivolo_v2.safetensors"
@@ -79,7 +82,9 @@ MIN_EYES_OPEN = 2
 RACE_LABELS_FAIRFACE = ['White', 'Black', 'Latino_Hispanic', 'East Asian', 'Southeast Asian', 'Indian', 'Middle Eastern']
 RACE_LABELS_DEEPFACE = ['asian', 'indian', 'black', 'white', 'middle eastern', 'latino hispanic']
 RACE_CLOSE_MARGIN = 0.10  # show top-2 race classes together if within this probability margin
+RECOGNITION_COSINE_THRESHOLD = 0.68  # deepface's own default VGG-Face verification threshold
 DEX_MEAN_VALUES = (103.939, 116.779, 123.68)  # VGG-16 ImageNet BGR mean, per DEX's own preprocessing
+GALLERY_FILE = BASE_DIR / "gallery" / "known_faces.json"
 
 # Model keys per feature, in quickest-to-build order (first = default).
 # Must match the numbered options in build-and-run.sh and the Dockerfile ARGs.
@@ -90,6 +95,7 @@ EMOTION_MODEL_OPTIONS = ["efficientnet", "ferplus", "mini_xception", "dan"]
 DROWSINESS_MODEL_OPTIONS = ["haarcascade"]
 RACE_MODEL_OPTIONS = ["fairface", "deepface"]
 EXPRESSION_MODEL_OPTIONS = ["blendshapes"]
+RECOGNITION_MODEL_OPTIONS = ["vggface"]
 
 
 @dataclass
@@ -101,6 +107,7 @@ class Models:
     drowsiness_nets: dict = field(default_factory=dict)
     race_nets: dict = field(default_factory=dict)
     expression_nets: dict = field(default_factory=dict)
+    recognition_nets: dict = field(default_factory=dict)
 
     @property
     def offline_features(self) -> list[str]:
@@ -109,6 +116,7 @@ class Models:
                 ("AGE", self.age_nets), ("GENDER", self.gender_nets),
                 ("EMOTION", self.emotion_nets), ("DROWSINESS", self.drowsiness_nets),
                 ("RACE", self.race_nets), ("EXPRESSION", self.expression_nets),
+                ("RECOGNITION", self.recognition_nets),
             ] if not nets
         ]
 
@@ -146,6 +154,10 @@ def load_models() -> Models:
 
     if TF_SUPPORTED and DEEPFACE_GENDER_MODEL.exists():
         gender_nets["deepface"] = build_gender_model(str(DEEPFACE_GENDER_MODEL))
+
+    recognition_nets = {}
+    if TF_SUPPORTED and DEEPFACE_RECOGNITION_MODEL.exists():
+        recognition_nets["vggface"] = build_recognition_model(str(DEEPFACE_RECOGNITION_MODEL))
 
     if MIVOLO_SUPPORTED and MIVOLO_MODEL.exists():
         mivolo_config = MODEL_DIR / "mivolo_v2_config.json"
@@ -201,7 +213,7 @@ def load_models() -> Models:
         landmarker = mp.tasks.vision.FaceLandmarker.create_from_options(options)
         expression_nets["blendshapes"] = landmarker
 
-    return Models(face_net, age_nets, gender_nets, emotion_nets, drowsiness_nets, race_nets, expression_nets)
+    return Models(face_net, age_nets, gender_nets, emotion_nets, drowsiness_nets, race_nets, expression_nets, recognition_nets)
 
 
 def detect_faces(net: cv2.dnn.Net, frame: np.ndarray, conf_threshold: float = 0.7) -> list[list[int]]:
@@ -449,6 +461,39 @@ def predict_gender_deepface(net, face_bgr: np.ndarray) -> str:
     return "Male" if np.argmax(probs) == 1 else "Female"
 
 
+def compute_face_embedding(net, face_bgr: np.ndarray) -> np.ndarray:
+    # Same VGGFace-backbone preprocessing as predict_race_deepface/predict_gender_deepface:
+    # 224x224 BGR, unnormalized [0,255].
+    face_resized = cv2.resize(face_bgr, (224, 224)).astype(np.float32)
+    emb = net.predict(face_resized[np.newaxis, ...], verbose=0).flatten()
+    norm = np.linalg.norm(emb)
+    return emb / norm if norm > 0 else emb
+
+
+def match_face_identity(embedding: np.ndarray, gallery: dict) -> tuple[str, float] | None:
+    """Cosine similarity (paper's 'unsupervised' inner-product metric, embeddings pre-normalized)
+    against every enrolled identity; return (name, similarity) for the best match if it clears
+    RECOGNITION_COSINE_THRESHOLD, else None."""
+    best_name, best_sim = None, -1.0
+    for name, gal_emb in gallery.items():
+        sim = float(np.dot(embedding, gal_emb))
+        if sim > best_sim:
+            best_name, best_sim = name, sim
+    return (best_name, best_sim) if best_sim >= RECOGNITION_COSINE_THRESHOLD else None
+
+
+def load_gallery() -> dict:
+    if not GALLERY_FILE.exists():
+        return {}
+    raw = json.loads(GALLERY_FILE.read_text())
+    return {name: np.array(vec, dtype=np.float32) for name, vec in raw.items()}
+
+
+def save_gallery(gallery: dict) -> None:
+    GALLERY_FILE.parent.mkdir(parents=True, exist_ok=True)
+    GALLERY_FILE.write_text(json.dumps({name: vec.tolist() for name, vec in gallery.items()}))
+
+
 def predict_expression_blendshapes(landmarker, face_bgr: np.ndarray) -> str:
     """Predict facial expression via MediaPipe's BlendShapes (52 continuous muscle coefficients).
     Returns the top 3 highest-scoring blendshapes as a comma-separated string,
@@ -512,6 +557,8 @@ def analyze_frame(
     active_drowsiness: set,
     active_race: set,
     active_expression: set,
+    active_recognition: set,
+    gallery: dict,
 ):
     """Detect faces and run inference for whichever model keys are active per feature.
     Multiple active models for the same feature (e.g. active_age = {"caffe", "ssrnet"})
@@ -618,6 +665,17 @@ def analyze_frame(
             value = predict_expression_blendshapes(net, face)
             expression_pairs.append((key, value))
 
+        recognition_pairs = []
+        face_embedding = None
+        for key in active_recognition:
+            net = models.recognition_nets.get(key)
+            if net is None:
+                continue
+            face_embedding = compute_face_embedding(net, face)
+            match = match_face_identity(face_embedding, gallery)
+            value = f"{match[0]} ({match[1] * 100:.0f}%)" if match else "UNKNOWN"
+            recognition_pairs.append((key, value))
+
         drowsy_pairs = []
         face_drowsy = False
         for key in active_drowsiness:
@@ -648,6 +706,8 @@ def analyze_frame(
             "race": _format_results(race_pairs),
             "emotion": _format_results(emotion_pairs),
             "expression": _format_results(expression_pairs),
+            "identity": _format_results(recognition_pairs),
+            "embedding": face_embedding.tolist() if face_embedding is not None else None,
             "status": status,
             "drowsy": face_drowsy if drowsy_pairs else None,
         })

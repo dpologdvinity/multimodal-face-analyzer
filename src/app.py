@@ -130,6 +130,22 @@ active_race = _model_checkboxes("RACE", models.race_nets)
 active_emotion = _model_checkboxes("EMOTION", models.emotion_nets)
 active_drowsiness = _model_checkboxes("DROWSINESS", models.drowsiness_nets)
 active_expression = _model_checkboxes("EXPRESSION", models.expression_nets)
+active_recognition = _model_checkboxes("RECOGNITION", models.recognition_nets)
+
+st.session_state.setdefault("gallery", inference.load_gallery())
+
+if models.recognition_nets:
+    st.sidebar.markdown("### GALLERY")
+    gallery = st.session_state["gallery"]
+    if not gallery:
+        st.sidebar.caption("[ EMPTY ] -- no enrolled identities")
+    for name in list(gallery):
+        col_name, col_del = st.sidebar.columns([3, 1])
+        col_name.text(name)
+        if col_del.button("X", key=f"del_gallery_{name}"):
+            del st.session_state["gallery"][name]
+            inference.save_gallery(st.session_state["gallery"])
+            st.rerun()
 
 # Sidebar Interface Controls
 st.sidebar.markdown("### CONTROL PANEL")
@@ -140,7 +156,7 @@ def _target_card_html(face: dict) -> str:
     """Render one face's results as a HUD-style dossier card (native markup, not pixel text --
     keeps results legible no matter how many faces are packed into one image)."""
     rows = ""
-    for label, values in (("AGE", face["age"]), ("GENDER", face["gender"]), ("RACE", face["race"]), ("MOOD", face["emotion"]), ("EXPR", face["expression"])):
+    for label, values in (("AGE", face["age"]), ("GENDER", face["gender"]), ("RACE", face["race"]), ("MOOD", face["emotion"]), ("EXPR", face["expression"]), ("IDENTITY", face["identity"])):
         if values:
             rows += f'<div class="target-card-row"><span class="k">{label}</span><span class="v">{" / ".join(values)}</span></div>'
     if face["status"] is not None:
@@ -155,7 +171,8 @@ def _target_card_html(face: dict) -> str:
 def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: float) -> None:
     """Run detection/inference on frame and render result in Streamlit."""
     annotated_frame, cropped_faces, any_drowsy, has_faces = inference.analyze_frame(
-        models, frame, conf_threshold, active_age, active_gender, active_emotion, active_drowsiness, active_race, active_expression
+        models, frame, conf_threshold, active_age, active_gender, active_emotion, active_drowsiness, active_race, active_expression,
+        active_recognition, st.session_state.get("gallery", {}),
     )
 
     if not has_faces:
@@ -175,6 +192,12 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
         with cols[i % 4]:
             st.image(face["image"], use_container_width=True)
             st.markdown(_target_card_html(face), unsafe_allow_html=True)
+            if face["embedding"] is not None:
+                enroll_name = st.text_input("ENROLL AS", key=f"enroll_name_{identifier}_{face['idx']}", label_visibility="collapsed", placeholder="ENROLL AS...")
+                if st.button("ENROLL", key=f"enroll_btn_{identifier}_{face['idx']}") and enroll_name:
+                    st.session_state["gallery"][enroll_name] = np.array(face["embedding"], dtype=np.float32)
+                    inference.save_gallery(st.session_state["gallery"])
+                    st.rerun()
 
 
 tab_upload, tab_webcam = st.tabs(["[ FILE UPLOAD ]", "[ LIVE WEBCAM ]"])
@@ -208,7 +231,8 @@ with tab_webcam:
         def _video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
             img = frame.to_ndarray(format="bgr24")
             annotated_frame, _, _, _ = inference.analyze_frame(
-                models, img, conf_threshold, active_age, active_gender, active_emotion, active_drowsiness, active_race, active_expression
+                models, img, conf_threshold, active_age, active_gender, active_emotion, active_drowsiness, active_race, active_expression,
+                active_recognition, st.session_state.get("gallery", {}),
             )
             return av.VideoFrame.from_ndarray(annotated_frame, format="bgr24")
 

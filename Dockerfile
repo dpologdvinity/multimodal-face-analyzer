@@ -10,6 +10,7 @@ FROM python:3.11-slim
 #   DROWSINESS_MODEL:  haarcascade                  (default: haarcascade)
 #   RACE_MODEL:        fairface, deepface           (default: fairface)
 #   EXPRESSION_MODEL:  blendshapes                  (default: blendshapes)
+#   RECOGNITION_MODEL: vggface                       (default: vggface)
 # insightface's genderage.onnx provides BOTH age and gender from one file
 # (non-commercial research license -- see README). deepface's race model
 # needs TensorFlow (~200-400MB) and a 513MB weight file, much heavier
@@ -23,6 +24,7 @@ ARG EMOTION_MODEL=efficientnet
 ARG DROWSINESS_MODEL=haarcascade
 ARG RACE_MODEL=fairface
 ARG EXPRESSION_MODEL=blendshapes
+ARG RECOGNITION_MODEL=vggface
 
 # Install system dependencies for OpenCV and MediaPipe (libegl1/libgles2 needed by
 # mediapipe's face landmarker even in CPU-only/headless use)
@@ -54,10 +56,11 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # tensorflow/tf-keras are only needed for the deepface race, deepface gender,
 # and/or mini_xception emotion models
 RUN --mount=type=cache,target=/root/.cache/pip \
-    race_csv=",$RACE_MODEL,"; gender_csv=",$GENDER_MODEL,"; emotion_csv=",$EMOTION_MODEL,"; need_tf=false; \
+    race_csv=",$RACE_MODEL,"; gender_csv=",$GENDER_MODEL,"; emotion_csv=",$EMOTION_MODEL,"; recognition_csv=",$RECOGNITION_MODEL,"; need_tf=false; \
     case "$race_csv" in *,deepface,*) need_tf=true ;; esac; \
     case "$gender_csv" in *,deepface,*) need_tf=true ;; esac; \
     case "$emotion_csv" in *,mini_xception,*) need_tf=true ;; esac; \
+    case "$recognition_csv" in *,vggface,*) need_tf=true ;; esac; \
     if [ "$need_tf" = "true" ]; then pip install tensorflow-cpu tf-keras; fi
 
 # MiVOLO dependencies (ultralytics, timm) are only needed for the mivolo age and/or gender models
@@ -107,6 +110,7 @@ RUN --mount=type=bind,source=models/age_deploy.prototxt,target=/tmp/models/age_d
     --mount=type=bind,source=models/fairface_7class.onnx,target=/tmp/models/fairface_7class.onnx \
     --mount=type=bind,source=models/deepface_race.h5,target=/tmp/models/deepface_race.h5 \
     --mount=type=bind,source=models/deepface_gender.h5,target=/tmp/models/deepface_gender.h5 \
+    --mount=type=bind,source=models/deepface_vgg.h5,target=/tmp/models/deepface_vgg.h5 \
     --mount=type=bind,source=models/mini_xception_fer.h5,target=/tmp/models/mini_xception_fer.h5 \
     --mount=type=bind,source=models/dex_age.prototxt,target=/tmp/models/dex_age.prototxt \
     --mount=type=bind,source=models/dex_age.caffemodel,target=/tmp/models/dex_age.caffemodel \
@@ -115,7 +119,7 @@ RUN --mount=type=bind,source=models/age_deploy.prototxt,target=/tmp/models/age_d
     --mount=type=bind,source=models/face_landmarker.task,target=/tmp/models/face_landmarker.task \
     set -e; \
     age_csv=",$AGE_MODEL,"; gender_csv=",$GENDER_MODEL,"; emotion_csv=",$EMOTION_MODEL,"; \
-    drowsiness_csv=",$DROWSINESS_MODEL,"; race_csv=",$RACE_MODEL,"; expression_csv=",$EXPRESSION_MODEL,"; \
+    drowsiness_csv=",$DROWSINESS_MODEL,"; race_csv=",$RACE_MODEL,"; expression_csv=",$EXPRESSION_MODEL,"; recognition_csv=",$RECOGNITION_MODEL,"; \
     case "$age_csv" in *,caffe,*) cp /tmp/models/age_deploy.prototxt /tmp/models/age_net.caffemodel models/ ;; esac; \
     case "$age_csv" in *,ssrnet,*) cp /tmp/models/ssrnet_morph2.pth models/ ;; esac; \
     case "$gender_csv" in *,caffe,*) cp /tmp/models/gender_deploy.prototxt /tmp/models/gender_net.caffemodel models/ ;; esac; \
@@ -134,7 +138,8 @@ RUN --mount=type=bind,source=models/age_deploy.prototxt,target=/tmp/models/age_d
     case "$race_csv" in *,deepface,*) cp /tmp/models/deepface_race.h5 models/ ;; esac; \
     case "$age_csv" in *,mivolo,*) cp /tmp/models/mivolo_v2.safetensors /tmp/models/mivolo_v2_config.json models/ ;; esac; \
     case "$gender_csv" in *,mivolo,*) cp /tmp/models/mivolo_v2.safetensors /tmp/models/mivolo_v2_config.json models/ ;; esac; \
-    case "$expression_csv" in *,blendshapes,*) cp /tmp/models/face_landmarker.task models/ ;; esac
+    case "$expression_csv" in *,blendshapes,*) cp /tmp/models/face_landmarker.task models/ ;; esac; \
+    case "$recognition_csv" in *,vggface,*) cp /tmp/models/deepface_vgg.h5 models/ ;; esac
 
 # Expose default Streamlit port
 EXPOSE 8501
