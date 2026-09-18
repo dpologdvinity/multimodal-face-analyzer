@@ -1813,6 +1813,7 @@ def save_face(face_bgr: np.ndarray, raw_columns: dict[str, str]) -> int:
     EIGEN_DIR.mkdir(parents=True, exist_ok=True)
     FACES_DB_FILE.parent.mkdir(parents=True, exist_ok=True)
 
+    face_id = None
     conn = sqlite3.connect(str(FACES_DB_FILE))
     try:
         conn.execute("CREATE TABLE IF NOT EXISTS faces (id INTEGER PRIMARY KEY)")
@@ -1826,9 +1827,13 @@ def save_face(face_bgr: np.ndarray, raw_columns: dict[str, str]) -> int:
                 conn.execute(f"ALTER TABLE faces ADD COLUMN {col} TEXT")
                 existing_cols.add(col)
 
-        face_id = None
         for _ in range(20):
             candidate = random.randint(1, 999_999)
+            if any(path.exists() for path in (
+                FACES_DIR / f"{candidate}.jpg",
+                EIGEN_DIR / f"{candidate}.jpg",
+            )):
+                continue
             cols = ["id"] + list(raw_columns.keys())
             placeholders = ", ".join("?" for _ in cols)
             try:
@@ -1839,12 +1844,26 @@ def save_face(face_bgr: np.ndarray, raw_columns: dict[str, str]) -> int:
                 continue
         if face_id is None:
             raise RuntimeError("Could not generate a unique face id after 20 attempts")
+        # Write and verify both artifacts before committing the row. A failed image write
+        # must not leave a database record that the file-backed search features cannot load.
+        face_path = FACES_DIR / f"{face_id}.jpg"
+        eigen_path = EIGEN_DIR / f"{face_id}.jpg"
+        if not cv2.imwrite(str(face_path), face_bgr):
+            raise OSError(f"Could not write saved face image: {face_path}")
+        if not cv2.imwrite(str(eigen_path), _crop_and_resize_for_eigenfaces(face_bgr)):
+            raise OSError(f"Could not write eigenface image: {eigen_path}")
         conn.commit()
+    except Exception:
+        conn.rollback()
+        if face_id is not None:
+            for path in (FACES_DIR / f"{face_id}.jpg", EIGEN_DIR / f"{face_id}.jpg"):
+                try:
+                    path.unlink()
+                except FileNotFoundError:
+                    pass
+        raise
     finally:
         conn.close()
-
-    cv2.imwrite(str(FACES_DIR / f"{face_id}.jpg"), face_bgr)
-    cv2.imwrite(str(EIGEN_DIR / f"{face_id}.jpg"), _crop_and_resize_for_eigenfaces(face_bgr))
 
     return face_id
 
