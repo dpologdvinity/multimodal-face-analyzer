@@ -276,6 +276,40 @@ def _margin_align(frame_bgr: np.ndarray, box: tuple[int, int, int, int], output_
     return cv2.warpAffine(frame_bgr, m, (output_size, output_size), borderValue=0.0)
 
 
+def _estimate_roll_angle(face_bgr: np.ndarray, eye_cascade) -> float | None:
+    """Detect two eyes via Haar cascade and return the roll angle (degrees) needed to
+    level them, or None if fewer than 2 eyes found or the angle looks like noise."""
+    face_gray = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2GRAY)
+    eyes = eye_cascade.detectMultiScale(face_gray, scaleFactor=1.1, minNeighbors=6, minSize=(20, 20))
+    if len(eyes) < 2:
+        return None
+    # take the two largest detections (most confident), left-to-right by x center
+    eyes = sorted(eyes, key=lambda e: e[2] * e[3], reverse=True)[:2]
+    (x1, y1, w1, h1), (x2, y2, w2, h2) = sorted(eyes, key=lambda e: e[0])
+    cx1, cy1 = x1 + w1 / 2, y1 + h1 / 2
+    cx2, cy2 = x2 + w2 / 2, y2 + h2 / 2
+    angle = np.degrees(np.arctan2(cy2 - cy1, cx2 - cx1))
+    return angle if abs(angle) <= 45 else None  # >45 deg is almost certainly a bad detection
+
+
+def _rotate_region(frame_bgr: np.ndarray, box: tuple[int, int, int, int], angle_deg: float, pad_factor: float = 0.8) -> tuple[np.ndarray, tuple[int, int, int, int]]:
+    """Crop a generously padded region around box from frame_bgr, rotate it level by
+    -angle_deg around the box center, and return (rotated_region, box_in_region_coords).
+    Padding is large enough that rotating the box never clips its corners."""
+    x1, y1, x2, y2 = box
+    w, h = x2 - x1, y2 - y1
+    pad = int(pad_factor * max(w, h))
+    fy, fx = frame_bgr.shape[:2]
+    rx1, ry1 = max(0, x1 - pad), max(0, y1 - pad)
+    rx2, ry2 = min(fx, x2 + pad), min(fy, y2 + pad)
+    region = frame_bgr[ry1:ry2, rx1:rx2]
+    local_box = (x1 - rx1, y1 - ry1, x2 - rx1, y2 - ry1)
+    lcx, lcy = (local_box[0] + local_box[2]) / 2.0, (local_box[1] + local_box[3]) / 2.0
+    m = cv2.getRotationMatrix2D((lcx, lcy), -angle_deg, 1.0)
+    rotated = cv2.warpAffine(region, m, (region.shape[1], region.shape[0]), borderMode=cv2.BORDER_REPLICATE)
+    return rotated, local_box
+
+
 def _insightface_forward(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int]) -> np.ndarray:
     # Replicates insightface's own alignment (model_zoo/attribute.py + utils/face_align.py): 1.5x margin.
     aligned = _margin_align(frame_bgr, box, INSIGHTFACE_INPUT_SIZE, margin=1.5)
@@ -490,13 +524,26 @@ def analyze_frame(
     need_blob227 = ("caffe" in active_age and "caffe" in models.age_nets) or \
                    ("caffe" in active_gender and "caffe" in models.gender_nets)
 
-    for idx, (x1, y1, x2, y2) in enumerate(face_boxes, 1):
-        y1_crop = max(0, y1 - 20)
-        y2_crop = min(y2 + 20, frame.shape[0] - 1)
-        x1_crop = max(0, x1 - 20)
-        x2_crop = min(x2 + 20, frame.shape[1] - 1)
+    eye_cascade = models.drowsiness_nets.get("haarcascade")
 
-        face = frame[y1_crop:y2_crop, x1_crop:x2_crop]
+    for idx, (x1, y1, x2, y2) in enumerate(face_boxes, 1):
+        # Correct in-plane roll (tilted head) before cropping/classifying, using the same
+        # eye cascade as drowsiness detection -- no new model/dependency. crop_frame/cx*/cy*
+        # are the rotation-corrected region+box; x1..y2 stay untouched for the box overlay
+        # drawn on annotated_frame further below.
+        crop_frame, (cx1, cy1, cx2, cy2) = frame, (x1, y1, x2, y2)
+        if eye_cascade is not None:
+            probe = frame[max(0, y1 - 20):min(y2 + 20, frame.shape[0] - 1), max(0, x1 - 20):min(x2 + 20, frame.shape[1] - 1)]
+            angle = _estimate_roll_angle(probe, eye_cascade) if probe.size else None
+            if angle is not None and abs(angle) > 3:  # skip work for near-level faces
+                crop_frame, (cx1, cy1, cx2, cy2) = _rotate_region(frame, (x1, y1, x2, y2), angle)
+
+        y1_crop = max(0, cy1 - 20)
+        y2_crop = min(cy2 + 20, crop_frame.shape[0] - 1)
+        x1_crop = max(0, cx1 - 20)
+        x2_crop = min(cx2 + 20, crop_frame.shape[1] - 1)
+
+        face = crop_frame[y1_crop:y2_crop, x1_crop:x2_crop]
         if face.size == 0:
             continue
 
@@ -514,13 +561,13 @@ def analyze_frame(
             elif key == "ssrnet":
                 value = predict_age_ssrnet(net, face)
             elif key == "fairface":
-                value = predict_age_fairface(net, frame, (x1, y1, x2, y2))
+                value = predict_age_fairface(net, crop_frame, (cx1, cy1, cx2, cy2))
             elif key == "dex":
                 value = predict_age_dex(net, face)
             elif key == "mivolo":
                 value = predict_age_mivolo(net, face)
             else:
-                value = predict_age_insightface(net, frame, (x1, y1, x2, y2))
+                value = predict_age_insightface(net, crop_frame, (cx1, cy1, cx2, cy2))
             age_pairs.append((key, value))
 
         gender_pairs = []
@@ -533,11 +580,11 @@ def analyze_frame(
             elif key == "deepface":
                 value = predict_gender_deepface(net, face)
             elif key == "fairface":
-                value = predict_gender_fairface(net, frame, (x1, y1, x2, y2))
+                value = predict_gender_fairface(net, crop_frame, (cx1, cy1, cx2, cy2))
             elif key == "mivolo":
                 value = predict_gender_mivolo(net, face)
             else:
-                value = predict_gender_insightface(net, frame, (x1, y1, x2, y2))
+                value = predict_gender_insightface(net, crop_frame, (cx1, cy1, cx2, cy2))
             gender_pairs.append((key, value))
 
         emotion_pairs = []
@@ -560,7 +607,7 @@ def analyze_frame(
             net = models.race_nets.get(key)
             if net is None:
                 continue
-            value = predict_race_fairface(net, frame, (x1, y1, x2, y2)) if key == "fairface" else predict_race_deepface(net, face)
+            value = predict_race_fairface(net, crop_frame, (cx1, cy1, cx2, cy2)) if key == "fairface" else predict_race_deepface(net, face)
             race_pairs.append((key, value))
 
         expression_pairs = []
