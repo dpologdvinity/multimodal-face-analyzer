@@ -84,6 +84,7 @@ def _model_checkboxes(label: str, nets: dict) -> set:
 st.sidebar.markdown("### MODEL SELECTION")
 active_age = _model_checkboxes("AGE", models.age_nets)
 active_gender = _model_checkboxes("GENDER", models.gender_nets)
+active_race = _model_checkboxes("RACE", models.race_nets)
 active_emotion = _model_checkboxes("EMOTION", models.emotion_nets)
 active_drowsiness = _model_checkboxes("DROWSINESS", models.drowsiness_nets)
 
@@ -96,7 +97,7 @@ conf_threshold = st.sidebar.slider("CONFIDENCE THRESHOLD", 0.1, 1.0, 0.7)
 def process_and_display(frame: np.ndarray, identifier: str, crop_toggle: bool, conf_threshold: float) -> None:
     """Run detection/inference on frame and render result in Streamlit."""
     annotated_frame, cropped_faces, any_drowsy, has_faces = inference.analyze_frame(
-        models, frame, conf_threshold, active_age, active_gender, active_emotion, active_drowsiness
+        models, frame, conf_threshold, active_age, active_gender, active_emotion, active_drowsiness, active_race
     )
 
     if not has_faces:
@@ -150,7 +151,7 @@ with tab_webcam:
         def _video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
             img = frame.to_ndarray(format="bgr24")
             annotated_frame, _, _, _ = inference.analyze_frame(
-                models, img, conf_threshold, active_age, active_gender, active_emotion, active_drowsiness
+                models, img, conf_threshold, active_age, active_gender, active_emotion, active_drowsiness, active_race
             )
             return av.VideoFrame.from_ndarray(annotated_frame, format="bgr24")
 

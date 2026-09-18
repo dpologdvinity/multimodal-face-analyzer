@@ -8,6 +8,7 @@ FROM python:3.11-slim
 #   GENDER_MODEL:      caffe, insightface           (default: caffe)
 #   EMOTION_MODEL:     efficientnet, dan            (default: efficientnet)
 #   DROWSINESS_MODEL:  haarcascade                  (default: haarcascade)
+#   RACE_MODEL:        fairface                     (default: fairface)
 # insightface's genderage.onnx provides BOTH age and gender from one file
 # (non-commercial research license -- see README).
 # e.g. --build-arg AGE_MODEL=caffe,ssrnet builds both age backends so the web
@@ -17,6 +18,7 @@ ARG AGE_MODEL=caffe
 ARG GENDER_MODEL=caffe
 ARG EMOTION_MODEL=efficientnet
 ARG DROWSINESS_MODEL=haarcascade
+ARG RACE_MODEL=fairface
 
 # Install system dependencies for OpenCV
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -53,8 +55,10 @@ RUN --mount=type=bind,source=models/age_deploy.prototxt,target=/tmp/models/age_d
     --mount=type=bind,source=models/haarcascade_eye.xml,target=/tmp/models/haarcascade_eye.xml \
     --mount=type=bind,source=models/dan_affecnet7.pth,target=/tmp/models/dan_affecnet7.pth \
     --mount=type=bind,source=models/efficientnet_b0_fer.onnx,target=/tmp/models/efficientnet_b0_fer.onnx \
+    --mount=type=bind,source=models/fairface_7class.onnx,target=/tmp/models/fairface_7class.onnx \
     set -e; \
-    age_csv=",$AGE_MODEL,"; gender_csv=",$GENDER_MODEL,"; emotion_csv=",$EMOTION_MODEL,"; drowsiness_csv=",$DROWSINESS_MODEL,"; \
+    age_csv=",$AGE_MODEL,"; gender_csv=",$GENDER_MODEL,"; emotion_csv=",$EMOTION_MODEL,"; \
+    drowsiness_csv=",$DROWSINESS_MODEL,"; race_csv=",$RACE_MODEL,"; \
     case "$age_csv" in *,caffe,*) cp /tmp/models/age_deploy.prototxt /tmp/models/age_net.caffemodel models/ ;; esac; \
     case "$age_csv" in *,ssrnet,*) cp /tmp/models/ssrnet_morph2.pth models/ ;; esac; \
     case "$gender_csv" in *,caffe,*) cp /tmp/models/gender_deploy.prototxt /tmp/models/gender_net.caffemodel models/ ;; esac; \
@@ -62,7 +66,8 @@ RUN --mount=type=bind,source=models/age_deploy.prototxt,target=/tmp/models/age_d
     case "$gender_csv" in *,insightface,*) cp /tmp/models/insightface_genderage.onnx models/ ;; esac; \
     case "$emotion_csv" in *,dan,*) cp /tmp/models/dan_affecnet7.pth models/ ;; esac; \
     case "$emotion_csv" in *,efficientnet,*) cp /tmp/models/efficientnet_b0_fer.onnx models/ ;; esac; \
-    case "$drowsiness_csv" in *,haarcascade,*) cp /tmp/models/haarcascade_eye.xml models/ ;; esac
+    case "$drowsiness_csv" in *,haarcascade,*) cp /tmp/models/haarcascade_eye.xml models/ ;; esac; \
+    case "$race_csv" in *,fairface,*) cp /tmp/models/fairface_7class.onnx models/ ;; esac
 
 # Expose default Streamlit port
 EXPOSE 8501

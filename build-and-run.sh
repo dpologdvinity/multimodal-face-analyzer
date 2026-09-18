@@ -65,12 +65,16 @@ EMOTION_MODEL="$REPLY_MODEL"
 prompt_feature "DROWSINESS" haarcascade
 DROWSINESS_MODEL="$REPLY_MODEL"
 
+prompt_feature "RACE" fairface
+RACE_MODEL="$REPLY_MODEL"
+
 echo "" >&2
 echo "Building ${IMAGE_TAG} with:" >&2
 echo "  AGE_MODEL=${AGE_MODEL}" >&2
 echo "  GENDER_MODEL=${GENDER_MODEL}" >&2
 echo "  EMOTION_MODEL=${EMOTION_MODEL}" >&2
 echo "  DROWSINESS_MODEL=${DROWSINESS_MODEL}" >&2
+echo "  RACE_MODEL=${RACE_MODEL}" >&2
 echo "" >&2
 
 docker build \
@@ -78,6 +82,7 @@ docker build \
     --build-arg GENDER_MODEL="$GENDER_MODEL" \
     --build-arg EMOTION_MODEL="$EMOTION_MODEL" \
     --build-arg DROWSINESS_MODEL="$DROWSINESS_MODEL" \
+    --build-arg RACE_MODEL="$RACE_MODEL" \
     -t "$IMAGE_TAG" .
 
 docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
