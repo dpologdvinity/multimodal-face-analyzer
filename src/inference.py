@@ -175,26 +175,34 @@ def predict_age_ssrnet(net, face_bgr: np.ndarray) -> str:
     return f"{age:.0f}"
 
 
+INSIGHTFACE_INPUT_SIZE = 96  # this genderage.onnx's actual input size (per its ONNX graph) --
+# NOT the 112x112 insightface uses for its face-recognition/embedding models; verified via
+# onnxruntime, which rejects 112x112 with a shape-mismatch error. cv2.dnn silently accepted the
+# wrong shape and produced near-constant garbage output instead of erroring.
+
+
 def _insightface_align(frame_bgr: np.ndarray, box: tuple[int, int, int, int]) -> np.ndarray:
     """Replicate insightface's own alignment (model_zoo/attribute.py + utils/face_align.py):
     a similarity transform (no rotation) centered on the raw detection box, scaled so the box
-    fits into the 112x112 output with a 1.5x margin. Must operate on the ORIGINAL frame and the
-    UNPADDED detection box -- insightface's genderage model was trained on this specific framing,
-    not an arbitrarily-padded crop+resize (feeding it a padded crop gives wrong predictions)."""
+    fits into the output with a 1.5x margin. Must operate on the ORIGINAL frame and the UNPADDED
+    detection box -- insightface's genderage model was trained on this specific framing, not an
+    arbitrarily-padded crop+resize (feeding it a padded crop gives wrong predictions)."""
     x1, y1, x2, y2 = box
     w, h = x2 - x1, y2 - y1
     cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
-    scale = 112.0 / (max(w, h) * 1.5)
+    size = INSIGHTFACE_INPUT_SIZE
+    scale = size / (max(w, h) * 1.5)
     m = np.array([
-        [scale, 0, 56 - scale * cx],
-        [0, scale, 56 - scale * cy],
+        [scale, 0, size / 2 - scale * cx],
+        [0, scale, size / 2 - scale * cy],
     ], dtype=np.float32)
-    return cv2.warpAffine(frame_bgr, m, (112, 112), borderValue=0.0)
+    return cv2.warpAffine(frame_bgr, m, (size, size), borderValue=0.0)
 
 
 def _insightface_forward(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int]) -> np.ndarray:
     aligned = _insightface_align(frame_bgr, box)
-    blob = cv2.dnn.blobFromImage(aligned, 1.0 / 128.0, (112, 112), (127.5, 127.5, 127.5), swapRB=True)
+    size = INSIGHTFACE_INPUT_SIZE
+    blob = cv2.dnn.blobFromImage(aligned, 1.0 / 128.0, (size, size), (127.5, 127.5, 127.5), swapRB=True)
     net.setInput(blob)
     return net.forward().flatten()
 
@@ -375,34 +383,26 @@ def analyze_frame(
             drowsy_pairs.append((key, "DROWSY" if drowsy else "ALERT"))
         any_drowsy = any_drowsy or face_drowsy
 
-        age_parts = _format_results(age_pairs)
-        gender_parts = _format_results(gender_pairs)
-        emotion_parts = _format_results(emotion_pairs)
-        race_parts = _format_results(race_pairs)
+        # Attribute text is intentionally NOT drawn on the shared image -- with several faces
+        # close together, per-face text overlaps illegibly. The box + a small index number is
+        # the only thing burned into pixels; full results are returned as structured data for
+        # the caller to render as separate per-face UI (see src/app.py's target cards).
+        box_thickness = int(round(frame.shape[0] / 150)) or 1
+        cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), (0, 255, 0), box_thickness, 8)
+        draw_outlined_text(annotated_frame, str(idx), (x1, max(20, y1 - 10)), (0, 255, 255))
+
         drowsy_parts = _format_results(drowsy_pairs)
+        status = drowsy_parts[0] if len(drowsy_parts) == 1 else (", ".join(drowsy_parts) if drowsy_parts else None)
 
-        # One line per feature (not one long comma-joined line) -- a combined line with several
-        # active models per feature can easily be wider than the frame itself, which clamping
-        # alone can't fix.
-        label_lines = [", ".join(parts) for parts in (age_parts, gender_parts, race_parts, emotion_parts) if parts]
-        if not label_lines:
-            label_lines = ["Face"]
-        label = ", ".join(label_lines)
-
-        # Draw green box and cyan overlay text with black outline for readability
-        cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), (0, 255, 0), int(round(frame.shape[0] / 150)), 8)
-        line_height = 28
-        for line_idx, line in enumerate(label_lines):
-            y = y1 - 10 - line_idx * line_height
-            draw_outlined_text(annotated_frame, line, (x1, y), (0, 255, 255))
-
-        status_label = None
-        if drowsy_parts:
-            status_label = ", ".join(drowsy_parts)
-            status_color = (0, 0, 255) if face_drowsy else (0, 255, 0)
-            draw_outlined_text(annotated_frame, status_label, (x1, y1 + (y2 - y1) + 30), status_color)
-
-        caption = f"TARGET_{idx}: {label}" + (f" | {status_label}" if status_label else "")
-        cropped_faces.append((caption, cv2.cvtColor(face, cv2.COLOR_BGR2RGB)))
+        cropped_faces.append({
+            "idx": idx,
+            "image": cv2.cvtColor(face, cv2.COLOR_BGR2RGB),
+            "age": _format_results(age_pairs),
+            "gender": _format_results(gender_pairs),
+            "race": _format_results(race_pairs),
+            "emotion": _format_results(emotion_pairs),
+            "status": status,
+            "drowsy": face_drowsy if drowsy_pairs else None,
+        })
 
     return annotated_frame, cropped_faces, any_drowsy, bool(face_boxes)
