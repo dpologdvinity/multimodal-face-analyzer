@@ -1,8 +1,10 @@
 import os
 from pathlib import Path
+import av
 import cv2
 import numpy as np
 import streamlit as st
+from streamlit_webrtc import webrtc_streamer
 
 # Page setup & surveillance-terminal style injection
 st.set_page_config(page_title="AGE_GENDER_DETECTOR", layout="wide")
@@ -142,17 +144,10 @@ st.sidebar.markdown("### CONTROL PANEL")
 crop_toggle = st.sidebar.toggle("CROP FACE TARGETS ONLY", value=False)
 conf_threshold = st.sidebar.slider("CONFIDENCE THRESHOLD", 0.1, 1.0, 0.7)
 
-def process_and_display(frame: np.ndarray, identifier: str, crop_toggle: bool, conf_threshold: float) -> None:
-    """Run detection/inference on frame and render result in Streamlit."""
+def analyze_frame(frame: np.ndarray, conf_threshold: float):
+    """Detect faces and run age/gender/drowsiness inference. No Streamlit calls (safe for background threads)."""
     annotated_frame = frame.copy()
-
     face_boxes = detect_faces(face_net, frame, conf_threshold)
-
-    if not face_boxes:
-        st.warning(f"[TARGET MISSING] Zero targets detected in file: {identifier}")
-        st.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), caption=identifier, use_container_width=True)
-        return
-
     cropped_faces = []
     any_drowsy = False
 
@@ -182,6 +177,18 @@ def process_and_display(frame: np.ndarray, identifier: str, crop_toggle: bool, c
         _draw_outlined_text(annotated_frame, status_label, (x1, y1 + (y2 - y1) + 30), status_color)
 
         cropped_faces.append((f"TARGET_{idx}: {label} | {status_label}", cv2.cvtColor(face, cv2.COLOR_BGR2RGB)))
+
+    return annotated_frame, cropped_faces, any_drowsy, bool(face_boxes)
+
+
+def process_and_display(frame: np.ndarray, identifier: str, crop_toggle: bool, conf_threshold: float) -> None:
+    """Run detection/inference on frame and render result in Streamlit."""
+    annotated_frame, cropped_faces, any_drowsy, has_faces = analyze_frame(frame, conf_threshold)
+
+    if not has_faces:
+        st.warning(f"[TARGET MISSING] Zero targets detected in file: {identifier}")
+        st.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), caption=identifier, use_container_width=True)
+        return
 
     st.markdown(f"#### ANALYSIS RESULT: `{identifier}`")
 
@@ -214,9 +221,26 @@ with tab_upload:
             process_and_display(frame, uploaded_file.name, crop_toggle, conf_threshold)
 
 with tab_webcam:
-    webcam_image = st.camera_input("CAPTURE LIVE TARGET...")
+    capture_mode = st.radio("CAPTURE MODE", ["SNAPSHOT", "LIVE"], horizontal=True)
 
-    if webcam_image:
-        file_bytes = np.asarray(bytearray(webcam_image.read()), dtype=np.uint8)
-        frame = cv2.imdecode(file_bytes, 1)
-        process_and_display(frame, "WEBCAM_CAPTURE", crop_toggle, conf_threshold)
+    if capture_mode == "SNAPSHOT":
+        webcam_image = st.camera_input("CAPTURE LIVE TARGET...")
+
+        if webcam_image:
+            file_bytes = np.asarray(bytearray(webcam_image.read()), dtype=np.uint8)
+            frame = cv2.imdecode(file_bytes, 1)
+            process_and_display(frame, "WEBCAM_CAPTURE", crop_toggle, conf_threshold)
+    else:
+        st.caption("[ CONTINUOUS FEED ] -- Every frame is re-scanned, so the analysis auto-updates as targets enter/leave view.")
+
+        def _video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
+            img = frame.to_ndarray(format="bgr24")
+            annotated_frame, _, _, _ = analyze_frame(img, conf_threshold)
+            return av.VideoFrame.from_ndarray(annotated_frame, format="bgr24")
+
+        webrtc_streamer(
+            key="live-drowsiness-feed",
+            video_frame_callback=_video_frame_callback,
+            media_stream_constraints={"video": True, "audio": False},
+            rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
+        )
