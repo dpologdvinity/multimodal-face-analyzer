@@ -77,9 +77,9 @@ def load_models():
         if not file_path.exists():
             raise FileNotFoundError(f"Missing weight/config file: {file_path}")
 
-    face_net = cv2.dnn.readNetFromTensorflow(str(FACE_MODEL), str(FACE_PROTO))
-    age_net = cv2.dnn.readNetFromCaffe(str(AGE_PROTO), str(AGE_MODEL))
-    gender_net = cv2.dnn.readNetFromCaffe(str(GENDER_PROTO), str(GENDER_MODEL))
+    face_net = cv2.dnn.readNet(str(FACE_MODEL), str(FACE_PROTO))
+    age_net = cv2.dnn.readNet(str(AGE_MODEL), str(AGE_PROTO))
+    gender_net = cv2.dnn.readNet(str(GENDER_MODEL), str(GENDER_PROTO))
     return face_net, age_net, gender_net
 
 
