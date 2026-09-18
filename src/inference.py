@@ -97,6 +97,8 @@ RACE_CLOSE_MARGIN = 0.10  # show top-2 race classes together if within this prob
 RECOGNITION_COSINE_THRESHOLD = 0.68  # deepface's own default VGG-Face verification threshold
 DEX_MEAN_VALUES = (103.939, 116.779, 123.68)  # VGG-16 ImageNet BGR mean, per DEX's own preprocessing
 GALLERY_FILE = BASE_DIR / "gallery" / "known_faces.json"
+KNOWN_PEOPLE_DIR = BASE_DIR / "known_people"  # bundled reference photos for identity search (see README)
+IMAGE_FILE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 # Model keys per feature, in quickest-to-build order (first = default).
 # Must match the numbered options in build-and-run.sh and the Dockerfile ARGs.
@@ -802,6 +804,40 @@ def load_gallery() -> dict:
 def save_gallery(gallery: dict) -> None:
     GALLERY_FILE.parent.mkdir(parents=True, exist_ok=True)
     GALLERY_FILE.write_text(json.dumps({name: vec.tolist() for name, vec in gallery.items()}))
+
+
+def build_gallery_from_directory(face_net, recognition_net, directory: str | Path) -> dict[str, np.ndarray]:
+    """Identity search's directory-matching mode (see README): scan `directory` for image
+    files, detect the largest face in each, and embed it with the same VGGFace backbone as
+    the enrolled gallery. Returns {display_name: embedding}, display_name being the filename
+    stem with underscores turned into spaces (e.g. Barack_Obama.jpg -> "Barack Obama").
+    Images with no detected face are skipped silently. Not cached here -- call sites (the web
+    app) are expected to cache this themselves since it re-runs face detection + embedding for
+    every file on each call."""
+    directory = Path(directory)
+    gallery: dict[str, np.ndarray] = {}
+    if not directory.is_dir():
+        return gallery
+
+    for path in sorted(directory.iterdir()):
+        if path.suffix.lower() not in IMAGE_FILE_EXTENSIONS:
+            continue
+        image = cv2.imread(str(path))
+        if image is None:
+            continue
+        boxes = detect_faces(face_net, image, conf_threshold=0.7)
+        if not boxes:
+            continue
+        x1, y1, x2, y2 = max(boxes, key=lambda b: (b[2] - b[0]) * (b[3] - b[1]))
+        h, w = image.shape[:2]
+        y1c, y2c = max(0, y1 - 20), min(y2 + 20, h - 1)
+        x1c, x2c = max(0, x1 - 20), min(x2 + 20, w - 1)
+        face = image[y1c:y2c, x1c:x2c]
+        if face.size == 0:
+            continue
+        gallery[path.stem.replace("_", " ")] = compute_face_embedding(recognition_net, face)
+
+    return gallery
 
 
 def predict_expression_blendshapes(landmarker, face_bgr: np.ndarray) -> str:
