@@ -477,6 +477,20 @@ pip install tensorflow-cpu tf-keras
 
 Without torch/tensorflow installed, the corresponding models are automatically skipped (not an error).
 
+For a guided native install and launch, run `./install-and-run.sh`. It groups related model choices,
+creates or reuses `.venv`, installs only the selected optional dependency groups, and starts the app at
+`http://localhost:8501`. In normal mode, model choices are colored: green means the choice adds no
+new package, while orange means it introduces an additional install not already selected earlier. Add
+`-v` or `--verbose` to show the package tree under every choice; verbose mode leaves model rows plain,
+colors packages from `requirements.txt` green, and colors additional packages orange. Add `-h` or
+`--hidden` to hide choices that would add a new optional package; in hidden mode, `9) all` selects only
+the remaining choices. Use `-p` or `--package` with a comma-separated package list (for example,
+`--package onnxruntime,tensorflow-cpu`) to mark packages you will provide yourself as already available;
+the installer still installs packages required by selected backends. It accepts `onxruntime` as an alias
+for `onnxruntime`. It requires `apt-get` and `sudo` on Debian/Ubuntu to install the OpenCV and MediaPipe runtime
+libraries; on other systems, install the equivalent `libgl1`, `libglib2.0-0`,
+`libegl1`, and `libgles2` packages yourself.
+
 ---
 
 ## Docker Web App

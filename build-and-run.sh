@@ -7,26 +7,43 @@ IMAGE_TAG="face-analyzer"
 CONTAINER_NAME="face_analyzer_container"
 PORT="8501"
 
-# prompt_feature FEATURE_NAME option1 option2 ...
+# prompt_feature FEATURE_NAME DEFAULT_SELECTION "key|label" ...
 # Options must be given in quickest-to-build order (option1 = default).
 # Sets REPLY_MODEL to a comma-separated list of chosen option names, or "" for none.
 prompt_feature() {
     local feature_name="$1"
-    shift
+    local default_selection="$2"
+    shift 2
     local options=("$@")
+    local zero_label="none"
+    [ "$feature_name" = "FACE DETECTION" ] && zero_label="ssd"
 
     echo "" >&2
-    echo "== ${feature_name} model ==" >&2
-    echo "  0) none" >&2
+    echo "== ${feature_name} ==" >&2
+    local none_marker=" "
+    if [ "$default_selection" = "0" ]; then
+        none_marker="*"
+    fi
+    echo "${none_marker} 0) ${zero_label}" >&2
     local i=1
-    for opt in "${options[@]}"; do
-        echo "  ${i}) ${opt}" >&2
+    local marker key option
+    for entry in "${options[@]}"; do
+        key="${entry%%|*}"
+        option="${entry#*|}"
+        if [ "$option" = "$entry" ]; then
+            option="$key"
+        fi
+        marker=" "
+        if [ "$default_selection" != "0" ] && [ "$i" -eq 1 ]; then
+            marker="*"
+        fi
+        echo "${marker} ${i}) ${option}" >&2
         i=$((i + 1))
     done
     echo "  9) all" >&2
 
-    read -rp "Select (comma-separated for multiple) [default: 1]: " selection
-    selection="${selection:-1}"
+    read -rp "Select: " selection
+    selection="${selection:-$default_selection}"
 
     local chosen=()
     IFS=',' read -ra nums <<< "$selection"
@@ -38,14 +55,16 @@ prompt_feature() {
             break
         fi
         if [ "$n" = "9" ]; then
-            chosen=("${options[@]}")
+            for entry in "${options[@]}"; do
+                chosen+=("${entry%%|*}")
+            done
             break
         fi
         if ! [[ "$n" =~ ^[0-9]+$ ]] || [ "$n" -lt 1 ] || [ "$n" -gt "${#options[@]}" ]; then
             echo "Invalid option: ${n}" >&2
             exit 1
         fi
-        chosen+=("${options[$((n - 1))]}")
+        chosen+=("${options[$((n - 1))]%%|*}")
     done
 
     local result=""
@@ -58,62 +77,93 @@ prompt_feature() {
     REPLY_MODEL="$result"
 }
 
-prompt_feature "AGE" caffe insightface ssrnet fairface dex mivolo
+set_face_detector_models() {
+    YOLO_FACE_MODEL=""
+    SCRFD_FACE_MODEL=""
+    RETINAFACE_MODEL=""
+    local detector
+    IFS=',' read -ra detectors <<< "$1"
+    for detector in "${detectors[@]:-}"; do
+        case "$detector" in
+            yolo) YOLO_FACE_MODEL="yolo" ;;
+            scrfd) SCRFD_FACE_MODEL="scrfd" ;;
+            retinaface) RETINAFACE_MODEL="retinaface" ;;
+        esac
+    done
+}
+
+prompt_feature "FACE DETECTION" 0 yolo scrfd retinaface
+set_face_detector_models "$REPLY_MODEL"
+
+prompt_feature "AGE" 1 caffe insightface ssrnet fairface dex mivolo
 AGE_MODEL="$REPLY_MODEL"
 
-prompt_feature "GENDER" caffe insightface deepface fairface mivolo
+prompt_feature "GENDER" 1 caffe insightface deepface fairface mivolo
 GENDER_MODEL="$REPLY_MODEL"
 
-prompt_feature "EMOTION" efficientnet ferplus mini_xception dan hsemotion
-EMOTION_MODEL="$REPLY_MODEL"
-
-prompt_feature "DROWSINESS" haarcascade
-DROWSINESS_MODEL="$REPLY_MODEL"
-
-prompt_feature "RACE" fairface deepface
+prompt_feature "RACE" 1 fairface deepface
 RACE_MODEL="$REPLY_MODEL"
 
-prompt_feature "EXPRESSION" blendshapes
-EXPRESSION_MODEL="$REPLY_MODEL"
+prompt_feature "EMOTION" 1 efficientnet ferplus mini_xception dan hsemotion
+EMOTION_MODEL="$REPLY_MODEL"
 
-prompt_feature "LIVENESS" mediapipe
-LIVENESS_MODEL="$REPLY_MODEL"
-
-prompt_feature "RECOGNITION" vggface lbph
+prompt_feature "RECOGNITION" 0 vggface lbph
 RECOGNITION_MODEL="$REPLY_MODEL"
 
-prompt_feature "FACIAL HAIR" bisenet
-FACIAL_HAIR_MODEL="$REPLY_MODEL"
+prompt_feature "ADDITIONAL CLASSIFICATIONS" 0 \
+    "blendshapes|expressions - blendshapes" \
+    "haarcascade|drowsiness - haarcascade" \
+    "mediapipe|liveness - mediapipe" \
+    "bisenet|facial hair - bisenet" \
+    "mobilenet|glasses - mobilenet" \
+    "mobilenetv2|mask - mobilenetv2"
+set_additional_classification_models() {
+    EXPRESSION_MODEL=""
+    DROWSINESS_MODEL=""
+    LIVENESS_MODEL=""
+    FACIAL_HAIR_MODEL=""
+    GLASSES_MODEL=""
+    MASK_MODEL=""
+    local model
+    IFS=',' read -ra models <<< "$1"
+    for model in "${models[@]:-}"; do
+        case "$model" in
+            blendshapes) EXPRESSION_MODEL="blendshapes" ;;
+            haarcascade) DROWSINESS_MODEL="haarcascade" ;;
+            mediapipe) LIVENESS_MODEL="mediapipe" ;;
+            bisenet) FACIAL_HAIR_MODEL="bisenet" ;;
+            mobilenet) GLASSES_MODEL="mobilenet" ;;
+            mobilenetv2) MASK_MODEL="mobilenetv2" ;;
+        esac
+    done
+}
+set_additional_classification_models "$REPLY_MODEL"
 
-prompt_feature "GLASSES" mobilenet
-GLASSES_MODEL="$REPLY_MODEL"
-
-prompt_feature "MASK" mobilenetv2
-MASK_MODEL="$REPLY_MODEL"
-
-prompt_feature "COLORIZATION" eccv16
-COLORIZATION_MODEL="$REPLY_MODEL"
-
-prompt_feature "POSE" mpi
-POSE_MODEL="$REPLY_MODEL"
-
-prompt_feature "HAND LANDMARKS" mediapipe
-HAND_MODEL="$REPLY_MODEL"
-
-prompt_feature "3D RECONSTRUCTION (ships no working weights -- see README)" deep3d
-RECONSTRUCTION_3D_MODEL="$REPLY_MODEL"
-
-prompt_feature "YOLO FACE DETECTOR (additive -- SSD detector stays required/always on)" yolo
-YOLO_FACE_MODEL="$REPLY_MODEL"
-
-prompt_feature "SCRFD FACE DETECTOR (additive -- SSD detector stays required/always on)" scrfd
-SCRFD_FACE_MODEL="$REPLY_MODEL"
-
-prompt_feature "RETINAFACE FACE DETECTOR (additive -- SSD detector stays required/always on)" retinaface
-RETINAFACE_MODEL="$REPLY_MODEL"
-
-prompt_feature "AGE PROGRESSION (non-commercial use only -- see README)" franunet
-AGE_PROGRESSION_MODEL="$REPLY_MODEL"
+prompt_feature "ADDITIONAL FEATURES" 0 \
+    "eccv16|colorization - eccv16" \
+    "deep3d|3d reconstruction - deep3d" \
+    "franunet|age progression - franunet" \
+    "mediapipe|hand landmarks - mediapipe" \
+    "mpi|body pose - mpi"
+set_additional_feature_models() {
+    COLORIZATION_MODEL=""
+    RECONSTRUCTION_3D_MODEL=""
+    AGE_PROGRESSION_MODEL=""
+    HAND_MODEL=""
+    POSE_MODEL=""
+    local model
+    IFS=',' read -ra models <<< "$1"
+    for model in "${models[@]:-}"; do
+        case "$model" in
+            eccv16) COLORIZATION_MODEL="eccv16" ;;
+            deep3d) RECONSTRUCTION_3D_MODEL="deep3d" ;;
+            franunet) AGE_PROGRESSION_MODEL="franunet" ;;
+            mediapipe) HAND_MODEL="mediapipe" ;;
+            mpi) POSE_MODEL="mpi" ;;
+        esac
+    done
+}
+set_additional_feature_models "$REPLY_MODEL"
 
 echo "" >&2
 echo "Building ${IMAGE_TAG} with:" >&2
