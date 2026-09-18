@@ -19,11 +19,16 @@ FROM python:3.11-slim
 #   HAND_MODEL:         mediapipe                       (default: mediapipe)
 #   RECONSTRUCTION_3D_MODEL: deep3d                      (default: deep3d)
 #   YOLO_FACE_MODEL:    yolo                             (default: yolo)
-# YOLO_FACE_MODEL is additive, not a replacement -- the original SSD/ResNet-10 TensorFlow
-# detector is always required and always on; this ARG only controls whether the alternative
-# YOLOv8-Face ONNX file is ALSO built in, selectable at runtime via a sidebar dropdown (exactly
-# one detector runs per frame). Needs onnxruntime (not this repo's usual cv2.dnn ONNX path --
-# cv2.dnn cannot parse this specific export, verified against both OpenCV 4.10 and 5.0).
+#   SCRFD_FACE_MODEL:   scrfd                            (default: scrfd)
+# YOLO_FACE_MODEL and SCRFD_FACE_MODEL are both additive, not a replacement -- the original
+# SSD/ResNet-10 TensorFlow detector is always required and always on; these ARGs only control
+# whether the alternative YOLOv8-Face/SCRFD ONNX files are ALSO built in, selectable at runtime
+# via a sidebar dropdown (exactly one detector runs per frame). Both need onnxruntime (not this
+# repo's usual cv2.dnn ONNX path -- cv2.dnn cannot parse the YOLOv8-Face export, verified
+# against both OpenCV 4.10 and 5.0; SCRFD's own multi-output anchor format is likewise handled
+# via onnxruntime for the same "one non-cv2.dnn ONNX code path" consistency). SCRFD's weights
+# (deepinsight/insightface's 2.5GF bnkps checkpoint) are non-commercial research-only, same
+# license posture as this repo's insightface age/gender backend -- see README.
 # lbph (Local Binary Patterns Histogram, opencv-contrib's cv2.face module) needs
 # opencv-contrib-python-headless instead of opencv-python-headless -- see the final opencv
 # reinstall step below. Unlike vggface, it has no pretrained weights: it trains from scratch
@@ -65,6 +70,7 @@ ARG POSE_MODEL=mpi
 ARG HAND_MODEL=mediapipe
 ARG RECONSTRUCTION_3D_MODEL=deep3d
 ARG YOLO_FACE_MODEL=yolo
+ARG SCRFD_FACE_MODEL=scrfd
 
 # Install system dependencies for OpenCV and MediaPipe (libegl1/libgles2 needed by
 # mediapipe's face landmarker even in CPU-only/headless use)
@@ -101,10 +107,11 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     case "$recon3d_csv" in *,deep3d,*) pip install scipy ;; esac
 
 # YOLO's ONNX export cannot load in cv2.dnn; the glasses export loads but fails
-# during inference there. Both use onnxruntime.
+# during inference there; SCRFD's multi-output anchor format uses onnxruntime too
+# for consistency with the other non-cv2.dnn detector. All three use onnxruntime.
 RUN --mount=type=cache,target=/root/.cache/pip \
-    yolo_face_csv=",$YOLO_FACE_MODEL,"; glasses_csv=",$GLASSES_MODEL,"; \
-    case "$yolo_face_csv:$glasses_csv" in *yolo*|*mobilenet*) pip install onnxruntime ;; esac
+    yolo_face_csv=",$YOLO_FACE_MODEL,"; glasses_csv=",$GLASSES_MODEL,"; scrfd_face_csv=",$SCRFD_FACE_MODEL,"; \
+    case "$yolo_face_csv:$glasses_csv:$scrfd_face_csv" in *yolo*|*mobilenet*|*scrfd*) pip install onnxruntime ;; esac
 
 # tensorflow/tf-keras are only needed for the deepface race, deepface gender,
 # and/or mini_xception emotion models
@@ -189,10 +196,11 @@ RUN --mount=type=bind,source=models/age_deploy.prototxt,target=/tmp/models/age_d
     --mount=type=bind,source=models/BFM/similarity_Lm3D_all.mat,target=/tmp/models/BFM/similarity_Lm3D_all.mat \
     --mount=type=bind,source=models/deep3d_recon_resnet50.pth,target=/tmp/models/deep3d_recon_resnet50.pth \
     --mount=type=bind,source=models/yolov8n_face.onnx,target=/tmp/models/yolov8n_face.onnx \
+    --mount=type=bind,source=models/scrfd_2.5g_bnkps.onnx,target=/tmp/models/scrfd_2.5g_bnkps.onnx \
     set -e; \
     age_csv=",$AGE_MODEL,"; gender_csv=",$GENDER_MODEL,"; emotion_csv=",$EMOTION_MODEL,"; \
     drowsiness_csv=",$DROWSINESS_MODEL,"; race_csv=",$RACE_MODEL,"; expression_csv=",$EXPRESSION_MODEL,"; recognition_csv=",$RECOGNITION_MODEL,"; \
-    facial_hair_csv=",$FACIAL_HAIR_MODEL,"; glasses_csv=",$GLASSES_MODEL,"; mask_csv=",$MASK_MODEL,"; colorization_csv=",$COLORIZATION_MODEL,"; pose_csv=",$POSE_MODEL,"; hand_csv=",$HAND_MODEL,"; recon3d_csv=",$RECONSTRUCTION_3D_MODEL,"; yolo_face_csv=",$YOLO_FACE_MODEL,"; \
+    facial_hair_csv=",$FACIAL_HAIR_MODEL,"; glasses_csv=",$GLASSES_MODEL,"; mask_csv=",$MASK_MODEL,"; colorization_csv=",$COLORIZATION_MODEL,"; pose_csv=",$POSE_MODEL,"; hand_csv=",$HAND_MODEL,"; recon3d_csv=",$RECONSTRUCTION_3D_MODEL,"; yolo_face_csv=",$YOLO_FACE_MODEL,"; scrfd_face_csv=",$SCRFD_FACE_MODEL,"; \
     case "$age_csv" in *,caffe,*) cp /tmp/models/age_deploy.prototxt /tmp/models/age_net.caffemodel models/ ;; esac; \
     case "$age_csv" in *,ssrnet,*) cp /tmp/models/ssrnet_morph2.pth models/ ;; esac; \
     case "$gender_csv" in *,caffe,*) cp /tmp/models/gender_deploy.prototxt /tmp/models/gender_net.caffemodel models/ ;; esac; \
@@ -220,7 +228,8 @@ RUN --mount=type=bind,source=models/age_deploy.prototxt,target=/tmp/models/age_d
     case "$pose_csv" in *,mpi,*) cp /tmp/models/pose_deploy_linevec_faster_4_stages.prototxt /tmp/models/pose_iter_160000.caffemodel models/ ;; esac; \
     case "$hand_csv" in *,mediapipe,*) cp /tmp/models/hand_landmarker.task models/ ;; esac; \
     case "$recon3d_csv" in *,deep3d,*) mkdir -p models/BFM && cp /tmp/models/BFM/similarity_Lm3D_all.mat models/BFM/ && cp /tmp/models/deep3d_recon_resnet50.pth models/ ;; esac; \
-    case "$yolo_face_csv" in *,yolo,*) cp /tmp/models/yolov8n_face.onnx models/ ;; esac
+    case "$yolo_face_csv" in *,yolo,*) cp /tmp/models/yolov8n_face.onnx models/ ;; esac; \
+    case "$scrfd_face_csv" in *,scrfd,*) cp /tmp/models/scrfd_2.5g_bnkps.onnx models/ ;; esac
 
 # Expose default Streamlit port
 EXPOSE 8501

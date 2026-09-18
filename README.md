@@ -18,7 +18,7 @@
 - **Identity search:** SEARCH button per detected face, matching against bundled reference photos (`known_people/`, a few famous people out of the box) plus an optional user-specified directory. Local matching only, no live internet search.
 - **Save & eigenfaces:** SAVE button per detected face writes to a sparse-column SQLite database plus `faces/`/`eigen/`; SEARCH also checks the eigenfaces (PCA) algorithm against every previously-saved face. A whole-image SCAN ALL FACES button labels every detected face Recognized/Unrecognized in one pass.
 - **3D reconstruction:** 3D RECON button per detected face (Deep3DFaceRecon_pytorch: ResNet50 + Basel Face Model), downloads a `.obj` mesh. Ships no working weights out of the box -- both the checkpoint and the Basel Face Model data are gated (Google Drive / university license registration); see README.
-- **YOLO face detector:** additive alternative to the required SSD/ResNet-10 detector, selectable per-frame via a sidebar dropdown.
+- **YOLO / SCRFD face detectors:** additive alternatives to the required SSD/ResNet-10 detector, selectable per-frame via a sidebar dropdown.
 - **LBPH recognition:** `cv2.face.LBPHFaceRecognizer`-based alternative to VGGFace, trains from scratch on your own enrolled photos -- no pretrained weights to source. The trained recognizer is cached by the enrolled gallery's file fingerprint and retrains only after enrollment or gallery-file changes.
 - **Docker-packaged Streamlit app:** `src/app.py`, all features including race and expression.
 - **Build-time feature toggles:** disable any model at Docker build time to shrink the image (see [Docker](#docker-web-app)).
@@ -41,10 +41,11 @@ Face detection is required; age, gender, race, emotion, expression, and drowsine
 | --------------- | -------------------- | ----------------------- |
 | SSD / ResNet-10 | TensorFlow (cv2.dnn) | bounding box (required) |
 | `yolo` (web app only) | ONNX (onnxruntime) | bounding box            |
+| `scrfd` (web app only) | ONNX (onnxruntime) | bounding box            |
 
-SSD/ResNet-10 is the original detector and is always required/always on. `yolo` (YOLOv8-Face, `models/yolov8n_face.onnx`, [yakhyo/yolov8-face-onnx-inference](https://github.com/yakhyo/yolov8-face-onnx-inference), no explicit upstream license -- same treatment as DAN/SSR-Net) is an **additive, web-app-only alternative**, selectable via a sidebar dropdown -- unlike every other feature, exactly one detector runs per frame (running two and merging their boxes would just produce duplicate/overlapping faces, not a meaningfully combined result). Verified with a real photo (`known_people/Barack_Obama.jpg`): correctly detects and localizes the face.
+SSD/ResNet-10 is the original detector and is always required/always on. `yolo` (YOLOv8-Face, `models/yolov8n_face.onnx`, [yakhyo/yolov8-face-onnx-inference](https://github.com/yakhyo/yolov8-face-onnx-inference), no explicit upstream license -- same treatment as DAN/SSR-Net) and `scrfd` (SCRFD, `models/scrfd_2.5g_bnkps.onnx`, [deepinsight/insightface](https://github.com/deepinsight/insightface/tree/master/detection/scrfd), 2.5GF `bnkps` checkpoint, **non-commercial research-only weights** -- same license posture as this repo's insightface age/gender backend) are both **additive, web-app-only alternatives**, selectable via a sidebar dropdown -- unlike every other feature, exactly one detector runs per frame (running two and merging their boxes would just produce duplicate/overlapping faces, not a meaningfully combined result). Both verified with a real photo (`known_people/Barack_Obama.jpg`): correctly detect and localize the face.
 
-**Needs `onnxruntime`, not this repo's usual `cv2.dnn` ONNX path.** Verified directly: this specific ONNX export fails to load under `cv2.dnn` on both OpenCV 4.10 and 5.0 (`Mixed input data types` error in its DFL box-decode subgraph -- an ONNX importer limitation, not a version-pin issue). The decode math (DFL softmax + sigmoid + NMS) is otherwise a faithful port of upstream's own `models/yolov8.py`, using `cv2.dnn.NMSBoxes` in place of their `torchvision.ops.nms` to avoid pulling in `torchvision` just for this.
+**Both need `onnxruntime`, not this repo's usual `cv2.dnn` ONNX path.** For `yolo`, verified directly: this specific ONNX export fails to load under `cv2.dnn` on both OpenCV 4.10 and 5.0 (`Mixed input data types` error in its DFL box-decode subgraph -- an ONNX importer limitation, not a version-pin issue). The decode math (DFL softmax + sigmoid + NMS) is otherwise a faithful port of upstream's own `models/yolov8.py`, using `cv2.dnn.NMSBoxes` in place of their `torchvision.ops.nms` to avoid pulling in `torchvision` just for this. `scrfd` is run through onnxruntime too, for one consistent non-cv2.dnn detector code path rather than mixing conventions -- its own multi-output (score/bbox/kps per stride) anchor format is decoded via straightforward distance-to-bbox regression (no DFL needed, this checkpoint regresses distances directly), matching upstream's own `tools/scrfd.py`.
 
 ### Age
 
@@ -354,6 +355,7 @@ multimodal-face-analyzer/
 │   ├── pose_deploy_linevec_faster_4_stages.prototxt / pose_iter_160000.caffemodel  # pose (mpi)
 │   ├── hand_landmarker.task                     # hand landmarks: mediapipe backend
 │   ├── yolov8n_face.onnx                        # face detection: yolo backend (additive)
+│   ├── scrfd_2.5g_bnkps.onnx                     # face detection: scrfd backend (additive)
 │   ├── BFM/
 │   │   └── similarity_Lm3D_all.mat              # 3D recon: bundled landmark alignment template
 │   │   # (no BFM_model_front.mat -- Basel Face Model, registration-gated, see README)
@@ -444,6 +446,7 @@ docker build \
   --build-arg HAND_MODEL=mediapipe \
   --build-arg RECONSTRUCTION_3D_MODEL=deep3d \
   --build-arg YOLO_FACE_MODEL=yolo \
+  --build-arg SCRFD_FACE_MODEL=scrfd \
   -t face-analyzer .
 ```
 
@@ -464,12 +467,13 @@ docker build \
 | `HAND_MODEL`       | `mediapipe`                               |
 | `RECONSTRUCTION_3D_MODEL` | `deep3d` (ships no working weights, see [3D Reconstruction](#3d-reconstruction-web-app-only-ships-no-working-weights)) |
 | `YOLO_FACE_MODEL`  | `yolo` (additive -- SSD stays required/always on) |
+| `SCRFD_FACE_MODEL` | `scrfd` (additive -- SSD stays required/always on) |
 
 There's no `SKIN_TONE_MODEL` build ARG -- see [Skin Tone](#skin-tone-web-app-only-no-working-backend-currently-shipped) above. Hair Color and Eye Color are colorimetric heuristics with no model file and thus no build ARG either -- they're always available in the web app (Eye Color additionally needs `haarcascade_eye.xml`, already required for Drowsiness). Face Landmarks also has no build ARG -- it rides along with `EXPRESSION_MODEL=blendshapes`, reusing that same model file.
 
 Multiple models per feature (e.g. `AGE_MODEL=caffe,ssrnet`) can be built in together -- the web app sidebar shows a checkbox per built model, and checking more than one for the same feature runs and displays all of them at once.
 
-Disabled model files never land in an image layer (BuildKit bind-mount + conditional copy). `torch`/`torchvision` (~200MB) are only installed if `ssrnet`, `dan`, `mivolo`, and/or `deep3d` are requested (`scipy` is additionally installed for `deep3d` alone, to load `.mat` files). `tensorflow-cpu`/`tf-keras` (~200-400MB, plus deepface's 513MB weight file) are only installed if `deepface`, `mini_xception`, `vggface`, and/or `mask` are requested -- deepface race remains by far the heaviest single option in the repo (note: `mivolo` at ~110MB checkpoint plus ultralytics/timm dependencies is the second-heaviest, still much lighter than deepface's full stack). `mediapipe` is only installed if the `blendshapes` expression backend is requested. `onnxruntime` is installed if `yolo` (face detector) or `mobilenet` (glasses) is requested. `opencv-contrib-python-headless` replaces the default `opencv-python-headless` only if `lbph` is requested (needed for `cv2.face`).
+Disabled model files never land in an image layer (BuildKit bind-mount + conditional copy). `torch`/`torchvision` (~200MB) are only installed if `ssrnet`, `dan`, `mivolo`, and/or `deep3d` are requested (`scipy` is additionally installed for `deep3d` alone, to load `.mat` files). `tensorflow-cpu`/`tf-keras` (~200-400MB, plus deepface's 513MB weight file) are only installed if `deepface`, `mini_xception`, `vggface`, and/or `mask` are requested -- deepface race remains by far the heaviest single option in the repo (note: `mivolo` at ~110MB checkpoint plus ultralytics/timm dependencies is the second-heaviest, still much lighter than deepface's full stack). `mediapipe` is only installed if the `blendshapes` expression backend is requested. `onnxruntime` is installed if `yolo`/`scrfd` (face detector) or `mobilenet` (glasses) is requested. `opencv-contrib-python-headless` replaces the default `opencv-python-headless` only if `lbph` is requested (needed for `cv2.face`).
 
 ### Run
 
