@@ -6,9 +6,13 @@ set -euo pipefail
 IMAGE_TAG="face-analyzer"
 CONTAINER_NAME="face_analyzer_container"
 PORT="8501"
+BLUE=$'\033[1;34m'
+GREEN=$'\033[1;32m'
+ORANGE_BOLD=$'\033[1;33m'
+RESET=$'\033[0m'
 
-# prompt_feature FEATURE_NAME DEFAULT_SELECTION "key|label" ...
-# Options must be given in quickest-to-build order (option1 = default).
+# prompt_feature FEATURE_NAME DEFAULT_SELECTION "key|label|color" ...
+# Options must use the same order and colors as install-and-run.sh.
 # Sets REPLY_MODEL to a comma-separated list of chosen option names, or "" for none.
 prompt_feature() {
     local feature_name="$1"
@@ -19,25 +23,38 @@ prompt_feature() {
     [ "$feature_name" = "FACE DETECTION" ] && zero_label="ssd"
 
     echo "" >&2
-    echo "== ${feature_name} ==" >&2
+    printf '%b== %s ==%b\n' "$BLUE" "$feature_name" "$RESET" >&2
     local none_marker=" "
     if [ "$default_selection" = "0" ]; then
         none_marker="*"
     fi
-    echo "${none_marker} 0) ${zero_label}" >&2
+    if [ "$zero_label" = "none" ]; then
+        printf '%s 0) %s\n' "$none_marker" "$zero_label" >&2
+    else
+        printf '%b%s 0) %s%b\n' "$GREEN" "$none_marker" "$zero_label" "$RESET" >&2
+    fi
     local i=1
-    local marker key option
+    local marker key option color option_color
     for entry in "${options[@]}"; do
         key="${entry%%|*}"
-        option="${entry#*|}"
-        if [ "$option" = "$entry" ]; then
+        local rest="${entry#*|}"
+        if [[ "$rest" == *"|"* ]]; then
+            option="${rest%%|*}"
+            color="${rest#*|}"
+        else
             option="$key"
+            color="green"
+        fi
+        if [ "$color" = "orange" ]; then
+            option_color="$ORANGE_BOLD"
+        else
+            option_color="$GREEN"
         fi
         marker=" "
         if [ "$default_selection" != "0" ] && [ "$i" -eq 1 ]; then
             marker="*"
         fi
-        echo "${marker} ${i}) ${option}" >&2
+        printf '%b%s %s) %s%b\n' "$option_color" "$marker" "$i" "$option" "$RESET" >&2
         i=$((i + 1))
     done
     echo "  9) all" >&2
@@ -92,31 +109,54 @@ set_face_detector_models() {
     done
 }
 
-prompt_feature "FACE DETECTION" 0 yolo scrfd retinaface
+prompt_feature "FACE DETECTION" 0 \
+    "yolo|yolo|orange" \
+    "scrfd|scrfd|orange" \
+    "retinaface|retinaface|orange"
 set_face_detector_models "$REPLY_MODEL"
 
-prompt_feature "AGE" 1 caffe insightface ssrnet fairface dex mivolo
+prompt_feature "AGE" 1 \
+    "caffe|caffe|green" \
+    "insightface|insightface|green" \
+    "fairface|fairface|green" \
+    "dex|dex|green" \
+    "ssrnet|ssrnet|orange" \
+    "mivolo|mivolo|orange"
 AGE_MODEL="$REPLY_MODEL"
 
-prompt_feature "GENDER" 1 caffe insightface deepface fairface mivolo
+prompt_feature "GENDER" 1 \
+    "caffe|caffe|green" \
+    "insightface|insightface|green" \
+    "fairface|fairface|green" \
+    "deepface|deepface|orange" \
+    "mivolo|mivolo|orange"
 GENDER_MODEL="$REPLY_MODEL"
 
-prompt_feature "RACE" 1 fairface deepface
+prompt_feature "RACE" 1 \
+    "fairface|fairface|green" \
+    "deepface|deepface|orange"
 RACE_MODEL="$REPLY_MODEL"
 
-prompt_feature "EMOTION" 1 efficientnet ferplus mini_xception dan hsemotion
+prompt_feature "EMOTION" 1 \
+    "efficientnet|efficientnet|green" \
+    "ferplus|ferplus|green" \
+    "hsemotion|hsemotion|green" \
+    "mini_xception|mini_xception|orange" \
+    "dan|dan|orange"
 EMOTION_MODEL="$REPLY_MODEL"
 
-prompt_feature "RECOGNITION" 0 vggface lbph
+prompt_feature "RECOGNITION" 0 \
+    "vggface|vggface|orange" \
+    "lbph|lbph|orange"
 RECOGNITION_MODEL="$REPLY_MODEL"
 
 prompt_feature "ADDITIONAL CLASSIFICATIONS" 0 \
-    "blendshapes|expressions - blendshapes" \
-    "haarcascade|drowsiness - haarcascade" \
-    "mediapipe|liveness - mediapipe" \
-    "bisenet|facial hair - bisenet" \
-    "mobilenet|glasses - mobilenet" \
-    "mobilenetv2|mask - mobilenetv2"
+    "haarcascade|drowsiness - haarcascade|green" \
+    "bisenet|facial hair - bisenet|green" \
+    "blendshapes|expressions - blendshapes|orange" \
+    "mediapipe|liveness - mediapipe|orange" \
+    "mobilenet|glasses - mobilenet|orange" \
+    "mobilenetv2|mask - mobilenetv2|orange"
 set_additional_classification_models() {
     EXPRESSION_MODEL=""
     DROWSINESS_MODEL=""
@@ -140,11 +180,11 @@ set_additional_classification_models() {
 set_additional_classification_models "$REPLY_MODEL"
 
 prompt_feature "ADDITIONAL FEATURES" 0 \
-    "eccv16|colorization - eccv16" \
-    "deep3d|3d reconstruction - deep3d" \
-    "franunet|age progression - franunet" \
-    "mediapipe|hand landmarks - mediapipe" \
-    "mpi|body pose - mpi"
+    "eccv16|colorization - eccv16|green" \
+    "mpi|body pose - mpi|green" \
+    "deep3d|3d reconstruction - deep3d|orange" \
+    "franunet|age progression - franunet|orange" \
+    "mediapipe|hand landmarks - mediapipe|orange"
 set_additional_feature_models() {
     COLORIZATION_MODEL=""
     RECONSTRUCTION_3D_MODEL=""
