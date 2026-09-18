@@ -41,6 +41,7 @@ SSRNET_MODEL = MODEL_DIR / "ssrnet_morph2.pth"
 INSIGHTFACE_MODEL = MODEL_DIR / "insightface_genderage.onnx"
 EFFICIENTNET_EMOTION_MODEL = MODEL_DIR / "efficientnet_b0_fer.onnx"
 MINI_XCEPTION_MODEL = MODEL_DIR / "mini_xception_fer.h5"
+FERPLUS_MODEL = MODEL_DIR / "emotion_ferplus.onnx"
 FAIRFACE_MODEL = MODEL_DIR / "fairface_7class.onnx"
 DEEPFACE_RACE_MODEL = MODEL_DIR / "deepface_race.h5"
 DEEPFACE_GENDER_MODEL = MODEL_DIR / "deepface_gender.h5"
@@ -51,6 +52,7 @@ GENDER_LIST = ['Male', 'Female']
 EMOTION_LABELS_DAN = ['neutral', 'happy', 'sad', 'surprise', 'fear', 'disgust', 'anger']
 EMOTION_LABELS_EFFICIENTNET = ['angry', 'disgust', 'fear', 'happy', 'sad', 'surprise', 'neutral']
 EMOTION_LABELS_MINI_XCEPTION = ['angry', 'disgust', 'fear', 'happy', 'sad', 'surprise', 'neutral']
+EMOTION_LABELS_FERPLUS = ['neutral', 'happiness', 'surprise', 'sadness', 'anger', 'disgust', 'fear', 'contempt']
 EMOTION_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 EMOTION_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 SSRNET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
@@ -64,7 +66,7 @@ RACE_CLOSE_MARGIN = 0.10  # show top-2 race classes together if within this prob
 # Must match the numbered options in build-and-run.sh and the Dockerfile ARGs.
 AGE_MODEL_OPTIONS = ["caffe", "insightface", "ssrnet"]
 GENDER_MODEL_OPTIONS = ["caffe", "insightface", "deepface"]
-EMOTION_MODEL_OPTIONS = ["efficientnet", "mini_xception", "dan"]
+EMOTION_MODEL_OPTIONS = ["efficientnet", "ferplus", "mini_xception", "dan"]
 DROWSINESS_MODEL_OPTIONS = ["haarcascade"]
 RACE_MODEL_OPTIONS = ["fairface", "deepface"]
 
@@ -134,6 +136,8 @@ def load_models() -> Models:
         mini_xception_net = build_mini_xception((64, 64, 1), num_classes=7)
         mini_xception_net.load_weights(str(MINI_XCEPTION_MODEL))
         emotion_nets["mini_xception"] = mini_xception_net
+    if FERPLUS_MODEL.exists():
+        emotion_nets["ferplus"] = cv2.dnn.readNetFromONNX(str(FERPLUS_MODEL))
 
     drowsiness_nets = {}
     if EYE_CASCADE_FILE.exists():
@@ -255,6 +259,15 @@ def predict_emotion_mini_xception(net, face_bgr: np.ndarray) -> str:
     tensor = face_norm[np.newaxis, ..., np.newaxis]
     probs = net.predict(tensor, verbose=0).flatten()
     return EMOTION_LABELS_MINI_XCEPTION[int(np.argmax(probs))]
+
+
+def predict_emotion_ferplus(net, face_bgr: np.ndarray) -> str:
+    """Classify facial expression into one of EMOTION_LABELS_FERPLUS."""
+    face_gray = cv2.cvtColor(cv2.resize(face_bgr, (64, 64)), cv2.COLOR_BGR2GRAY).astype(np.float32)
+    blob = face_gray[np.newaxis, np.newaxis, ...]
+    net.setInput(blob)
+    logits = net.forward().flatten()
+    return EMOTION_LABELS_FERPLUS[int(np.argmax(logits))]
 
 
 def detect_drowsiness_haarcascade(eye_cascade, face_bgr: np.ndarray) -> bool:
@@ -402,6 +415,8 @@ def analyze_frame(
                 value = predict_emotion_dan(net, face)
             elif key == "mini_xception":
                 value = predict_emotion_mini_xception(net, face)
+            elif key == "ferplus":
+                value = predict_emotion_ferplus(net, face)
             else:
                 value = predict_emotion_efficientnet(net, face)
             emotion_pairs.append((key, value))
