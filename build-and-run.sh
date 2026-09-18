@@ -59,7 +59,7 @@ AGE_MODEL="$REPLY_MODEL"
 prompt_feature "GENDER" caffe insightface deepface
 GENDER_MODEL="$REPLY_MODEL"
 
-prompt_feature "EMOTION" efficientnet mini_xception dan
+prompt_feature "EMOTION" efficientnet ferplus mini_xception dan
 EMOTION_MODEL="$REPLY_MODEL"
 
 prompt_feature "DROWSINESS" haarcascade

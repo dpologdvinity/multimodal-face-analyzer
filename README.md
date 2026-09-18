@@ -66,10 +66,11 @@ If the top-2 predicted classes are within 10 percentage points of each other, bo
 | Backend                  | Framework         | Output                                                         |
 | ------------------------ | ----------------- | -------------------------------------------------------------- |
 | `efficientnet`           | ONNX (cv2.dnn)    | 7 classes: angry, disgust, fear, happy, sad, surprise, neutral |
+| `ferplus`                | ONNX (cv2.dnn)    | 8 classes: neutral, happiness, surprise, sadness, anger, disgust, fear, contempt |
 | `mini_xception`          | Keras/TensorFlow  | 7 classes: angry, disgust, fear, happy, sad, surprise, neutral |
 | `dan` (DAN, AffectNet-7) | PyTorch           | 7 classes: neutral, happy, sad, surprise, fear, disgust, anger |
 
-Note the class label order differs between backends -- each is tracked as a separate constant, never assumed to match. `mini_xception` is tiny (853KB, oarriaga/face_classification, MIT) but needs TensorFlow like the deepface models.
+Note the class label order (and count) differs between backends -- each is tracked as a separate constant, never assumed to match. `mini_xception` is tiny (853KB, oarriaga/face_classification, MIT) but needs TensorFlow like the deepface models. `ferplus` is the official ONNX Model Zoo emotion model (MIT, 35MB, no extra framework -- pure cv2.dnn ONNX), used in place of a third-party PyTorch checkpoint for security reasons (no untrusted pickle deserialization).
 
 ### Drowsiness
 
@@ -99,6 +100,7 @@ multimodal-face-analyzer/
 │   ├── insightface_genderage.onnx               # age + gender: insightface backend
 │   ├── dan_affecnet7.pth                        # emotion: dan backend
 │   ├── efficientnet_b0_fer.onnx                 # emotion: efficientnet backend
+│   ├── emotion_ferplus.onnx                     # emotion: ferplus backend
 │   ├── mini_xception_fer.h5                     # emotion: mini_xception backend
 │   ├── fairface_7class.onnx                     # race: fairface backend
 │   ├── deepface_race.h5                         # race: deepface backend
@@ -192,7 +194,7 @@ Each build ARG takes a comma-separated list of model keys for that feature, or e
 docker build \
   --build-arg AGE_MODEL=caffe,insightface,ssrnet \
   --build-arg GENDER_MODEL=caffe,insightface,deepface \
-  --build-arg EMOTION_MODEL=efficientnet,mini_xception,dan \
+  --build-arg EMOTION_MODEL=efficientnet,ferplus,mini_xception,dan \
   --build-arg DROWSINESS_MODEL=haarcascade \
   --build-arg RACE_MODEL=fairface,deepface \
   -t face-analyzer .
@@ -202,7 +204,7 @@ docker build \
 | ------------------ | -------------------------------- |
 | `AGE_MODEL`        | `caffe`, `insightface`, `ssrnet` |
 | `GENDER_MODEL`     | `caffe`, `insightface`, `deepface` |
-| `EMOTION_MODEL`    | `efficientnet`, `mini_xception`, `dan` |
+| `EMOTION_MODEL`    | `efficientnet`, `ferplus`, `mini_xception`, `dan` |
 | `DROWSINESS_MODEL` | `haarcascade`                    |
 | `RACE_MODEL`       | `fairface`, `deepface`           |
 
