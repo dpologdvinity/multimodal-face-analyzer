@@ -16,6 +16,7 @@
 - **Image adjustments, two stages:** 11 Lightroom-style sliders (exposure, contrast, shadows/highlights, saturation/vibrance, sharpness, noise reduction, etc.) -- one panel applied to the whole image before face detection, a second applied to each detected face crop before classification.
 - **Identity search:** SEARCH button per detected face, matching against bundled reference photos (`known_people/`, a few famous people out of the box) plus an optional user-specified directory. Local matching only, no live internet search.
 - **Save & eigenfaces:** SAVE button per detected face writes to a sparse-column SQLite database plus `faces/`/`eigen/`; SEARCH also checks the eigenfaces (PCA) algorithm against every previously-saved face. A whole-image SCAN ALL FACES button labels every detected face Recognized/Unrecognized in one pass.
+- **3D reconstruction:** 3D RECON button per detected face (Deep3DFaceRecon_pytorch: ResNet50 + Basel Face Model), downloads a `.obj` mesh. Ships no working weights out of the box -- both the checkpoint and the Basel Face Model data are gated (Google Drive / university license registration); see README.
 - **Docker-packaged Streamlit app:** `src/app.py`, all features including race and expression.
 - **Build-time feature toggles:** disable any model at Docker build time to shrink the image (see [Docker](#docker-web-app)).
 - **Graceful degradation:** any model missing at runtime (file or dependency not present) is skipped, not a crash -- the rest of the pipeline keeps working.
@@ -126,6 +127,27 @@ Every detected face's card also has SAVE and (now dual-purpose) SEARCH buttons:
 ### Recognized / Unrecognized Scan (web app only, no model)
 
 A `SCAN ALL FACES: RECOGNIZED / UNRECOGNIZED` button above the per-face cards, following `ideas/recognition.md`'s Recognized/Unrecognized labeling convention. Unlike SEARCH (one face, on demand), this checks **every** face detected in the image in a single pass: it eigenfaces-matches each one against `eigen/` (previously-SAVEd faces), then redraws the image with a green box + "Recognized" label per matched face or a red box + "Unrecognized" label otherwise, plus a text summary listing each face's matched saved-face ID where applicable. `match_faces_eigenfaces_batch()` trains PCA once for the whole image rather than once per face (`match_face_eigenfaces()`, used by the single-face SEARCH button, retrains on every call -- fine for one face, wasteful for N). Same untuned-threshold caveat as above.
+
+### 3D Reconstruction (web app only, ships no working weights)
+
+| Backend   | Framework       | Output                                      |
+| --------- | --------------- | -------------------------------------------- |
+| `deep3d`  | PyTorch (ResNet50 + BFM) | downloadable `.obj` mesh (vertices + faces + per-vertex color) |
+
+A `3D RECON` button per detected face, wired to [sicxu/Deep3DFaceRecon_pytorch](https://github.com/sicxu/Deep3DFaceRecon_pytorch) (MIT-licensed code) -- predicts 257 3D Morphable Model coefficients (80 identity + 64 expression + 80 texture + 3 pose angle + 27 spherical-harmonic lighting + 3 translation) via a ResNet50, then reconstructs a textured/lit mesh from Basel Face Model (BFM) basis vectors. Output is a Wavefront `.obj` (per-vertex color, no rendering/rasterization) rather than a rendered 2D image -- see Known Limitation below for why.
+
+**Two files this feature needs are gated and NOT bundled or auto-downloadable:**
+
+1. `models/deep3d_recon_resnet50.pth` -- the fine-tuned coefficient-regression checkpoint. Distributed only via a Google Drive folder linked from the upstream repo's README; no scriptable/direct URL exists.
+2. `models/BFM/BFM_model_front.mat` -- derived from the Basel Face Model (BFM09), which is under Basel University's own non-commercial research license and requires registering at [faces.dmi.unibas.ch/bfm](https://faces.dmi.unibas.ch/bfm/) to obtain, plus an expression basis (`Exp_Pca.bin`, also Google-Drive-gated) to convert it via upstream's own `transferBFM09()` script. Neither this conversion step nor the raw BFM09 file is vendored here.
+
+`models/BFM/similarity_Lm3D_all.mat` (a small ~1KB landmark-alignment template) **is** bundled -- it's from the same MIT-licensed upstream repo and isn't derived from BFM09 itself.
+
+Without both gated files present, this feature shows as offline (`RECONSTRUCTION_3D` in the sidebar's OFFLINE list), same as Skin Tone. If you have legitimate access to both (e.g. you're a BFM09 registrant with the converted `.mat` file, and you've downloaded the checkpoint), drop them into `models/` at the paths above and the feature activates automatically -- no rebuild needed if using the dev-mount option in `build-and-run.sh`.
+
+**Known limitation -- no rendered preview, mesh only:** upstream's own rendering step uses [nvdiffrast](https://github.com/NVlabs/nvdiffrast), NVIDIA's differentiable rasterizer, which is GPU/CUDA-only with no CPU fallback -- incompatible with this repo's CPU-only design (same constraint documented for every other PyTorch/TensorFlow feature here). This integration skips rendering entirely and stops at mesh export, which needs no GPU: the coefficient regression and BFM linear-algebra reconstruction are both plain ResNet50 forward passes and matrix math, verified CPU-only. Open the downloaded `.obj` in Blender, MeshLab, or any online viewer to inspect it.
+
+**Known limitation -- landmark source substituted, unverified against a real checkpoint:** upstream's own pipeline expects 5-point face landmarks from an external MTCNN-based tool (not bundled in their repo either). This integration derives the same 5 points from this app's existing MediaPipe FaceLandmarker instead (`landmarks_5pt_from_mediapipe` in `src/nets/deep3d_recon.py`) -- a reasonable approximation, not a re-implementation of their exact landmark source. Because neither gated file could be obtained this session, the vendored math (`ReconNetWrapper`, `ParametricFaceModel`, the alignment pipeline) was verified against synthetic/fake weights and a fake BFM file -- confirmed to produce correctly-shaped, valid output end-to-end (a `.obj` with the right vertex/face counts, coefficients flowing through every stage) -- but has **not** been exercised against the real upstream checkpoint or real BFM data. It's a faithful line-for-line port of the published source (`models/networks.py`, `models/bfm.py`, `util/preprocess.py`), not a guess, but treat it as unverified until tested with the real files.
 
 ### Drowsiness
 
@@ -272,6 +294,10 @@ multimodal-face-analyzer/
 │   ├── colorization_deploy_v2.prototxt / colorization_release_v2.caffemodel / pts_in_hull.npy  # colorization
 │   ├── pose_deploy_linevec_faster_4_stages.prototxt / pose_iter_160000.caffemodel  # pose (mpi)
 │   ├── hand_landmarker.task                     # hand landmarks: mediapipe backend
+│   ├── BFM/
+│   │   └── similarity_Lm3D_all.mat              # 3D recon: bundled landmark alignment template
+│   │   # (no BFM_model_front.mat -- Basel Face Model, registration-gated, see README)
+│   # (no deep3d_recon_resnet50.pth -- Google-Drive-gated checkpoint, see README)
 │   # face_landmarker.task (above) is also reused for the Face Landmarks toggle
 │   # (no skin_tone_mobilenetv2.h5 -- no working weight file exists yet, see README)
 │   # (no deepface_vgg.h5 -- never committed, Recognition/Identity Search are non-functional until it's sourced)
@@ -294,6 +320,7 @@ multimodal-face-analyzer/
         ├── deepface_recognition.py
         ├── mask_model.py                        # mask: mobilenetv2 backend
         ├── skin_tone_model.py                   # skin tone architecture (no working weights yet)
+        ├── deep3d_recon.py                      # 3D recon (no working weights yet, see README)
         └── mivolo/                              # MiVOLO ViT (Apache 2.0)
             ├── __init__.py
             ├── loader.py                        # HF checkpoint adapter
@@ -354,6 +381,7 @@ docker build \
   --build-arg COLORIZATION_MODEL=eccv16 \
   --build-arg POSE_MODEL=mpi \
   --build-arg HAND_MODEL=mediapipe \
+  --build-arg RECONSTRUCTION_3D_MODEL=deep3d \
   -t face-analyzer .
 ```
 
@@ -372,12 +400,13 @@ docker build \
 | `COLORIZATION_MODEL` | `eccv16`                                |
 | `POSE_MODEL`       | `mpi`                                     |
 | `HAND_MODEL`       | `mediapipe`                               |
+| `RECONSTRUCTION_3D_MODEL` | `deep3d` (ships no working weights, see [3D Reconstruction](#3d-reconstruction-web-app-only-ships-no-working-weights)) |
 
 There's no `SKIN_TONE_MODEL` build ARG -- see [Skin Tone](#skin-tone-web-app-only-no-working-backend-currently-shipped) above. Hair Color and Eye Color are colorimetric heuristics with no model file and thus no build ARG either -- they're always available in the web app (Eye Color additionally needs `haarcascade_eye.xml`, already required for Drowsiness). Face Landmarks also has no build ARG -- it rides along with `EXPRESSION_MODEL=blendshapes`, reusing that same model file.
 
 Multiple models per feature (e.g. `AGE_MODEL=caffe,ssrnet`) can be built in together -- the web app sidebar shows a checkbox per built model, and checking more than one for the same feature runs and displays all of them at once.
 
-Disabled model files never land in an image layer (BuildKit bind-mount + conditional copy). `torch`/`torchvision` (~200MB) are only installed if `ssrnet`, `dan`, and/or `mivolo` are requested. `tensorflow-cpu`/`tf-keras` (~200-400MB, plus deepface's 513MB weight file) are only installed if `deepface`, `mini_xception`, `vggface`, and/or `mask` are requested -- deepface race remains by far the heaviest single option in the repo (note: `mivolo` at ~110MB checkpoint plus ultralytics/timm dependencies is the second-heaviest, still much lighter than deepface's full stack). `mediapipe` is only installed if the `blendshapes` expression backend is requested.
+Disabled model files never land in an image layer (BuildKit bind-mount + conditional copy). `torch`/`torchvision` (~200MB) are only installed if `ssrnet`, `dan`, `mivolo`, and/or `deep3d` are requested (`scipy` is additionally installed for `deep3d` alone, to load `.mat` files). `tensorflow-cpu`/`tf-keras` (~200-400MB, plus deepface's 513MB weight file) are only installed if `deepface`, `mini_xception`, `vggface`, and/or `mask` are requested -- deepface race remains by far the heaviest single option in the repo (note: `mivolo` at ~110MB checkpoint plus ultralytics/timm dependencies is the second-heaviest, still much lighter than deepface's full stack). `mediapipe` is only installed if the `blendshapes` expression backend is requested.
 
 ### Run
 

@@ -303,6 +303,20 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
                 saved_id = inference.save_face(face_bgr, face["raw_columns"])
                 st.info(f"[ SAVED ] ID {saved_id}")
 
+            if models.reconstruction_3d_nets:
+                if st.button("3D RECON", key=f"recon3d_btn_{identifier}_{face['idx']}"):
+                    face_bgr = cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR)
+                    result = inference.run_3d_reconstruction(models, face_bgr)
+                    if result is None:
+                        st.warning("[ NO RECONSTRUCTION ] -- no face landmarks found in this crop")
+                    else:
+                        vertices, faces, colors = result
+                        obj_text = inference.mesh_to_obj_str(vertices, faces, colors)
+                        st.download_button(
+                            "DOWNLOAD .OBJ", data=obj_text, file_name=f"face_{identifier}_{face['idx']}.obj",
+                            mime="text/plain", key=f"recon3d_dl_{identifier}_{face['idx']}",
+                        )
+
 
 tab_upload, tab_webcam = st.tabs(["[ FILE UPLOAD ]", "[ LIVE WEBCAM ]"])
 
