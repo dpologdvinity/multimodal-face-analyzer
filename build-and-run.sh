@@ -56,7 +56,7 @@ prompt_feature() {
 prompt_feature "AGE" caffe insightface ssrnet
 AGE_MODEL="$REPLY_MODEL"
 
-prompt_feature "GENDER" caffe insightface
+prompt_feature "GENDER" caffe insightface deepface
 GENDER_MODEL="$REPLY_MODEL"
 
 prompt_feature "EMOTION" efficientnet dan
