@@ -153,7 +153,6 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     pip install "${opencv_pkg}>=4.8.0,<5.0.0"
 
 # Application code and always-required model files (face detector)
-COPY detect.py ./
 COPY src/ src/
 COPY models/opencv_face_detector.pbtxt models/opencv_face_detector_uint8.pb models/
 
