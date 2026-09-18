@@ -96,8 +96,18 @@ def process_image(image_path, face_net, age_net, gender_net, crop_only=False, sh
 
         label = f"{gender}, {age}"
 
-        # Draw box and text on main image frame
+        # Draw box and text on main image frame, black outline for readability
         cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), (0, 255, 0), int(round(frame.shape[0] / 150)), 8)
+        cv2.putText(
+            annotated_frame,
+            label,
+            (x1, y1 - 10),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.8,
+            (0, 0, 0),
+            5,
+            cv2.LINE_AA,
+        )
         cv2.putText(
             annotated_frame,
             label,
