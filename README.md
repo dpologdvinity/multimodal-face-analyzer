@@ -89,13 +89,23 @@ Note the class label order (and count) differs between backends -- each is track
 
 Raw output of Google's MediaPipe Face Landmarker (Apache 2.0), a separate feature from Emotion. BlendShapes outputs 52 continuous facial-muscle-movement coefficients (e.g. mouthSmileLeft, browDownRight, jawOpen, eyeBlinkLeft, etc.) tracking individual facial movements, whereas Emotion backends predict discrete emotion classes (angry, happy, sad, etc.). There is no validated mapping from blendshapes to emotion labels, so Expression surfaces the raw top-N-scoring blendshape coefficients as-is.
 
+### Recognition (web app only)
+
+| Backend    | Framework        | Output                                             |
+| ---------- | ---------------- | --------------------------------------------------- |
+| `vggface`  | Keras/TensorFlow | enrolled identity name + similarity, e.g. `Alice (82%)`, or `UNKNOWN` |
+
+Reuses the same VGGFace backbone as the deepface race/gender heads (`src/nets/deepface_common.py`), truncated to its 4096-d penultimate layer as a face embedding (`src/nets/deepface_recognition.py`) instead of a classification head -- same represent+verify shape as the original DeepFace paper. Embeddings are L2-normalized; identity is decided by cosine similarity against every enrolled face in the gallery, with a match only reported above `RECOGNITION_COSINE_THRESHOLD = 0.68` (deepface's own default VGG-Face verification threshold). Needs TensorFlow, like deepface race/gender.
+
+Enrollment happens in the web app: under any detected face with a computed embedding, enter a name and click ENROLL. The gallery is stored as `gallery/known_faces.json` (one L2-normalized 4096-d vector per name), created on first enrollment and gitignored as runtime user data. It survives app restarts; Docker users should volume-mount `gallery/` (e.g. `-v $(pwd)/gallery:/app/gallery`) to persist enrollments across container restarts. Sidebar has a GALLERY section listing enrolled names with a delete button per entry.
+
 ### Drowsiness
 
 | Backend                   | Framework | Output             |
 | ------------------------- | --------- | ------------------ |
 | Haar cascade eye detector | OpenCV    | `DROWSY` / `ALERT` |
 
-Model provenance: DAN, SSR-Net, and DeepFace's race model are vendored research code (`src/nets/`). DAN and SSR-Net have no explicit upstream license file (research/educational use). DeepFace is MIT. FairFace's ONNX conversion is MIT (underlying dataset CC BY 4.0). InsightFace's model is non-commercial research use only (see Gender above).
+Model provenance: DAN, SSR-Net, and DeepFace's race model are vendored research code (`src/nets/`). DAN and SSR-Net have no explicit upstream license file (research/educational use). DeepFace (race, gender, and recognition/`deepface_vgg.h5`) is MIT. FairFace's ONNX conversion is MIT (underlying dataset CC BY 4.0). InsightFace's model is non-commercial research use only (see Gender above).
 
 ---
 
@@ -122,6 +132,7 @@ multimodal-face-analyzer/
 │   ├── fairface_7class.onnx                     # age + gender + race: fairface backend
 │   ├── deepface_race.h5                         # race: deepface backend
 │   ├── deepface_gender.h5                       # gender: deepface backend
+│   ├── deepface_vgg.h5                          # recognition: vggface backend
 │   ├── face_landmarker.task                     # expression: blendshapes backend
 │   └── haarcascade_eye.xml                      # drowsiness
 │
@@ -135,6 +146,7 @@ multimodal-face-analyzer/
         ├── deepface_race.py
         ├── mini_xception_model.py
         ├── deepface_gender.py
+        ├── deepface_recognition.py
         └── mivolo/                              # MiVOLO ViT (Apache 2.0)
             ├── __init__.py
             ├── loader.py                        # HF checkpoint adapter
@@ -188,17 +200,19 @@ docker build \
   --build-arg DROWSINESS_MODEL=haarcascade \
   --build-arg RACE_MODEL=fairface,deepface \
   --build-arg EXPRESSION_MODEL=blendshapes \
+  --build-arg RECOGNITION_MODEL=vggface \
   -t face-analyzer .
 ```
 
-| Build arg          | Options (default first)          |
-| ------------------ | -------------------------------- |
+| Build arg           | Options (default first)          |
+| -------------------- | -------------------------------- |
 | `AGE_MODEL`        | `caffe`, `insightface`, `ssrnet`, `fairface`, `dex`, `mivolo` |
 | `GENDER_MODEL`     | `caffe`, `insightface`, `deepface`, `fairface`, `mivolo` |
 | `EMOTION_MODEL`    | `efficientnet`, `ferplus`, `mini_xception`, `dan` |
 | `DROWSINESS_MODEL` | `haarcascade`                            |
 | `RACE_MODEL`       | `fairface`, `deepface`                   |
 | `EXPRESSION_MODEL` | `blendshapes`                            |
+| `RECOGNITION_MODEL` | `vggface`                               |
 
 Multiple models per feature (e.g. `AGE_MODEL=caffe,ssrnet`) can be built in together -- the web app sidebar shows a checkbox per built model, and checking more than one for the same feature runs and displays all of them at once.
 

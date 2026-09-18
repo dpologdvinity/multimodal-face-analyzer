@@ -71,6 +71,9 @@ RACE_MODEL="$REPLY_MODEL"
 prompt_feature "EXPRESSION" blendshapes
 EXPRESSION_MODEL="$REPLY_MODEL"
 
+prompt_feature "RECOGNITION" vggface
+RECOGNITION_MODEL="$REPLY_MODEL"
+
 echo "" >&2
 echo "Building ${IMAGE_TAG} with:" >&2
 echo "  AGE_MODEL=${AGE_MODEL}" >&2
@@ -79,6 +82,7 @@ echo "  EMOTION_MODEL=${EMOTION_MODEL}" >&2
 echo "  DROWSINESS_MODEL=${DROWSINESS_MODEL}" >&2
 echo "  RACE_MODEL=${RACE_MODEL}" >&2
 echo "  EXPRESSION_MODEL=${EXPRESSION_MODEL}" >&2
+echo "  RECOGNITION_MODEL=${RECOGNITION_MODEL}" >&2
 echo "" >&2
 
 docker build \
@@ -88,6 +92,7 @@ docker build \
     --build-arg DROWSINESS_MODEL="$DROWSINESS_MODEL" \
     --build-arg RACE_MODEL="$RACE_MODEL" \
     --build-arg EXPRESSION_MODEL="$EXPRESSION_MODEL" \
+    --build-arg RECOGNITION_MODEL="$RECOGNITION_MODEL" \
     -t "$IMAGE_TAG" .
 
 echo "" >&2
