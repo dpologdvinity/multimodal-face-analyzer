@@ -28,36 +28,36 @@ Face detection is required; age, gender, emotion, and drowsiness are each indepe
 
 ### Face Detection
 
-| Backend          | Framework             | Output                    |
-| ----------------- | ---------------------- | -------------------------- |
-| SSD / ResNet-10   | TensorFlow (cv2.dnn)   | bounding box (required)    |
+| Backend         | Framework            | Output                  |
+| --------------- | -------------------- | ----------------------- |
+| SSD / ResNet-10 | TensorFlow (cv2.dnn) | bounding box (required) |
 
 ### Age
 
-| Backend  | Framework       | Output                          |
-| -------- | ---------------- | -------------------------------- |
-| `caffe`  | Caffe (cv2.dnn)  | bucketed range, e.g. `(25-32)`   |
-| `ssrnet` | PyTorch          | continuous age, e.g. `31`        |
+| Backend  | Framework       | Output                         |
+| -------- | --------------- | ------------------------------ |
+| `caffe`  | Caffe (cv2.dnn) | bucketed range, e.g. `(25-32)` |
+| `ssrnet` | PyTorch         | continuous age, e.g. `31`      |
 
 Select with `--age-model` (CLI) or the sidebar dropdown (web app). Default: `caffe`.
 
 ### Gender
 
-| Backend             | Framework       | Output              |
-| -------------------- | ---------------- | -------------------- |
-| Levi & Hassner CNN   | Caffe (cv2.dnn)  | `Male` / `Female`    |
+| Backend            | Framework       | Output            |
+| ------------------ | --------------- | ----------------- |
+| Levi & Hassner CNN | Caffe (cv2.dnn) | `Male` / `Female` |
 
 ### Emotion
 
-| Backend                                        | Framework | Output                                                                 |
-| ------------------------------------------------ | ---------- | ------------------------------------------------------------------------ |
-| DAN ("Distract Your Attention", AffectNet-7)     | PyTorch   | one of 7 classes: neutral, happy, sad, surprise, fear, disgust, anger    |
+| Backend                                      | Framework | Output                                                                |
+| -------------------------------------------- | --------- | --------------------------------------------------------------------- |
+| DAN ("Distract Your Attention", AffectNet-7) | PyTorch   | one of 7 classes: neutral, happy, sad, surprise, fear, disgust, anger |
 
 ### Drowsiness
 
-| Backend                     | Framework | Output              |
-| ----------------------------- | ---------- | -------------------- |
-| Haar cascade eye detector     | OpenCV    | `DROWSY` / `ALERT`   |
+| Backend                   | Framework | Output             |
+| ------------------------- | --------- | ------------------ |
+| Haar cascade eye detector | OpenCV    | `DROWSY` / `ALERT` |
 
 Model provenance: DAN and SSR-Net are vendored research code (`src/nets/`) with no explicit upstream license file -- used here for research/educational purposes.
 
@@ -88,7 +88,7 @@ multimodal-face-analyzer/
         └── ssrnet_model.py
 ```
 
-`detect.py` (CLI) and `src/app.py`+`src/inference.py` (web app) intentionally duplicate the detection pipeline rather than sharing one module -- see `CLAUDE.md` for the reasoning.
+`detect.py` (CLI) and `src/app.py`+`src/inference.py` (web app) intentionally duplicate the detection pipeline rather than sharing one module.
 
 ---
 
@@ -129,14 +129,14 @@ python detect.py path/to/image.jpg --save --out-dir ./custom_results --conf 0.8
 ### CLI Flags
 
 | Flag          | Description                                                                       |
-| ------------- | ---------------------------------------------------------------------------------- |
-| `path`        | Path to target image file or directory                                             |
-| `--crop`      | Display/save cropped face targets instead of full annotated frames                 |
-| `--save`      | Export processed images to disk                                                    |
-| `--no-show`   | Disable GUI display pop-ups (required for headless environments)                   |
-| `--out-dir`   | Target directory for saved images (default: `output`)                              |
-| `--conf`      | Minimum face detection confidence score (default: `0.7`)                           |
-| `--age-model` | Age backend: `caffe` (bucketed ranges) or `ssrnet` (continuous, default: `caffe`)   |
+| ------------- | --------------------------------------------------------------------------------- |
+| `path`        | Path to target image file or directory                                            |
+| `--crop`      | Display/save cropped face targets instead of full annotated frames                |
+| `--save`      | Export processed images to disk                                                   |
+| `--no-show`   | Disable GUI display pop-ups (required for headless environments)                  |
+| `--out-dir`   | Target directory for saved images (default: `output`)                             |
+| `--conf`      | Minimum face detection confidence score (default: `0.7`)                          |
+| `--age-model` | Age backend: `caffe` (bucketed ranges) or `ssrnet` (continuous, default: `caffe`) |
 
 ---
 
@@ -161,12 +161,12 @@ docker build \
 ```
 
 | Build arg            | Controls                          |
-| --------------------- | ----------------------------------- |
-| `INCLUDE_AGE`         | Caffe age model (bucketed ranges)   |
-| `INCLUDE_AGE_SSRNET`  | SSR-Net age model (continuous)      |
-| `INCLUDE_GENDER`      | Gender model                        |
-| `INCLUDE_DROWSINESS`  | Haar cascade eye detector           |
-| `INCLUDE_EMOTION`     | DAN emotion model                   |
+| -------------------- | --------------------------------- |
+| `INCLUDE_AGE`        | Caffe age model (bucketed ranges) |
+| `INCLUDE_AGE_SSRNET` | SSR-Net age model (continuous)    |
+| `INCLUDE_GENDER`     | Gender model                      |
+| `INCLUDE_DROWSINESS` | Haar cascade eye detector         |
+| `INCLUDE_EMOTION`    | DAN emotion model                 |
 
 Disabled model files never land in an image layer (BuildKit bind-mount + conditional copy). `torch`/`torchvision` (~200MB) are only installed if `INCLUDE_EMOTION=true` or `INCLUDE_AGE_SSRNET=true`.
 
