@@ -65,7 +65,7 @@ EMOTION_MODEL="$REPLY_MODEL"
 prompt_feature "DROWSINESS" haarcascade
 DROWSINESS_MODEL="$REPLY_MODEL"
 
-prompt_feature "RACE" fairface
+prompt_feature "RACE" fairface deepface
 RACE_MODEL="$REPLY_MODEL"
 
 echo "" >&2

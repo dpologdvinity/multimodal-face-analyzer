@@ -18,6 +18,12 @@ try:
 except ImportError:
     TORCH_SUPPORTED = False
 
+try:
+    from nets.deepface_race import build_race_model
+    TF_SUPPORTED = True
+except ImportError:
+    TF_SUPPORTED = False
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 MODEL_DIR = BASE_DIR / "models"
 
@@ -33,6 +39,7 @@ SSRNET_MODEL = MODEL_DIR / "ssrnet_morph2.pth"
 INSIGHTFACE_MODEL = MODEL_DIR / "insightface_genderage.onnx"
 EFFICIENTNET_EMOTION_MODEL = MODEL_DIR / "efficientnet_b0_fer.onnx"
 FAIRFACE_MODEL = MODEL_DIR / "fairface_7class.onnx"
+DEEPFACE_RACE_MODEL = MODEL_DIR / "deepface_race.h5"
 
 MODEL_MEAN_VALUES = (78.4263377603, 87.768914374, 114.895847746)
 AGE_LIST = ['(0-2)', '(4-6)', '(8-12)', '(15-20)', '(25-32)', '(38-43)', '(48-53)', '(60-100)']
@@ -45,6 +52,7 @@ SSRNET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 SSRNET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 MIN_EYES_OPEN = 2
 RACE_LABELS_FAIRFACE = ['White', 'Black', 'Latino_Hispanic', 'East Asian', 'Southeast Asian', 'Indian', 'Middle Eastern']
+RACE_LABELS_DEEPFACE = ['asian', 'indian', 'black', 'white', 'middle eastern', 'latino hispanic']
 RACE_CLOSE_MARGIN = 0.10  # show top-2 race classes together if within this probability margin
 
 # Model keys per feature, in quickest-to-build order (first = default).
@@ -53,7 +61,7 @@ AGE_MODEL_OPTIONS = ["caffe", "insightface", "ssrnet"]
 GENDER_MODEL_OPTIONS = ["caffe", "insightface"]
 EMOTION_MODEL_OPTIONS = ["efficientnet", "dan"]
 DROWSINESS_MODEL_OPTIONS = ["haarcascade"]
-RACE_MODEL_OPTIONS = ["fairface"]
+RACE_MODEL_OPTIONS = ["fairface", "deepface"]
 
 
 @dataclass
@@ -122,6 +130,8 @@ def load_models() -> Models:
     race_nets = {}
     if FAIRFACE_MODEL.exists():
         race_nets["fairface"] = cv2.dnn.readNetFromONNX(str(FAIRFACE_MODEL))
+    if TF_SUPPORTED and DEEPFACE_RACE_MODEL.exists():
+        race_nets["deepface"] = build_race_model(str(DEEPFACE_RACE_MODEL))
 
     return Models(face_net, age_nets, gender_nets, emotion_nets, drowsiness_nets, race_nets)
 
@@ -231,6 +241,12 @@ def predict_race_fairface(net, face_bgr: np.ndarray) -> str:
     return _format_race_label(_softmax(logits), RACE_LABELS_FAIRFACE)
 
 
+def predict_race_deepface(net, face_bgr: np.ndarray) -> str:
+    face_resized = cv2.resize(face_bgr, (224, 224)).astype(np.float32)
+    probs = net.predict(face_resized[np.newaxis, ...], verbose=0).flatten()
+    return _format_race_label(probs, RACE_LABELS_DEEPFACE)
+
+
 def draw_outlined_text(frame: np.ndarray, text: str, org: tuple[int, int], color: tuple[int, int, int]) -> None:
     """Draw text with a black outline so it stays readable over any background. Clamps origin so text stays inside the frame."""
     font, scale, thickness = cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2
@@ -315,7 +331,7 @@ def analyze_frame(
             net = models.race_nets.get(key)
             if net is None:
                 continue
-            value = predict_race_fairface(net, face)
+            value = predict_race_fairface(net, face) if key == "fairface" else predict_race_deepface(net, face)
             race_parts.append(f"{key}={value}")
 
         drowsy_parts = []
