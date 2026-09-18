@@ -4,6 +4,8 @@ Deliberately not shared with detect.py -- the CLI and the app duplicate the
 pipeline on purpose (see CLAUDE.md); this module only exists to keep app.py
 itself from growing unbounded as more model backends are added.
 """
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from pathlib import Path
 

@@ -24,10 +24,12 @@ ARG DROWSINESS_MODEL=haarcascade
 ARG RACE_MODEL=fairface
 ARG EXPRESSION_MODEL=blendshapes
 
-# Install system dependencies for OpenCV
+# Install system dependencies for OpenCV and MediaPipe (libegl1 needed by mediapipe's
+# face landmarker even in CPU-only/headless use)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     libglib2.0-0 \
+    libegl1 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -68,6 +70,12 @@ RUN expression_csv=",$EXPRESSION_MODEL,"; need_mediapipe=false; \
     if [ "$need_mediapipe" = "true" ]; then \
         pip install --no-cache-dir mediapipe; \
     fi
+
+# ultralytics (mivolo) and/or mediapipe pull in their own opencv-python build as a
+# transitive dependency, silently upgrading past the <5.0.0 ceiling in requirements.txt
+# and breaking Caffe model support (caffe/dex age, caffe gender, haarcascade drowsiness
+# all use cv2.dnn.readNetFromCaffe/CascadeClassifier, removed in OpenCV 5.0). Re-pin last.
+RUN pip install --no-cache-dir "opencv-python-headless>=4.8.0,<5.0.0"
 
 # Application code and always-required model files (face detector)
 COPY detect.py ./
