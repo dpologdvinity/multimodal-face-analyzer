@@ -63,12 +63,13 @@ If the top-2 predicted classes are within 10 percentage points of each other, bo
 
 ### Emotion
 
-| Backend                  | Framework      | Output                                                         |
-| ------------------------ | -------------- | -------------------------------------------------------------- |
-| `efficientnet`           | ONNX (cv2.dnn) | 7 classes: angry, disgust, fear, happy, sad, surprise, neutral |
-| `dan` (DAN, AffectNet-7) | PyTorch        | 7 classes: neutral, happy, sad, surprise, fear, disgust, anger |
+| Backend                  | Framework         | Output                                                         |
+| ------------------------ | ----------------- | -------------------------------------------------------------- |
+| `efficientnet`           | ONNX (cv2.dnn)    | 7 classes: angry, disgust, fear, happy, sad, surprise, neutral |
+| `mini_xception`          | Keras/TensorFlow  | 7 classes: angry, disgust, fear, happy, sad, surprise, neutral |
+| `dan` (DAN, AffectNet-7) | PyTorch           | 7 classes: neutral, happy, sad, surprise, fear, disgust, anger |
 
-Note the class label order differs between the two backends -- each is tracked as a separate constant, never assumed to match.
+Note the class label order differs between backends -- each is tracked as a separate constant, never assumed to match. `mini_xception` is tiny (853KB, oarriaga/face_classification, MIT) but needs TensorFlow like the deepface models.
 
 ### Drowsiness
 
@@ -98,6 +99,7 @@ multimodal-face-analyzer/
 │   ├── insightface_genderage.onnx               # age + gender: insightface backend
 │   ├── dan_affecnet7.pth                        # emotion: dan backend
 │   ├── efficientnet_b0_fer.onnx                 # emotion: efficientnet backend
+│   ├── mini_xception_fer.h5                     # emotion: mini_xception backend
 │   ├── fairface_7class.onnx                     # race: fairface backend
 │   ├── deepface_race.h5                         # race: deepface backend
 │   ├── deepface_gender.h5                       # gender: deepface backend
@@ -111,6 +113,7 @@ multimodal-face-analyzer/
         ├── ssrnet_model.py
         ├── deepface_common.py                   # shared VGGFace backbone
         ├── deepface_race.py
+        ├── mini_xception_model.py
         └── deepface_gender.py
 ```
 
@@ -189,7 +192,7 @@ Each build ARG takes a comma-separated list of model keys for that feature, or e
 docker build \
   --build-arg AGE_MODEL=caffe,insightface,ssrnet \
   --build-arg GENDER_MODEL=caffe,insightface,deepface \
-  --build-arg EMOTION_MODEL=efficientnet,dan \
+  --build-arg EMOTION_MODEL=efficientnet,mini_xception,dan \
   --build-arg DROWSINESS_MODEL=haarcascade \
   --build-arg RACE_MODEL=fairface,deepface \
   -t face-analyzer .
@@ -199,7 +202,7 @@ docker build \
 | ------------------ | -------------------------------- |
 | `AGE_MODEL`        | `caffe`, `insightface`, `ssrnet` |
 | `GENDER_MODEL`     | `caffe`, `insightface`, `deepface` |
-| `EMOTION_MODEL`    | `efficientnet`, `dan`            |
+| `EMOTION_MODEL`    | `efficientnet`, `mini_xception`, `dan` |
 | `DROWSINESS_MODEL` | `haarcascade`                    |
 | `RACE_MODEL`       | `fairface`, `deepface`           |
 
