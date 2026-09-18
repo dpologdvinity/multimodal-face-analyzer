@@ -9,12 +9,12 @@ from pathlib import Path
 
 def quantize_model(source: Path, destination: Path, per_channel: bool = False) -> None:
     """Quantize an ONNX model without modifying the source file."""
-    from onnxruntime.quantization import QuantType, quantize_dynamic
-
     if not source.is_file():
         raise FileNotFoundError(f"ONNX model not found: {source}")
     if source.resolve() == destination.resolve():
         raise ValueError("The quantized model must use a different output path.")
+    from onnxruntime.quantization import QuantType, quantize_dynamic
+
     destination.parent.mkdir(parents=True, exist_ok=True)
     quantize_dynamic(
         model_input=str(source),
