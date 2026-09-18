@@ -124,66 +124,81 @@ st.sidebar.markdown("### // CONTROL PANEL")
 crop_toggle = st.sidebar.toggle("CROP FACE TARGETS ONLY", value=False)
 conf_threshold = st.sidebar.slider("CONFIDENCE THRESHOLD", 0.1, 1.0, 0.7)
 
-# File Upload Dropzone
-uploaded_files = st.file_uploader(
-    "SELECT OR DROP IMAGE FILES FOR INFERENCE...",
-    type=["jpg", "jpeg", "png", "webp"],
-    accept_multiple_files=True,
-)
+def process_and_display(frame: np.ndarray, identifier: str, crop_toggle: bool, conf_threshold: float) -> None:
+    """Run detection/inference on frame and render result in Streamlit."""
+    annotated_frame = frame.copy()
 
-if uploaded_files:
-    for uploaded_file in uploaded_files:
-        file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
-        frame = cv2.imdecode(file_bytes, 1)
-        annotated_frame = frame.copy()
+    face_boxes = detect_faces(face_net, frame, conf_threshold)
 
-        face_boxes = detect_faces(face_net, frame, conf_threshold)
+    if not face_boxes:
+        st.warning(f"[TARGET MISSING] Zero targets detected in file: {identifier}")
+        st.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), caption=identifier, use_container_width=True)
+        return
 
-        if not face_boxes:
-            st.warning(f"[TARGET MISSING] Zero targets detected in file: {uploaded_file.name}")
-            st.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), caption=uploaded_file.name, use_container_width=True)
+    cropped_faces = []
+
+    for idx, (x1, y1, x2, y2) in enumerate(face_boxes, 1):
+        y1_crop = max(0, y1 - 20)
+        y2_crop = min(y2 + 20, frame.shape[0] - 1)
+        x1_crop = max(0, x1 - 20)
+        x2_crop = min(x2 + 20, frame.shape[1] - 1)
+
+        face = frame[y1_crop:y2_crop, x1_crop:x2_crop]
+        if face.size == 0:
             continue
 
-        cropped_faces = []
+        blob = cv2.dnn.blobFromImage(face, 1.0, (227, 227), MODEL_MEAN_VALUES, swapRB=False)
+        gender = predict_gender(blob)
+        age = predict_age(blob)
 
-        for idx, (x1, y1, x2, y2) in enumerate(face_boxes, 1):
-            y1_crop = max(0, y1 - 20)
-            y2_crop = min(y2 + 20, frame.shape[0] - 1)
-            x1_crop = max(0, x1 - 20)
-            x2_crop = min(x2 + 20, frame.shape[1] - 1)
+        label = f"{gender}, {age}"
 
-            face = frame[y1_crop:y2_crop, x1_crop:x2_crop]
-            if face.size == 0:
-                continue
+        # Draw green box and yellow overlay text
+        cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), (0, 255, 0), int(round(frame.shape[0] / 150)), 8)
+        cv2.putText(
+            annotated_frame,
+            label,
+            (x1, y1 - 10),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.8,
+            (0, 255, 255),
+            2,
+            cv2.LINE_AA,
+        )
 
-            blob = cv2.dnn.blobFromImage(face, 1.0, (227, 227), MODEL_MEAN_VALUES, swapRB=False)
-            gender = predict_gender(blob)
-            age = predict_age(blob)
+        cropped_faces.append((f"TARGET_{idx}: {label}", cv2.cvtColor(face, cv2.COLOR_BGR2RGB)))
 
-            label = f"{gender}, {age}"
+    st.markdown(f"#### // ANALYSIS RESULT: `{identifier}`")
 
-            # Draw green box and yellow overlay text
-            cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), (0, 255, 0), int(round(frame.shape[0] / 150)), 8)
-            cv2.putText(
-                annotated_frame,
-                label,
-                (x1, y1 - 10),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.8,
-                (0, 255, 255),
-                2,
-                cv2.LINE_AA,
-            )
+    # Toggle Display Output Mode
+    if crop_toggle:
+        cols = st.columns(min(len(cropped_faces), 4))
+        for idx, (label, crop_img) in enumerate(cropped_faces):
+            with cols[idx % 4]:
+                st.image(crop_img, caption=label, use_container_width=True)
+    else:
+        st.image(cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB), use_container_width=True)
 
-            cropped_faces.append((f"TARGET_{idx}: {label}", cv2.cvtColor(face, cv2.COLOR_BGR2RGB)))
 
-        st.markdown(f"#### // ANALYSIS RESULT: `{uploaded_file.name}`")
+tab_upload, tab_webcam = st.tabs(["[ FILE UPLOAD ]", "[ LIVE WEBCAM ]"])
 
-        # Toggle Display Output Mode
-        if crop_toggle:
-            cols = st.columns(min(len(cropped_faces), 4))
-            for idx, (label, crop_img) in enumerate(cropped_faces):
-                with cols[idx % 4]:
-                    st.image(crop_img, caption=label, use_container_width=True)
-        else:
-            st.image(cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB), use_container_width=True)
+with tab_upload:
+    uploaded_files = st.file_uploader(
+        "SELECT OR DROP IMAGE FILES FOR INFERENCE...",
+        type=["jpg", "jpeg", "png", "webp"],
+        accept_multiple_files=True,
+    )
+
+    if uploaded_files:
+        for uploaded_file in uploaded_files:
+            file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
+            frame = cv2.imdecode(file_bytes, 1)
+            process_and_display(frame, uploaded_file.name, crop_toggle, conf_threshold)
+
+with tab_webcam:
+    webcam_image = st.camera_input("CAPTURE LIVE TARGET...")
+
+    if webcam_image:
+        file_bytes = np.asarray(bytearray(webcam_image.read()), dtype=np.uint8)
+        frame = cv2.imdecode(file_bytes, 1)
+        process_and_display(frame, "WEBCAM_CAPTURE", crop_toggle, conf_threshold)
