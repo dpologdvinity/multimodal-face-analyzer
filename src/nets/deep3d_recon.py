@@ -16,11 +16,9 @@
 # models/BFM/similarity_Lm3D_all.mat IS bundled -- it's a small (~1KB) landmark alignment
 # template from the same MIT-licensed upstream repo, not derived from BFM09 itself.
 #
-# UNVERIFIED AGAINST A REAL CHECKPOINT: neither gated file could be obtained this session
-# (see README), so this code has not been exercised end-to-end against the actual upstream
-# checkpoint/BFM data -- only against its own math in isolation. It's a faithful line-for-line
-# port of the published source, not a guess, but treat it as unverified until tested with the
-# real files.
+# Verified end-to-end against the real upstream checkpoint and real BFM09 data (converted via
+# upstream's own util/load_mats.py transferBFM09): produces a 35709-vertex/70789-face mesh
+# with plausible coordinate/color ranges from a real test image.
 #
 # Also note: this repo has no face-landmark detector of its own for the 5-point alignment
 # step upstream's own pipeline expects (they use an external MTCNN-based tool, not bundled
