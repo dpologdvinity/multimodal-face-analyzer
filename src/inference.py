@@ -181,28 +181,27 @@ INSIGHTFACE_INPUT_SIZE = 96  # this genderage.onnx's actual input size (per its 
 # wrong shape and produced near-constant garbage output instead of erroring.
 
 
-def _insightface_align(frame_bgr: np.ndarray, box: tuple[int, int, int, int]) -> np.ndarray:
-    """Replicate insightface's own alignment (model_zoo/attribute.py + utils/face_align.py):
-    a similarity transform (no rotation) centered on the raw detection box, scaled so the box
-    fits into the output with a 1.5x margin. Must operate on the ORIGINAL frame and the UNPADDED
-    detection box -- insightface's genderage model was trained on this specific framing, not an
-    arbitrarily-padded crop+resize (feeding it a padded crop gives wrong predictions)."""
+def _margin_align(frame_bgr: np.ndarray, box: tuple[int, int, int, int], output_size: int, margin: float) -> np.ndarray:
+    """Crop centered on the raw detection box, scaled so the box fits into output_size with the
+    given margin factor (e.g. margin=1.5 means the box occupies 1/1.5 of the output). No rotation.
+    Must operate on the ORIGINAL frame and the UNPADDED detection box -- several of these models
+    were trained on a specific bbox-relative or landmark-based framing, not an arbitrarily-padded
+    pixel crop+resize (feeding a mismatched framing gives wrong/biased predictions, not a crash)."""
     x1, y1, x2, y2 = box
     w, h = x2 - x1, y2 - y1
     cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
-    size = INSIGHTFACE_INPUT_SIZE
-    scale = size / (max(w, h) * 1.5)
+    scale = output_size / (max(w, h) * margin)
     m = np.array([
-        [scale, 0, size / 2 - scale * cx],
-        [0, scale, size / 2 - scale * cy],
+        [scale, 0, output_size / 2 - scale * cx],
+        [0, scale, output_size / 2 - scale * cy],
     ], dtype=np.float32)
-    return cv2.warpAffine(frame_bgr, m, (size, size), borderValue=0.0)
+    return cv2.warpAffine(frame_bgr, m, (output_size, output_size), borderValue=0.0)
 
 
 def _insightface_forward(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int]) -> np.ndarray:
-    aligned = _insightface_align(frame_bgr, box)
-    size = INSIGHTFACE_INPUT_SIZE
-    blob = cv2.dnn.blobFromImage(aligned, 1.0 / 128.0, (size, size), (127.5, 127.5, 127.5), swapRB=True)
+    # Replicates insightface's own alignment (model_zoo/attribute.py + utils/face_align.py): 1.5x margin.
+    aligned = _margin_align(frame_bgr, box, INSIGHTFACE_INPUT_SIZE, margin=1.5)
+    blob = cv2.dnn.blobFromImage(aligned, 1.0 / 128.0, (INSIGHTFACE_INPUT_SIZE, INSIGHTFACE_INPUT_SIZE), (127.5, 127.5, 127.5), swapRB=True)
     net.setInput(blob)
     return net.forward().flatten()
 
@@ -263,8 +262,12 @@ def _format_race_label(probs: np.ndarray, labels: list[str]) -> str:
     return labels[top1]
 
 
-def predict_race_fairface(net, face_bgr: np.ndarray) -> str:
-    face_rgb = cv2.cvtColor(cv2.resize(face_bgr, (224, 224)), cv2.COLOR_BGR2RGB)
+def predict_race_fairface(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int]) -> str:
+    # FairFace's own pipeline aligns on 5-point landmarks (dlib, padding=0.25); we have no
+    # landmark model, so approximate with the same margin via a bbox-centered crop (padding=0.25
+    # each side ~= a 1.5x margin), instead of an arbitrary fixed-pixel-padding crop+resize.
+    aligned = _margin_align(frame_bgr, box, 224, margin=1.5)
+    face_rgb = cv2.cvtColor(aligned, cv2.COLOR_BGR2RGB)
     face_norm = (face_rgb.astype(np.float32) / 255.0 - SSRNET_MEAN) / SSRNET_STD
     blob = face_norm.transpose(2, 0, 1)[np.newaxis, ...].astype(np.float32)
     net.setInput(blob)
@@ -369,7 +372,7 @@ def analyze_frame(
             net = models.race_nets.get(key)
             if net is None:
                 continue
-            value = predict_race_fairface(net, face) if key == "fairface" else predict_race_deepface(net, face)
+            value = predict_race_fairface(net, frame, (x1, y1, x2, y2)) if key == "fairface" else predict_race_deepface(net, face)
             race_pairs.append((key, value))
 
         drowsy_pairs = []
