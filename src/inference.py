@@ -2000,6 +2000,17 @@ def analyze_frame(
             "skin_tone": skin_tone_pairs, "glasses": glasses_pairs, "mask": mask_pairs,
             "hair_color": hair_color_pairs, "eye_color": eye_color_pairs, "drowsiness": drowsy_pairs,
         })
+        model_results = [
+            {"Feature": feature.replace("_", " ").upper(), "Model": model, "Output": str(value)}
+            for feature, pairs in {
+                "age": age_pairs, "gender": gender_pairs, "race": race_pairs, "emotion": emotion_pairs,
+                "expression": expression_pairs, "gaze": gaze_pairs, "identity": recognition_pairs,
+                "facial hair": facial_hair_pairs, "skin tone": skin_tone_pairs, "glasses": glasses_pairs,
+                "mask": mask_pairs, "hair color": hair_color_pairs, "eye color": eye_color_pairs,
+                "drowsiness": drowsy_pairs,
+            }.items()
+            for model, value in pairs
+        ]
 
         cropped_faces.append({
             "idx": idx,
@@ -2020,6 +2031,7 @@ def analyze_frame(
             "eye_color": _format_results(eye_color_pairs),
             "embedding": face_embedding.tolist() if face_embedding is not None else None,
             "raw_columns": raw_columns,
+            "model_results": model_results,
             "status": status,
             "drowsy": face_drowsy if drowsy_pairs else None,
         })

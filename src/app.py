@@ -372,6 +372,11 @@ def _target_card_html(face: dict) -> str:
     return f'<div class="target-card"><div class="target-card-id">FACE {face["idx"]:02d}</div>{rows}</div>'
 
 
+def _comparison_rows(face: dict) -> list[dict[str, str]]:
+    """Turn the sparse per-model result columns into rows for one face's comparison table."""
+    return sorted(face["model_results"], key=lambda row: (row["Feature"], row["Model"]))
+
+
 def _hoverable_face_image(frame_bgr: np.ndarray, faces: list[dict]) -> str:
     """Render the annotated frame with focusable hover regions over detected boxes."""
     height, width = frame_bgr.shape[:2]
@@ -482,6 +487,13 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
 
     st.caption("Hover or tap a face box to see its details.")
     st.markdown(_hoverable_face_image(annotated_frame, cropped_faces), unsafe_allow_html=True)
+
+    st.markdown("#### Model comparison")
+    for face in cropped_faces:
+        rows = _comparison_rows(face)
+        if rows:
+            st.caption(f"Face {face['idx']:02d}")
+            st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
 
     if st.button("SCAN ALL FACES: RECOGNIZED / UNRECOGNIZED", key=f"scan_btn_{identifier}"):
         faces_bgr = [cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR) for face in cropped_faces]
