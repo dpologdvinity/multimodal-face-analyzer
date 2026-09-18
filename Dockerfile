@@ -8,9 +8,11 @@ FROM python:3.11-slim
 #   GENDER_MODEL:      caffe, insightface           (default: caffe)
 #   EMOTION_MODEL:     efficientnet, dan            (default: efficientnet)
 #   DROWSINESS_MODEL:  haarcascade                  (default: haarcascade)
-#   RACE_MODEL:        fairface                     (default: fairface)
+#   RACE_MODEL:        fairface, deepface           (default: fairface)
 # insightface's genderage.onnx provides BOTH age and gender from one file
-# (non-commercial research license -- see README).
+# (non-commercial research license -- see README). deepface's race model
+# needs TensorFlow (~200-400MB) and a 513MB weight file, much heavier
+# than fairface -- only pulled in if requested.
 # e.g. --build-arg AGE_MODEL=caffe,ssrnet builds both age backends so the web
 # app can switch between them at runtime. See build-and-run.sh for a guided
 # prompt instead of typing these by hand.
@@ -40,6 +42,10 @@ RUN age_csv=",$AGE_MODEL,"; emotion_csv=",$EMOTION_MODEL,"; need_torch=false; \
         pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu torch torchvision; \
     fi
 
+# tensorflow/tf-keras are only needed for the deepface race model
+RUN race_csv=",$RACE_MODEL,"; \
+    case "$race_csv" in *,deepface,*) pip install --no-cache-dir tensorflow-cpu tf-keras ;; esac
+
 # Application code and always-required model files (face detector)
 COPY detect.py ./
 COPY src/ src/
@@ -56,6 +62,7 @@ RUN --mount=type=bind,source=models/age_deploy.prototxt,target=/tmp/models/age_d
     --mount=type=bind,source=models/dan_affecnet7.pth,target=/tmp/models/dan_affecnet7.pth \
     --mount=type=bind,source=models/efficientnet_b0_fer.onnx,target=/tmp/models/efficientnet_b0_fer.onnx \
     --mount=type=bind,source=models/fairface_7class.onnx,target=/tmp/models/fairface_7class.onnx \
+    --mount=type=bind,source=models/deepface_race.h5,target=/tmp/models/deepface_race.h5 \
     set -e; \
     age_csv=",$AGE_MODEL,"; gender_csv=",$GENDER_MODEL,"; emotion_csv=",$EMOTION_MODEL,"; \
     drowsiness_csv=",$DROWSINESS_MODEL,"; race_csv=",$RACE_MODEL,"; \
@@ -67,7 +74,8 @@ RUN --mount=type=bind,source=models/age_deploy.prototxt,target=/tmp/models/age_d
     case "$emotion_csv" in *,dan,*) cp /tmp/models/dan_affecnet7.pth models/ ;; esac; \
     case "$emotion_csv" in *,efficientnet,*) cp /tmp/models/efficientnet_b0_fer.onnx models/ ;; esac; \
     case "$drowsiness_csv" in *,haarcascade,*) cp /tmp/models/haarcascade_eye.xml models/ ;; esac; \
-    case "$race_csv" in *,fairface,*) cp /tmp/models/fairface_7class.onnx models/ ;; esac
+    case "$race_csv" in *,fairface,*) cp /tmp/models/fairface_7class.onnx models/ ;; esac; \
+    case "$race_csv" in *,deepface,*) cp /tmp/models/deepface_race.h5 models/ ;; esac
 
 # Expose default Streamlit port
 EXPOSE 8501
