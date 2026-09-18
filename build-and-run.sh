@@ -59,7 +59,7 @@ AGE_MODEL="$REPLY_MODEL"
 prompt_feature "GENDER" caffe insightface
 GENDER_MODEL="$REPLY_MODEL"
 
-prompt_feature "EMOTION" dan
+prompt_feature "EMOTION" efficientnet dan
 EMOTION_MODEL="$REPLY_MODEL"
 
 prompt_feature "DROWSINESS" haarcascade
