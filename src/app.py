@@ -347,6 +347,14 @@ if models.recognition_nets:
 st.sidebar.markdown("### CONTROL PANEL")
 conf_threshold = st.sidebar.slider("CONFIDENCE THRESHOLD", 0.1, 1.0, 0.7)
 
+enable_crowd_count = st.sidebar.checkbox("CROWD COUNT / DEMOGRAPHICS", value=False, key="crowd_count_enabled")
+if enable_crowd_count:
+    st.sidebar.caption(
+        "Aggregates age/gender/race across every face detected in an image into a total count "
+        "plus a breakdown per active model. Off by default -- confirm this complies with local "
+        "policy before using it on images of people who haven't consented to aggregate analysis."
+    )
+
 if theme == "Light cyberpunk":
     st.markdown('<div class="light-theme"></div>', unsafe_allow_html=True)
 
@@ -484,6 +492,16 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
 
     if any_drowsy:
         st.error("[ALERT] DROWSINESS DETECTED -- SUBJECT EYES CLOSED")
+
+    if enable_crowd_count:
+        with st.expander(f"CROWD COUNT: {len(cropped_faces)} face(s) detected", expanded=False):
+            aggregate = inference.aggregate_demographics(cropped_faces)
+            if not aggregate:
+                st.caption("No age/gender/race model is active -- enable one to see a breakdown.")
+            for feature in inference.AGGREGATE_FEATURES:
+                for model_key, counts in aggregate.get(feature, {}).items():
+                    st.caption(f"{feature.upper()} ({model_key})")
+                    st.bar_chart(counts)
 
     st.caption("Hover or tap a face box to see its details.")
     st.markdown(_hoverable_face_image(annotated_frame, cropped_faces), unsafe_allow_html=True)
@@ -639,17 +657,43 @@ with tab_webcam:
             process_and_display(frame, "WEBCAM_CAPTURE", conf_threshold)
     else:
         st.caption("Live analysis updates as people enter or leave view.")
+        frame_skip = st.slider(
+            "CLASSIFIER FRAME SKIP", 1, 10, 1,
+            help="Run age/gender/emotion/race/recognition/etc. classifiers every Nth frame "
+            "instead of every frame. Face detection and the pose/hand/face-landmark overlays "
+            "still run every frame, so the video stays smooth. These classifiers' outputs "
+            "aren't otherwise drawn onto the LIVE video (see target cards in Image upload / "
+            "SNAPSHOT for that), so skipping them here only reduces CPU load, with no visible "
+            "staleness to interpolate around.",
+        )
+        frame_counter = {"n": 0}
+        _NO_MODELS: set = set()
 
         def _video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
             frame_started = time.perf_counter()
             metrics = {}
             img = frame.to_ndarray(format="bgr24")
             img, _ = inference.maybe_colorize(models, img, active_colorization)
+            frame_counter["n"] += 1
+            run_classifiers = frame_counter["n"] % frame_skip == 0
             annotated_frame, _, _, _, _, _ = inference.analyze_frame(
-                models, img, conf_threshold, active_age, active_gender, active_emotion, active_drowsiness, active_race, active_expression,
-                active_recognition, dict(st.session_state.get("gallery", {})),
-                active_facial_hair, active_skin_tone, active_glasses, active_mask, active_hair_color, active_eye_color,
-                active_pose, active_face_landmarks, active_hands, active_gaze, global_adjustments, face_adjustments,
+                models, img, conf_threshold,
+                active_age if run_classifiers else _NO_MODELS,
+                active_gender if run_classifiers else _NO_MODELS,
+                active_emotion if run_classifiers else _NO_MODELS,
+                active_drowsiness if run_classifiers else _NO_MODELS,
+                active_race if run_classifiers else _NO_MODELS,
+                active_expression if run_classifiers else _NO_MODELS,
+                active_recognition if run_classifiers else _NO_MODELS, dict(st.session_state.get("gallery", {})),
+                active_facial_hair if run_classifiers else _NO_MODELS,
+                active_skin_tone if run_classifiers else _NO_MODELS,
+                active_glasses if run_classifiers else _NO_MODELS,
+                active_mask if run_classifiers else _NO_MODELS,
+                active_hair_color if run_classifiers else _NO_MODELS,
+                active_eye_color if run_classifiers else _NO_MODELS,
+                active_pose, active_face_landmarks, active_hands,
+                active_gaze if run_classifiers else _NO_MODELS,
+                global_adjustments, face_adjustments,
                 face_detector=active_face_detector, metrics=metrics,
             )
             metrics["frame_ms"] = (time.perf_counter() - frame_started) * 1000

@@ -5,10 +5,12 @@ more model backends are added.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import random
 import sqlite3
 import time
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -1180,6 +1182,39 @@ def predict_identity_lbph(recognizer, label_names: list[str], face_bgr: np.ndarr
     return (label_names[label], confidence) if confidence < LBPH_CONFIDENCE_THRESHOLD else None
 
 
+PREDICTION_CACHE_MAX_SIZE = 2048
+
+# Content-addressed cache for per-face classifier outputs, keyed on the exact preprocessed
+# input bytes rather than a face-identity embedding: a face-embedding hash is NOT a stable
+# cache key (an adjusted or re-cropped version of "the same" face has different bytes and
+# may legitimately warrant a different output), but identical bytes fed to the same model
+# always produce identical deterministic output, so hashing the input itself is correct by
+# construction. Real speedup comes from Streamlit re-running the whole script (and thus
+# every classifier for every face) on any unrelated widget interaction even when the image,
+# adjustments, and active models haven't changed. Module-level and unlocked: concurrent
+# sessions may occasionally race and recompute the same missing key redundantly, but a plain
+# dict get/set can't corrupt the cache under the GIL, so that's a wasted-work risk, not a
+# correctness one. Bounded (LRU-evicted) so a long session doesn't grow this unboundedly.
+_PREDICTION_CACHE: "OrderedDict[tuple, object]" = OrderedDict()
+
+
+def _cached_face_predict(feature: str, model_key: str, face_bgr: np.ndarray, predict_fn, *args):
+    """Memoize a predict_*(net, face, ...) call on (feature, model_key, hash(face bytes)).
+    Only used for predictors whose sole content input is the face crop itself -- predictors
+    that instead take the full frame + box (fairface, insightface) or hash a much larger,
+    more adjustment-sensitive buffer for comparatively little benefit are left uncached here."""
+    cache_key = (feature, model_key, face_bgr.shape, hashlib.blake2b(face_bgr.tobytes(), digest_size=16).digest())
+    cached = _PREDICTION_CACHE.get(cache_key)
+    if cached is not None or cache_key in _PREDICTION_CACHE:
+        _PREDICTION_CACHE.move_to_end(cache_key)
+        return cached
+    value = predict_fn(*args)
+    _PREDICTION_CACHE[cache_key] = value
+    if len(_PREDICTION_CACHE) > PREDICTION_CACHE_MAX_SIZE:
+        _PREDICTION_CACHE.popitem(last=False)
+    return value
+
+
 def _sanitize_column_name(feature: str, model_key: str) -> str:
     return f"{feature}_{model_key}".lower().replace(" ", "_").replace("-", "_")
 
@@ -1804,15 +1839,15 @@ def analyze_frame(
                 continue
             started = time.perf_counter()
             if key == "caffe":
-                value = predict_age_caffe(net, blob227)
+                value = _cached_face_predict("age", key, face, predict_age_caffe, net, blob227)
             elif key == "ssrnet":
-                value = predict_age_ssrnet(net, face)
+                value = _cached_face_predict("age", key, face, predict_age_ssrnet, net, face)
             elif key == "fairface":
                 value = predict_age_fairface(net, crop_frame, (cx1, cy1, cx2, cy2))
             elif key == "dex":
-                value = predict_age_dex(net, face)
+                value = _cached_face_predict("age", key, face, predict_age_dex, net, face)
             elif key == "mivolo":
-                value = predict_age_mivolo(net, face)
+                value = _cached_face_predict("age", key, face, predict_age_mivolo, net, face)
             else:
                 value = predict_age_insightface(net, crop_frame, (cx1, cy1, cx2, cy2))
             age_pairs.append((key, value))
@@ -1825,13 +1860,13 @@ def analyze_frame(
                 continue
             started = time.perf_counter()
             if key == "caffe":
-                value = predict_gender_caffe(net, blob227)
+                value = _cached_face_predict("gender", key, face, predict_gender_caffe, net, blob227)
             elif key == "deepface":
-                value = predict_gender_deepface(net, face)
+                value = _cached_face_predict("gender", key, face, predict_gender_deepface, net, face)
             elif key == "fairface":
                 value = predict_gender_fairface(net, crop_frame, (cx1, cy1, cx2, cy2))
             elif key == "mivolo":
-                value = predict_gender_mivolo(net, face)
+                value = _cached_face_predict("gender", key, face, predict_gender_mivolo, net, face)
             else:
                 value = predict_gender_insightface(net, crop_frame, (cx1, cy1, cx2, cy2))
             gender_pairs.append((key, value))
@@ -1844,13 +1879,13 @@ def analyze_frame(
                 continue
             started = time.perf_counter()
             if key == "dan":
-                value = predict_emotion_dan(net, face)
+                value = _cached_face_predict("emotion", key, face, predict_emotion_dan, net, face)
             elif key == "mini_xception":
-                value = predict_emotion_mini_xception(net, face)
+                value = _cached_face_predict("emotion", key, face, predict_emotion_mini_xception, net, face)
             elif key == "ferplus":
-                value = predict_emotion_ferplus(net, face)
+                value = _cached_face_predict("emotion", key, face, predict_emotion_ferplus, net, face)
             else:
-                value = predict_emotion_efficientnet(net, face)
+                value = _cached_face_predict("emotion", key, face, predict_emotion_efficientnet, net, face)
             emotion_pairs.append((key, value))
             _record_model_latency(metrics, "emotion", key, started)
         if metrics is not None and emotion_pairs:
@@ -1864,7 +1899,7 @@ def analyze_frame(
             if net is None:
                 continue
             started = time.perf_counter()
-            value = predict_race_fairface(net, crop_frame, (cx1, cy1, cx2, cy2)) if key == "fairface" else predict_race_deepface(net, face)
+            value = predict_race_fairface(net, crop_frame, (cx1, cy1, cx2, cy2)) if key == "fairface" else _cached_face_predict("race", key, face, predict_race_deepface, net, face)
             race_pairs.append((key, value))
             _record_model_latency(metrics, "race", key, started)
 
@@ -1874,7 +1909,7 @@ def analyze_frame(
             if net is None:
                 continue
             started = time.perf_counter()
-            value = predict_expression_blendshapes(net, face)
+            value = _cached_face_predict("expression", key, face, predict_expression_blendshapes, net, face)
             expression_pairs.append((key, value))
             _record_model_latency(metrics, "expression", key, started)
 
@@ -1903,7 +1938,10 @@ def analyze_frame(
                     match = predict_identity_lbph(recognizer, label_names, face)
                     value = f"{match[0]} ({match[1]:.0f})" if match else "UNKNOWN"
             else:
-                face_embedding = compute_face_embedding(net, face)
+                # Only the embedding step is cached, not the match -- the gallery can change
+                # (enrollment/deletion) between calls with the same face bytes, and a stale
+                # cached match result would silently ignore that.
+                face_embedding = _cached_face_predict("embedding", key, face, compute_face_embedding, net, face)
                 match = match_face_identity(face_embedding, gallery)
                 value = f"{match[0]} ({match[1] * 100:.0f}%)" if match else "UNKNOWN"
             recognition_pairs.append((key, value))
@@ -1915,7 +1953,7 @@ def analyze_frame(
             if net is None:
                 continue
             started = time.perf_counter()
-            value = predict_facial_hair_bisenet(net, face)
+            value = _cached_face_predict("facial_hair", key, face, predict_facial_hair_bisenet, net, face)
             facial_hair_pairs.append((key, value))
             _record_model_latency(metrics, "facial_hair", key, started)
 
@@ -1925,7 +1963,7 @@ def analyze_frame(
             if net is None:
                 continue
             started = time.perf_counter()
-            value = predict_skin_tone_vgg16(net, face)
+            value = _cached_face_predict("skin_tone", key, face, predict_skin_tone_vgg16, net, face)
             skin_tone_pairs.append((key, value))
             _record_model_latency(metrics, "skin_tone", key, started)
 
@@ -1935,7 +1973,7 @@ def analyze_frame(
             if net is None:
                 continue
             started = time.perf_counter()
-            value = predict_glasses_mobilenet(net, face)
+            value = _cached_face_predict("glasses", key, face, predict_glasses_mobilenet, net, face)
             glasses_pairs.append((key, value))
             _record_model_latency(metrics, "glasses", key, started)
 
@@ -1945,7 +1983,7 @@ def analyze_frame(
             if net is None:
                 continue
             started = time.perf_counter()
-            value = predict_mask_mobilenetv2(net, face)
+            value = _cached_face_predict("mask", key, face, predict_mask_mobilenetv2, net, face)
             mask_pairs.append((key, value))
             _record_model_latency(metrics, "mask", key, started)
 
@@ -1964,7 +2002,7 @@ def analyze_frame(
             if net is None:
                 continue
             started = time.perf_counter()
-            value = predict_eye_color_colorimetric(net, face)
+            value = _cached_face_predict("eye_color", key, face, predict_eye_color_colorimetric, net, face)
             eye_color_pairs.append((key, value))
             _record_model_latency(metrics, "eye_color", key, started)
 
@@ -1975,7 +2013,7 @@ def analyze_frame(
             if net is None:
                 continue
             started = time.perf_counter()
-            drowsy = detect_drowsiness_haarcascade(net, face)
+            drowsy = _cached_face_predict("drowsiness", key, face, detect_drowsiness_haarcascade, net, face)
             face_drowsy = face_drowsy or drowsy
             drowsy_pairs.append((key, "DROWSY" if drowsy else "ALERT"))
             _record_model_latency(metrics, "drowsiness", key, started)
@@ -2045,3 +2083,27 @@ def analyze_frame(
         })
 
     return annotated_frame, cropped_faces, any_drowsy, bool(face_boxes), pose_detected, hands_detected
+
+
+AGGREGATE_FEATURES = ("age", "gender", "race")  # demographic breakdown scope for crowd counting
+
+
+def aggregate_demographics(cropped_faces: list[dict]) -> dict[str, dict[str, dict[str, int]]]:
+    """Whole-image demographic aggregate over already-computed per-face results (age/gender/race
+    only) -- no new model, just a tally over cropped_faces' raw_columns. Reuses whatever
+    model(s) were already active per feature; if two models are active for the same feature
+    (e.g. caffe + ssrnet age), each gets its own independent tally since their label sets/value
+    granularity generally differ (same reasoning as DAN vs EfficientNet emotion labels not being
+    mixed, see CLAUDE.md). Returns {feature: {model_key: {label: count}}}; a feature/model with
+    no faces contributing a value for it is simply absent, not a zero-filled entry."""
+    totals: dict[str, dict[str, dict[str, int]]] = {feature: {} for feature in AGGREGATE_FEATURES}
+    for face in cropped_faces:
+        for column, value in face["raw_columns"].items():
+            for feature in AGGREGATE_FEATURES:
+                prefix = f"{feature}_"
+                if not column.startswith(prefix) or not value:
+                    continue
+                model_key = column[len(prefix):]
+                bucket = totals[feature].setdefault(model_key, {})
+                bucket[value] = bucket.get(value, 0) + 1
+    return {feature: models for feature, models in totals.items() if models}
