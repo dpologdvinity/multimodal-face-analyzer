@@ -4,8 +4,8 @@ FROM python:3.11-slim
 # Per-feature model selection. Each ARG takes a comma-separated list of model
 # keys for that feature, or an empty string for "none". Options, in
 # quickest-to-build order (default is the first/quickest):
-#   AGE_MODEL:        caffe, insightface, ssrnet   (default: caffe)
-#   GENDER_MODEL:      caffe, insightface, deepface (default: caffe)
+#   AGE_MODEL:        caffe, insightface, ssrnet, fairface   (default: caffe)
+#   GENDER_MODEL:      caffe, insightface, deepface, fairface (default: caffe)
 #   EMOTION_MODEL:     efficientnet, ferplus, mini_xception, dan (default: efficientnet)
 #   DROWSINESS_MODEL:  haarcascade                  (default: haarcascade)
 #   RACE_MODEL:        fairface, deepface           (default: fairface)
@@ -78,6 +78,8 @@ RUN --mount=type=bind,source=models/age_deploy.prototxt,target=/tmp/models/age_d
     case "$gender_csv" in *,caffe,*) cp /tmp/models/gender_deploy.prototxt /tmp/models/gender_net.caffemodel models/ ;; esac; \
     case "$age_csv" in *,insightface,*) cp /tmp/models/insightface_genderage.onnx models/ ;; esac; \
     case "$gender_csv" in *,insightface,*) cp /tmp/models/insightface_genderage.onnx models/ ;; esac; \
+    case "$age_csv" in *,fairface,*) cp /tmp/models/fairface_7class.onnx models/ ;; esac; \
+    case "$gender_csv" in *,fairface,*) cp /tmp/models/fairface_7class.onnx models/ ;; esac; \
     case "$gender_csv" in *,deepface,*) cp /tmp/models/deepface_gender.h5 models/ ;; esac; \
     case "$emotion_csv" in *,dan,*) cp /tmp/models/dan_affecnet7.pth models/ ;; esac; \
     case "$emotion_csv" in *,efficientnet,*) cp /tmp/models/efficientnet_b0_fer.onnx models/ ;; esac; \
