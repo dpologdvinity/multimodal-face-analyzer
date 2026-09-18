@@ -22,6 +22,7 @@ outputs/
 # IDE & OS system files
 .vscode/
 .idea/
+.worktrees/
 *.swp
 *.swo
 .DS_Store
