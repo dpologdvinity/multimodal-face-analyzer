@@ -300,6 +300,8 @@ active_emotion = _model_checkboxes("EMOTION", models.emotion_nets)
 active_drowsiness = _model_checkboxes("DROWSINESS", models.drowsiness_nets)
 active_expression = _model_checkboxes("EXPRESSION", models.expression_nets)
 active_liveness = _model_checkboxes("LIVENESS", models.liveness_nets)
+if models.liveness_nets:
+    st.sidebar.caption("Liveness only runs in Webcam / LIVE -- a single image has no blinks to check.")
 active_recognition = _model_checkboxes("RECOGNITION", models.recognition_nets)
 active_facial_hair = _model_checkboxes("FACIAL HAIR", models.facial_hair_nets)
 active_skin_tone = _model_checkboxes("SKIN TONE", models.skin_tone_nets)
