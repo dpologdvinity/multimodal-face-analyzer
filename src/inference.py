@@ -1654,6 +1654,18 @@ def predict_head_pose_mediapipe(landmarker, face_bgr: np.ndarray) -> str:
     return f"yaw={yaw:.0f}°, pitch={pitch:.0f}°"
 
 
+def predict_makeup_heuristic(face_bgr: np.ndarray) -> str:
+    """Flag strong cosmetic-like color contrast; heuristic, not a trained classifier."""
+    if face_bgr.size == 0:
+        return "unknown"
+    hsv = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2HSV)
+    h, w = hsv.shape[:2]
+    central = hsv[int(h * 0.2):int(h * 0.85), int(w * 0.15):int(w * 0.85)]
+    saturation = float(np.percentile(central[..., 1], 90))
+    red_ratio = float(np.mean((central[..., 0] < 12) | (central[..., 0] > 165)))
+    return "possible" if saturation > 150 and red_ratio > 0.12 else "not detected"
+
+
 def _record_model_latency(metrics: dict | None, feature: str, model: str, started: float) -> None:
     if metrics is None:
         return
@@ -2099,6 +2111,7 @@ def analyze_frame(
             "gaze": _format_results(gaze_pairs),
             "eye_contact": eye_contact,
             "head_pose": _format_results(head_pose_pairs),
+            "makeup": [predict_makeup_heuristic(face)],
             "identity": _format_results(recognition_pairs),
             "facial_hair": _format_results(facial_hair_pairs),
             "skin_tone": _format_results(skin_tone_pairs),
