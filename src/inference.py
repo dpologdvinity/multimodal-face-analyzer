@@ -2389,7 +2389,7 @@ def analyze_frame(
     active_gaze: set,
     global_adjustments: dict,
     face_adjustments: dict,
-    face_detector: str = "ssd",
+    face_detector: str = "yolo",
     metrics: dict | None = None,
     tracker: "FaceTracker | None" = None,
     liveness_tracker: "LivenessTracker | None" = None,
