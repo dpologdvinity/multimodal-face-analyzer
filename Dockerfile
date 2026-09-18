@@ -6,7 +6,7 @@ FROM python:3.11-slim
 # quickest-to-build order (default is the first/quickest):
 #   AGE_MODEL:        caffe, insightface, ssrnet   (default: caffe)
 #   GENDER_MODEL:      caffe, insightface, deepface (default: caffe)
-#   EMOTION_MODEL:     efficientnet, dan            (default: efficientnet)
+#   EMOTION_MODEL:     efficientnet, mini_xception, dan (default: efficientnet)
 #   DROWSINESS_MODEL:  haarcascade                  (default: haarcascade)
 #   RACE_MODEL:        fairface, deepface           (default: fairface)
 # insightface's genderage.onnx provides BOTH age and gender from one file
@@ -42,10 +42,12 @@ RUN age_csv=",$AGE_MODEL,"; emotion_csv=",$EMOTION_MODEL,"; need_torch=false; \
         pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu torch torchvision; \
     fi
 
-# tensorflow/tf-keras are only needed for the deepface race and/or gender models
-RUN race_csv=",$RACE_MODEL,"; gender_csv=",$GENDER_MODEL,"; need_tf=false; \
+# tensorflow/tf-keras are only needed for the deepface race, deepface gender,
+# and/or mini_xception emotion models
+RUN race_csv=",$RACE_MODEL,"; gender_csv=",$GENDER_MODEL,"; emotion_csv=",$EMOTION_MODEL,"; need_tf=false; \
     case "$race_csv" in *,deepface,*) need_tf=true ;; esac; \
     case "$gender_csv" in *,deepface,*) need_tf=true ;; esac; \
+    case "$emotion_csv" in *,mini_xception,*) need_tf=true ;; esac; \
     if [ "$need_tf" = "true" ]; then pip install --no-cache-dir tensorflow-cpu tf-keras; fi
 
 # Application code and always-required model files (face detector)
@@ -66,6 +68,7 @@ RUN --mount=type=bind,source=models/age_deploy.prototxt,target=/tmp/models/age_d
     --mount=type=bind,source=models/fairface_7class.onnx,target=/tmp/models/fairface_7class.onnx \
     --mount=type=bind,source=models/deepface_race.h5,target=/tmp/models/deepface_race.h5 \
     --mount=type=bind,source=models/deepface_gender.h5,target=/tmp/models/deepface_gender.h5 \
+    --mount=type=bind,source=models/mini_xception_fer.h5,target=/tmp/models/mini_xception_fer.h5 \
     set -e; \
     age_csv=",$AGE_MODEL,"; gender_csv=",$GENDER_MODEL,"; emotion_csv=",$EMOTION_MODEL,"; \
     drowsiness_csv=",$DROWSINESS_MODEL,"; race_csv=",$RACE_MODEL,"; \
@@ -77,6 +80,7 @@ RUN --mount=type=bind,source=models/age_deploy.prototxt,target=/tmp/models/age_d
     case "$gender_csv" in *,deepface,*) cp /tmp/models/deepface_gender.h5 models/ ;; esac; \
     case "$emotion_csv" in *,dan,*) cp /tmp/models/dan_affecnet7.pth models/ ;; esac; \
     case "$emotion_csv" in *,efficientnet,*) cp /tmp/models/efficientnet_b0_fer.onnx models/ ;; esac; \
+    case "$emotion_csv" in *,mini_xception,*) cp /tmp/models/mini_xception_fer.h5 models/ ;; esac; \
     case "$drowsiness_csv" in *,haarcascade,*) cp /tmp/models/haarcascade_eye.xml models/ ;; esac; \
     case "$race_csv" in *,fairface,*) cp /tmp/models/fairface_7class.onnx models/ ;; esac; \
     case "$race_csv" in *,deepface,*) cp /tmp/models/deepface_race.h5 models/ ;; esac
