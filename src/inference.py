@@ -237,10 +237,7 @@ def detect_drowsiness_haarcascade(eye_cascade, face_bgr: np.ndarray) -> bool:
 
 
 def _format_results(pairs: list[tuple[str, str]]) -> list[str]:
-    """Prefix each result with its model key only when more than one model is active for
-    that feature (disambiguation); a single active model just shows its plain value."""
-    if len(pairs) > 1:
-        return [f"{key}={value}" for key, value in pairs]
+    """Plain values only -- no model-name prefix, even with multiple models active per feature."""
     return [value for _, value in pairs]
 
 
