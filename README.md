@@ -19,10 +19,11 @@
 - **Save & eigenfaces:** SAVE button per detected face writes to a sparse-column SQLite database plus `faces/`/`eigen/`; SEARCH also checks the eigenfaces (PCA) algorithm against every previously-saved face. A whole-image SCAN ALL FACES button labels every detected face Recognized/Unrecognized in one pass.
 - **3D reconstruction:** 3D RECON button per detected face (Deep3DFaceRecon_pytorch: ResNet50 + Basel Face Model), downloads a `.obj` mesh. Ships no working weights out of the box -- both the checkpoint and the Basel Face Model data are gated (Google Drive / university license registration); see README.
 - **YOLO face detector:** additive alternative to the required SSD/ResNet-10 detector, selectable per-frame via a sidebar dropdown.
-- **LBPH recognition:** `cv2.face.LBPHFaceRecognizer`-based alternative to VGGFace, trains from scratch on your own enrolled photos -- no pretrained weights to source.
+- **LBPH recognition:** `cv2.face.LBPHFaceRecognizer`-based alternative to VGGFace, trains from scratch on your own enrolled photos -- no pretrained weights to source. The trained recognizer is cached by the enrolled gallery's file fingerprint and retrains only after enrollment or gallery-file changes.
 - **Docker-packaged Streamlit app:** `src/app.py`, all features including race and expression.
 - **Build-time feature toggles:** disable any model at Docker build time to shrink the image (see [Docker](#docker-web-app)).
 - **Graceful degradation:** any model missing at runtime (file or dependency not present) is skipped, not a crash -- the rest of the pipeline keeps working.
+- **Input validation:** empty or invalid image uploads show a clear error, and LBPH enrollment names are restricted to safe single directory names.
 - **Cyberpunk web interface:** terminal-styled drag-and-drop Streamlit UI, plus snapshot/live webcam tabs.
 - **Live performance metrics:** webcam LIVE mode reports recent FPS and average latency for each active feature/model pair.
 
