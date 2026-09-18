@@ -26,6 +26,8 @@ try:
     from nets.deepface_gender import build_gender_model
     from nets.deepface_recognition import build_recognition_model
     from nets.mini_xception_model import build_mini_xception
+    from nets.mask_model import build_mask_model
+    from nets.skin_tone_model import build_skin_tone_model
     TF_SUPPORTED = True
 except ImportError:
     TF_SUPPORTED = False
@@ -66,6 +68,16 @@ DEX_PROTO = MODEL_DIR / "dex_age.prototxt"
 DEX_MODEL = MODEL_DIR / "dex_age.caffemodel"
 MIVOLO_MODEL = MODEL_DIR / "mivolo_v2.safetensors"
 BLENDSHAPES_MODEL = MODEL_DIR / "face_landmarker.task"
+BISENET_MODEL = MODEL_DIR / "bisenet_face_parsing.onnx"
+SKIN_TONE_MODEL = MODEL_DIR / "skin_tone_mobilenetv2.h5"
+GLASSES_MODEL = MODEL_DIR / "glasses_detector.onnx"
+MASK_MODEL = MODEL_DIR / "mask_detector.h5"
+COLORIZATION_PROTO = MODEL_DIR / "colorization_deploy_v2.prototxt"
+COLORIZATION_MODEL = MODEL_DIR / "colorization_release_v2.caffemodel"
+COLORIZATION_PTS = MODEL_DIR / "pts_in_hull.npy"
+POSE_PROTO = MODEL_DIR / "pose_deploy_linevec_faster_4_stages.prototxt"
+POSE_MODEL = MODEL_DIR / "pose_iter_160000.caffemodel"
+HAND_LANDMARKER_MODEL = MODEL_DIR / "hand_landmarker.task"
 
 MODEL_MEAN_VALUES = (78.4263377603, 87.768914374, 114.895847746)
 AGE_LIST = ['(0-2)', '(4-6)', '(8-12)', '(15-20)', '(25-32)', '(38-43)', '(48-53)', '(60-100)']
@@ -96,6 +108,61 @@ DROWSINESS_MODEL_OPTIONS = ["haarcascade"]
 RACE_MODEL_OPTIONS = ["fairface", "deepface"]
 EXPRESSION_MODEL_OPTIONS = ["blendshapes"]
 RECOGNITION_MODEL_OPTIONS = ["vggface"]
+FACIAL_HAIR_MODEL_OPTIONS = ["bisenet"]
+SKIN_TONE_MODEL_OPTIONS = ["mobilenetv2"]
+GLASSES_MODEL_OPTIONS = ["mobilenet"]
+MASK_MODEL_OPTIONS = ["mobilenetv2"]
+HAIR_COLOR_MODEL_OPTIONS = ["colorimetric"]
+EYE_COLOR_MODEL_OPTIONS = ["colorimetric"]
+COLORIZATION_MODEL_OPTIONS = ["eccv16"]
+GRAYSCALE_CHANNEL_DIFF_THRESHOLD = 3.0  # mean abs diff between B/G/R below this => treat as grayscale
+POSE_MODEL_OPTIONS = ["mpi"]
+POSE_INPUT_SIZE = 368  # square, per this model's own training resolution
+POSE_CONFIDENCE_THRESHOLD = 0.1  # this specific MPI checkpoint's own confidence maps run low
+MIN_POSE_POINTS = 3  # fewer confident keypoints than this => "no body in frame", skip silently
+# MPI 15-point skeleton (index 15 is a "Background" channel, unused): Head, Neck, R/L
+# Shoulder/Elbow/Wrist, R/L Hip/Knee/Ankle, Chest. Standard OpenCV MPI sample layout.
+MPI_POSE_PAIRS = [
+    (0, 1), (1, 2), (2, 3), (3, 4), (1, 5), (5, 6), (6, 7), (1, 14),
+    (14, 8), (8, 9), (9, 10), (14, 11), (11, 12), (12, 13),
+]
+MPI_POSE_NUM_POINTS = 15
+FACE_LANDMARKS_MODEL_OPTIONS = ["blendshapes"]  # reuses the same FaceLandmarker model as Expression
+HAND_MODEL_OPTIONS = ["mediapipe"]
+# Standard MediaPipe 21-point hand skeleton (HandLandmark enum order, see ideas/hands.md)
+HAND_CONNECTIONS = [
+    (0, 1), (1, 2), (2, 3), (3, 4),          # thumb
+    (0, 5), (5, 6), (6, 7), (7, 8),          # index
+    (5, 9), (9, 10), (10, 11), (11, 12),     # middle
+    (9, 13), (13, 14), (14, 15), (15, 16),   # ring
+    (13, 17), (17, 18), (18, 19), (19, 20),  # pinky
+    (0, 17),                                  # palm
+]
+
+# Per-face image adjustment sliders (Lightroom-style), applied to each face crop before any
+# classifier runs on it. Pure OpenCV/numpy, no model file. (slider_key -> (min, max, default)),
+# all sliders default to 0 (no-op) so an untouched panel changes nothing.
+IMAGE_ADJUSTMENT_RANGES = {
+    "exposure": (-3.0, 3.0, 0.0),        # stops (2**value gain)
+    "brightness": (-100.0, 100.0, 0.0),  # additive, 0-255 scale
+    "contrast": (-100.0, 100.0, 0.0),
+    "highlights": (-100.0, 100.0, 0.0),
+    "shadows": (-100.0, 100.0, 0.0),
+    "black_point": (-100.0, 100.0, 0.0),
+    "saturation": (-100.0, 100.0, 0.0),
+    "vibrance": (-100.0, 100.0, 0.0),
+    "sharpness": (0.0, 100.0, 0.0),
+    "definition": (0.0, 100.0, 0.0),
+    "noise_reduction": (0.0, 100.0, 0.0),
+}
+
+SKIN_TONE_LABELS = ["black", "brown", "white"]  # index order per the source model's own class map
+SKIN_TONE_INPUT_SIZE = (120, 90)  # (width, height) -- this model's own idiosyncratic input shape, not 224x224
+MASK_LABELS = ["with_mask", "without_mask"]  # sklearn LabelBinarizer's alphabetical class order
+HAIR_COLOR_LABELS = ["black", "brown", "blonde", "red", "grey", "white"]
+EYE_COLOR_LABELS = ["brown", "blue", "green", "hazel", "grey", "amber"]
+GLASSES_THRESHOLD = 0.5
+FACIAL_HAIR_COVERAGE_THRESHOLD = 0.15  # fraction of lower-face pixels in BiSeNet's hair/beard class to call it "beard"
 
 
 @dataclass
@@ -108,6 +175,16 @@ class Models:
     race_nets: dict = field(default_factory=dict)
     expression_nets: dict = field(default_factory=dict)
     recognition_nets: dict = field(default_factory=dict)
+    facial_hair_nets: dict = field(default_factory=dict)
+    skin_tone_nets: dict = field(default_factory=dict)
+    glasses_nets: dict = field(default_factory=dict)
+    mask_nets: dict = field(default_factory=dict)
+    hair_color_nets: dict = field(default_factory=dict)
+    eye_color_nets: dict = field(default_factory=dict)
+    colorization_nets: dict = field(default_factory=dict)
+    pose_nets: dict = field(default_factory=dict)
+    face_landmarks_nets: dict = field(default_factory=dict)
+    hand_nets: dict = field(default_factory=dict)
 
     @property
     def offline_features(self) -> list[str]:
@@ -116,7 +193,12 @@ class Models:
                 ("AGE", self.age_nets), ("GENDER", self.gender_nets),
                 ("EMOTION", self.emotion_nets), ("DROWSINESS", self.drowsiness_nets),
                 ("RACE", self.race_nets), ("EXPRESSION", self.expression_nets),
-                ("RECOGNITION", self.recognition_nets),
+                ("RECOGNITION", self.recognition_nets), ("FACIAL_HAIR", self.facial_hair_nets),
+                ("SKIN_TONE", self.skin_tone_nets), ("GLASSES", self.glasses_nets),
+                ("MASK", self.mask_nets), ("HAIR_COLOR", self.hair_color_nets),
+                ("EYE_COLOR", self.eye_color_nets), ("COLORIZATION", self.colorization_nets),
+                ("POSE", self.pose_nets), ("FACE_LANDMARKS", self.face_landmarks_nets),
+                ("HANDS", self.hand_nets),
             ] if not nets
         ]
 
@@ -203,7 +285,16 @@ def load_models() -> Models:
     if TF_SUPPORTED and DEEPFACE_RACE_MODEL.exists():
         race_nets["deepface"] = build_race_model(str(DEEPFACE_RACE_MODEL))
 
+    # Colorimetric heuristics need no model file, no dependency beyond OpenCV -- always
+    # available. hair_color has no further precondition; eye_color reuses the same
+    # haarcascade_eye.xml as drowsiness, so it's gated on that file existing.
+    hair_color_nets = {"colorimetric": True}
+    eye_color_nets = {}
+    if EYE_CASCADE_FILE.exists():
+        eye_color_nets["colorimetric"] = drowsiness_nets["haarcascade"] if "haarcascade" in drowsiness_nets else cv2.CascadeClassifier(str(EYE_CASCADE_FILE))
+
     expression_nets = {}
+    face_landmarks_nets = {}
     if MEDIAPIPE_SUPPORTED and BLENDSHAPES_MODEL.exists():
         options = mp.tasks.vision.FaceLandmarkerOptions(
             base_options=mp.tasks.BaseOptions(model_asset_path=str(BLENDSHAPES_MODEL)),
@@ -212,8 +303,53 @@ def load_models() -> Models:
         )
         landmarker = mp.tasks.vision.FaceLandmarker.create_from_options(options)
         expression_nets["blendshapes"] = landmarker
+        face_landmarks_nets["blendshapes"] = landmarker  # same model instance, two features
 
-    return Models(face_net, age_nets, gender_nets, emotion_nets, drowsiness_nets, race_nets, expression_nets, recognition_nets)
+    facial_hair_nets = {}
+    if BISENET_MODEL.exists():
+        facial_hair_nets["bisenet"] = cv2.dnn.readNetFromONNX(str(BISENET_MODEL))
+
+    skin_tone_nets = {}
+    if TF_SUPPORTED and SKIN_TONE_MODEL.exists():
+        skin_tone_nets["mobilenetv2"] = build_skin_tone_model(str(SKIN_TONE_MODEL))
+
+    glasses_nets = {}
+    if GLASSES_MODEL.exists():
+        glasses_nets["mobilenet"] = cv2.dnn.readNetFromONNX(str(GLASSES_MODEL))
+
+    mask_nets = {}
+    if TF_SUPPORTED and MASK_MODEL.exists():
+        mask_nets["mobilenetv2"] = build_mask_model(str(MASK_MODEL))
+
+    colorization_nets = {}
+    if COLORIZATION_PROTO.exists() and COLORIZATION_MODEL.exists() and COLORIZATION_PTS.exists():
+        colorization_net = cv2.dnn.readNetFromCaffe(str(COLORIZATION_PROTO), str(COLORIZATION_MODEL))
+        pts = np.load(str(COLORIZATION_PTS))
+        class8 = colorization_net.getLayerId("class8_ab")
+        conv8 = colorization_net.getLayerId("conv8_313_rh")
+        pts = pts.transpose().reshape(2, 313, 1, 1)
+        colorization_net.getLayer(class8).blobs = [pts.astype("float32")]
+        colorization_net.getLayer(conv8).blobs = [np.full([1, 313], 2.606, dtype="float32")]
+        colorization_nets["eccv16"] = colorization_net
+
+    pose_nets = {}
+    if POSE_PROTO.exists() and POSE_MODEL.exists():
+        pose_nets["mpi"] = cv2.dnn.readNetFromCaffe(str(POSE_PROTO), str(POSE_MODEL))
+
+    hand_nets = {}
+    if MEDIAPIPE_SUPPORTED and HAND_LANDMARKER_MODEL.exists():
+        hand_options = mp.tasks.vision.HandLandmarkerOptions(
+            base_options=mp.tasks.BaseOptions(model_asset_path=str(HAND_LANDMARKER_MODEL)),
+            num_hands=2,
+            running_mode=mp.tasks.vision.RunningMode.IMAGE,
+        )
+        hand_nets["mediapipe"] = mp.tasks.vision.HandLandmarker.create_from_options(hand_options)
+
+    return Models(
+        face_net, age_nets, gender_nets, emotion_nets, drowsiness_nets, race_nets, expression_nets, recognition_nets,
+        facial_hair_nets, skin_tone_nets, glasses_nets, mask_nets, hair_color_nets, eye_color_nets, colorization_nets,
+        pose_nets, face_landmarks_nets, hand_nets,
+    )
 
 
 def detect_faces(net: cv2.dnn.Net, frame: np.ndarray, conf_threshold: float = 0.7) -> list[list[int]]:
@@ -233,6 +369,180 @@ def detect_faces(net: cv2.dnn.Net, frame: np.ndarray, conf_threshold: float = 0.
             y2 = int(detections[0, 0, i, 6] * frame_height)
             face_boxes.append([x1, y1, x2, y2])
     return face_boxes
+
+
+def is_grayscale_frame(frame_bgr: np.ndarray) -> bool:
+    """Heuristic: a 3-channel image that's actually grayscale (common for old photos saved
+    as BGR/RGB with all channels equal, or scanned B&W) has near-zero difference between its
+    B/G/R channels across the whole image. Downsamples first -- only the mean matters, and a
+    small sample is far cheaper than scanning a full-resolution frame."""
+    small = cv2.resize(frame_bgr, (64, 64), interpolation=cv2.INTER_AREA).astype(np.float32)
+    b, g, r = small[..., 0], small[..., 1], small[..., 2]
+    diff = (np.abs(b - g) + np.abs(g - r) + np.abs(b - r)) / 3.0
+    return float(diff.mean()) < GRAYSCALE_CHANNEL_DIFF_THRESHOLD
+
+
+def colorize_frame(net, frame_bgr: np.ndarray) -> np.ndarray:
+    """ECCV16 colorization (Zhang et al., richzhang/colorization): predict the Lab 'ab' channels
+    from the 'L' channel and rejoin. See ideas/colorization.md for the reference implementation
+    this follows."""
+    scaled = frame_bgr.astype("float32") / 255.0
+    lab_img = cv2.cvtColor(scaled, cv2.COLOR_BGR2LAB)
+
+    resized = cv2.resize(lab_img, (224, 224))
+    L = cv2.split(resized)[0]
+    L -= 50
+
+    net.setInput(cv2.dnn.blobFromImage(L))
+    ab_channel = net.forward()[0, :, :, :].transpose((1, 2, 0))
+    ab_channel = cv2.resize(ab_channel, (frame_bgr.shape[1], frame_bgr.shape[0]))
+
+    L_full = cv2.split(lab_img)[0]
+    colorized = np.concatenate((L_full[:, :, np.newaxis], ab_channel), axis=2)
+    colorized = cv2.cvtColor(colorized, cv2.COLOR_LAB2BGR)
+    colorized = np.clip(colorized, 0, 1)
+    return (255 * colorized).astype("uint8")
+
+
+def maybe_colorize(models: "Models", frame_bgr: np.ndarray, active_colorization: set) -> tuple[np.ndarray, bool]:
+    """Auto-colorize frame_bgr if it's detected as grayscale and the colorization backend is
+    active; otherwise return it unchanged. Returns (frame, was_colorized)."""
+    net = models.colorization_nets.get("eccv16")
+    if net is None or "eccv16" not in active_colorization:
+        return frame_bgr, False
+    if not is_grayscale_frame(frame_bgr):
+        return frame_bgr, False
+    return colorize_frame(net, frame_bgr), True
+
+
+def detect_pose_mpi(net, frame_bgr: np.ndarray) -> list[tuple[int, int] | None]:
+    """CMU OpenPose MPI 15-point body pose (see ideas/pose.md). Single-person, whole-frame --
+    returns one (x, y) per keypoint in frame_bgr's own coordinates, or None where confidence
+    doesn't clear POSE_CONFIDENCE_THRESHOLD."""
+    frame_h, frame_w = frame_bgr.shape[:2]
+    blob = cv2.dnn.blobFromImage(frame_bgr, 1.0 / 255, (POSE_INPUT_SIZE, POSE_INPUT_SIZE), (0, 0, 0), swapRB=False, crop=False)
+    net.setInput(blob)
+    output = net.forward()
+
+    out_h, out_w = output.shape[2], output.shape[3]
+    points: list[tuple[int, int] | None] = []
+    for i in range(MPI_POSE_NUM_POINTS):
+        prob_map = output[0, i, :, :]
+        _, prob, _, point = cv2.minMaxLoc(prob_map)
+        x = int((frame_w * point[0]) / out_w)
+        y = int((frame_h * point[1]) / out_h)
+        points.append((x, y) if prob > POSE_CONFIDENCE_THRESHOLD else None)
+    return points
+
+
+def draw_pose_skeleton(frame: np.ndarray, points: list[tuple[int, int] | None]) -> None:
+    """Draw the MPI skeleton (joints + connecting bones) directly onto frame, HUD-style
+    (matches the green/cyan palette used for face boxes elsewhere)."""
+    for point_a, point_b in MPI_POSE_PAIRS:
+        if points[point_a] is not None and points[point_b] is not None:
+            cv2.line(frame, points[point_a], points[point_b], (0, 255, 0), 2, cv2.LINE_AA)
+    for point in points:
+        if point is not None:
+            cv2.circle(frame, point, 5, (0, 255, 255), thickness=-1, lineType=cv2.FILLED)
+
+
+def _adjust_exposure(img: np.ndarray, stops: float) -> np.ndarray:
+    return img * (2.0 ** stops)
+
+
+def _adjust_brightness(img: np.ndarray, amount: float) -> np.ndarray:
+    return img + amount
+
+
+def _adjust_contrast(img: np.ndarray, amount: float) -> np.ndarray:
+    c = amount * 2.55  # slider -100..100 -> classic contrast-correction-factor's -255..255
+    factor = (259.0 * (c + 255.0)) / (255.0 * (259.0 - c))
+    return factor * (img - 128.0) + 128.0
+
+
+def _adjust_tone_region(img_bgr: np.ndarray, amount: float, region: str) -> np.ndarray:
+    """Shift highlights or shadows via a luminance-weighted mask in HSV's V channel.
+    Positive `amount` brightens highlights / lifts shadows (Lightroom convention)."""
+    hsv = cv2.cvtColor(np.clip(img_bgr, 0, 255).astype(np.uint8), cv2.COLOR_BGR2HSV).astype(np.float32)
+    v = hsv[..., 2]
+    if region == "highlights":
+        mask = np.clip((v - 128.0) / 127.0, 0.0, 1.0)
+    else:
+        mask = np.clip((128.0 - v) / 128.0, 0.0, 1.0)
+    hsv[..., 2] = np.clip(v + (amount / 100.0) * 50.0 * mask, 0, 255)
+    return cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR).astype(np.float32)
+
+
+def _adjust_black_point(img: np.ndarray, amount: float) -> np.ndarray:
+    bp = np.clip((amount / 100.0) * 60.0, -60.0, 250.0)
+    return (img - bp) * (255.0 / max(255.0 - bp, 1.0))
+
+
+def _adjust_saturation(img_bgr: np.ndarray, amount: float, vibrance: bool = False) -> np.ndarray:
+    hsv = cv2.cvtColor(np.clip(img_bgr, 0, 255).astype(np.uint8), cv2.COLOR_BGR2HSV).astype(np.float32)
+    s = hsv[..., 1]
+    if vibrance:
+        # Boost low-saturation pixels more than already-saturated ones (protects skin tones).
+        s = s + (amount / 100.0) * 60.0 * (1.0 - s / 255.0)
+    else:
+        s = s * (1.0 + amount / 100.0)
+    hsv[..., 1] = np.clip(s, 0, 255)
+    return cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR).astype(np.float32)
+
+
+def _adjust_sharpness(img_bgr: np.ndarray, amount: float) -> np.ndarray:
+    """Classic unsharp mask -- small-radius blur subtracted back out to boost edge contrast."""
+    blurred = cv2.GaussianBlur(img_bgr, (0, 0), sigmaX=1.5)
+    return img_bgr + (amount / 100.0) * 1.5 * (img_bgr - blurred)
+
+
+def _adjust_definition(img_bgr: np.ndarray, amount: float) -> np.ndarray:
+    """'Clarity'-style local contrast: large-radius unsharp mask on the LAB lightness channel
+    only, so it boosts midtone structure without shifting color."""
+    lab = cv2.cvtColor(np.clip(img_bgr, 0, 255).astype(np.uint8), cv2.COLOR_BGR2LAB).astype(np.float32)
+    L = lab[..., 0]
+    blurred = cv2.GaussianBlur(L, (0, 0), sigmaX=12.0)
+    lab[..., 0] = np.clip(L + (amount / 100.0) * 1.2 * (L - blurred), 0, 255)
+    return cv2.cvtColor(lab.astype(np.uint8), cv2.COLOR_LAB2BGR).astype(np.float32)
+
+
+def _adjust_noise_reduction(img_bgr: np.ndarray, amount: float) -> np.ndarray:
+    """Edge-preserving denoise (bilateral filter); strength scales with the slider."""
+    strength = amount / 100.0
+    return cv2.bilateralFilter(np.clip(img_bgr, 0, 255).astype(np.uint8), d=5, sigmaColor=strength * 100, sigmaSpace=strength * 100).astype(np.float32)
+
+
+def apply_image_adjustments(face_bgr: np.ndarray, adjustments: dict) -> np.ndarray:
+    """Apply the Lightroom-style slider stack to one face crop, in a fixed pipeline order
+    (denoise first so later steps don't amplify grain; sharpen last so it acts on the final
+    tonal/color state). Any slider left at its default (0) is skipped entirely -- cheap when
+    the panel is untouched, since this runs once per face per frame."""
+    img = face_bgr.astype(np.float32)
+
+    if adjustments.get("noise_reduction", 0):
+        img = _adjust_noise_reduction(img, adjustments["noise_reduction"])
+    if adjustments.get("exposure", 0):
+        img = _adjust_exposure(img, adjustments["exposure"])
+    if adjustments.get("black_point", 0):
+        img = _adjust_black_point(img, adjustments["black_point"])
+    if adjustments.get("shadows", 0):
+        img = _adjust_tone_region(img, adjustments["shadows"], "shadows")
+    if adjustments.get("highlights", 0):
+        img = _adjust_tone_region(img, adjustments["highlights"], "highlights")
+    if adjustments.get("contrast", 0):
+        img = _adjust_contrast(img, adjustments["contrast"])
+    if adjustments.get("brightness", 0):
+        img = _adjust_brightness(img, adjustments["brightness"])
+    if adjustments.get("saturation", 0):
+        img = _adjust_saturation(img, adjustments["saturation"])
+    if adjustments.get("vibrance", 0):
+        img = _adjust_saturation(img, adjustments["vibrance"], vibrance=True)
+    if adjustments.get("definition", 0):
+        img = _adjust_definition(img, adjustments["definition"])
+    if adjustments.get("sharpness", 0):
+        img = _adjust_sharpness(img, adjustments["sharpness"])
+
+    return np.clip(img, 0, 255).astype(np.uint8)
 
 
 def predict_gender_caffe(net, blob: np.ndarray) -> str:
@@ -525,6 +835,191 @@ def predict_expression_blendshapes(landmarker, face_bgr: np.ndarray) -> str:
     return ", ".join(f"{bs.category_name} {bs.score:.2f}" for bs in top_blendshapes)
 
 
+BISENET_HAIR_CLASS = 17  # CelebAMask-HQ 19-class scheme (yakhyo/face-parsing's own utils/prepare_labels.py
+# attribute order, 1-indexed after background=0): skin, l_brow, r_brow, l_eye, r_eye, eye_g, l_ear, r_ear,
+# ear_r, nose, mouth, u_lip, l_lip, neck, neck_l, cloth, hair, hat -- there is NO separate beard/facial-hair
+# class; annotators fold facial hair into "hair" too. We approximate facial hair by restricting "hair"-class
+# coverage to the lower part of the crop (jaw/chin/mouth), where scalp hair rarely appears in a tight face box.
+
+
+def predict_facial_hair_bisenet(net, face_bgr: np.ndarray) -> str:
+    """BiSeNet (yakhyo/face-parsing) 19-class face parsing. No dedicated beard class exists in
+    CelebAMask-HQ's scheme (see BISENET_HAIR_CLASS) -- this reports 'beard' if enough of the
+    HAIR class falls in the lower part of the crop, else 'clean-shaven'. Heuristic, not a
+    purpose-trained facial-hair classifier."""
+    face_rgb = cv2.cvtColor(cv2.resize(face_bgr, (512, 512)), cv2.COLOR_BGR2RGB)
+    face_norm = (face_rgb.astype(np.float32) / 255.0 - SSRNET_MEAN) / SSRNET_STD
+    blob = face_norm.transpose(2, 0, 1)[np.newaxis, ...].astype(np.float32)
+    net.setInput(blob)
+    output = net.forward()  # (1, 19, H, W)
+    class_map = output[0].argmax(axis=0)
+
+    h = class_map.shape[0]
+    lower = class_map[int(h * 0.6):, :]
+    if lower.size == 0:
+        return "unknown"
+    coverage = float(np.mean(lower == BISENET_HAIR_CLASS))
+    return "beard" if coverage >= FACIAL_HAIR_COVERAGE_THRESHOLD else "clean-shaven"
+
+
+def predict_skin_tone_vgg16(net, face_bgr: np.ndarray) -> str:
+    """behra527/Skin-Tone-Classification-model: MobileNetV2 backbone (despite the repo's
+    README describing VGG16), RGB, its own idiosyncratic 90x120 (h,w) input,
+    keras.applications.mobilenet_v2.preprocess_input scaling."""
+    face_rgb = cv2.cvtColor(cv2.resize(face_bgr, SKIN_TONE_INPUT_SIZE), cv2.COLOR_BGR2RGB).astype(np.float32)
+    face_norm = face_rgb / 127.5 - 1.0
+    probs = net.predict(face_norm[np.newaxis, ...], verbose=0).flatten()
+    return SKIN_TONE_LABELS[int(np.argmax(probs))]
+
+
+def predict_glasses_mobilenet(net, face_bgr: np.ndarray) -> str:
+    """Sorour190/Glasses-Detector's glasses_face224.onnx: MobileNetV3-Large, 224x224 RGB,
+    uint8 NHWC input (normalization baked into the ONNX graph itself), outputs a named
+    'eyeglasses_prob' scalar already through softmax. License unstated by the source repo
+    (flagged in README, same treatment as DAN/SSR-Net)."""
+    face_rgb = cv2.cvtColor(cv2.resize(face_bgr, (224, 224)), cv2.COLOR_BGR2RGB)
+    blob = face_rgb[np.newaxis, ...].astype(np.uint8)
+    net.setInput(blob)
+    prob = float(net.forward("eyeglasses_prob").flatten()[0])
+    return "glasses" if prob >= GLASSES_THRESHOLD else "none"
+
+
+def predict_mask_mobilenetv2(net, face_bgr: np.ndarray) -> str:
+    """chandrikadeb7/Face-Mask-Detection: MobileNetV2 backbone (imagenet weights,
+    include_top=False) + AveragePooling2D(7,7) + Flatten + Dense(128, relu) + Dropout(0.5) +
+    Dense(2, softmax), 224x224 RGB, keras.applications.mobilenet_v2.preprocess_input scaling.
+    Class order (sklearn LabelBinarizer, alphabetical) is MASK_LABELS = ['with_mask', 'without_mask']."""
+    face_rgb = cv2.cvtColor(cv2.resize(face_bgr, (224, 224)), cv2.COLOR_BGR2RGB).astype(np.float32)
+    face_norm = face_rgb / 127.5 - 1.0
+    probs = net.predict(face_norm[np.newaxis, ...], verbose=0).flatten()
+    return MASK_LABELS[int(np.argmax(probs))]
+
+
+def _is_skin_hsv(hsv_pixels: np.ndarray) -> np.ndarray:
+    """Boolean mask for common skin-tone hue/sat/val ranges in OpenCV HSV (H:0-179).
+    Rough heuristic, not a trained model -- used only to exclude forehead skin bleeding
+    into the hair-color sample region, not for any skin-tone classification."""
+    h, s, v = hsv_pixels[..., 0], hsv_pixels[..., 1], hsv_pixels[..., 2]
+    return (h <= 25) & (s >= 30) & (s <= 180) & (v >= 40)
+
+
+def predict_hair_color_colorimetric(frame_bgr: np.ndarray, box: tuple[int, int, int, int]) -> str:
+    """Heuristic (not ML): sample the region above the face box, exclude likely-skin
+    pixels, take the median color, and bucket by HSV hue/saturation/value into
+    HAIR_COLOR_LABELS. Sensitive to lighting/pose/hats -- much rougher than the
+    model-backed attributes."""
+    x1, y1, x2, y2 = box
+    fh, fw = frame_bgr.shape[:2]
+    h = y2 - y1
+    ry1 = max(0, int(y1 - 0.6 * h))
+    ry2 = max(ry1 + 1, y1)
+    rx1, rx2 = max(0, x1), min(fw, x2)
+    region = frame_bgr[ry1:ry2, rx1:rx2]
+    if region.size == 0:
+        return "unknown"
+
+    hsv = cv2.cvtColor(region, cv2.COLOR_BGR2HSV)
+    skin_mask = _is_skin_hsv(hsv)
+    non_skin = hsv[~skin_mask]
+    sample = non_skin if non_skin.size > 0 else hsv.reshape(-1, 3)
+
+    med_h, med_s, med_v = (np.median(sample[..., i]) for i in range(3))
+
+    if med_v < 50:
+        return "black"
+    if med_s < 30:
+        return "white" if med_v > 180 else "grey"
+    if 8 < med_h < 25 and med_v > 150 and med_s > 60:
+        return "blonde"
+    if (med_h <= 8 or med_h >= 170) and med_s > 90:
+        return "red"
+    return "brown"
+
+
+def predict_eye_color_colorimetric(eye_cascade, face_bgr: np.ndarray) -> str:
+    """Heuristic (not ML): locate the largest detected eye via the drowsiness Haar
+    cascade, sample the center 40% of its box (avoiding sclera/eyelid), and bucket
+    the median HSV into EYE_COLOR_LABELS. Rough by nature -- lighting/pose-sensitive."""
+    face_gray = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2GRAY)
+    eyes = eye_cascade.detectMultiScale(face_gray, scaleFactor=1.1, minNeighbors=6, minSize=(20, 20))
+    if len(eyes) == 0:
+        return "unknown"
+
+    ex, ey, ew, eh = max(eyes, key=lambda e: e[2] * e[3])
+    cx1 = ex + int(ew * 0.3)
+    cx2 = ex + int(ew * 0.7)
+    cy1 = ey + int(eh * 0.3)
+    cy2 = ey + int(eh * 0.7)
+    iris_region = face_bgr[cy1:cy2, cx1:cx2]
+    if iris_region.size == 0:
+        return "unknown"
+
+    hsv = cv2.cvtColor(iris_region, cv2.COLOR_BGR2HSV)
+    med_h = float(np.median(hsv[..., 0]))
+    med_s = float(np.median(hsv[..., 1]))
+    med_v = float(np.median(hsv[..., 2]))
+
+    if med_v < 60:
+        return "brown"
+    if med_s < 40:
+        return "grey"
+    if 95 <= med_h <= 130:
+        return "blue"
+    if 40 <= med_h < 95:
+        return "green"
+    if 15 <= med_h < 40 and med_s > 100:
+        return "amber"
+    if med_h < 15 or med_h >= 170:
+        return "brown" if med_v < 130 else "hazel"
+    return "hazel"
+
+
+def predict_face_landmarks_mediapipe(landmarker, face_bgr: np.ndarray) -> list[tuple[float, float]] | None:
+    """MediaPipe FaceLandmarker (same model instance as Expression's blendshapes backend --
+    one model, two features, same pattern as insightface/fairface elsewhere in this file).
+    Returns 468 (x, y) points normalized to [0, 1] within face_bgr, or None if no face found."""
+    face_rgb = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2RGB)
+    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=face_rgb)
+    result = landmarker.detect(mp_image)
+    if not result.face_landmarks:
+        return None
+    return [(lm.x, lm.y) for lm in result.face_landmarks[0]]
+
+
+def draw_face_landmarks(frame: np.ndarray, points_normalized: list[tuple[float, float]], box: tuple[int, int, int, int]) -> None:
+    """Draw face mesh points directly onto frame, scaled into box's pixel extent. Dots only
+    (no contour/connection lines) -- 468 points is dense enough to read as a mesh on its own."""
+    x1, y1, x2, y2 = box
+    w, h = x2 - x1, y2 - y1
+    for nx, ny in points_normalized:
+        cv2.circle(frame, (x1 + int(nx * w), y1 + int(ny * h)), 1, (255, 0, 255), thickness=-1, lineType=cv2.LINE_AA)
+
+
+def detect_hand_landmarks_mediapipe(landmarker, frame_bgr: np.ndarray) -> list[list[tuple[int, int]]]:
+    """MediaPipe HandLandmarker, whole-frame (hands aren't tied to a detected face box).
+    Returns a list of hands, each a list of 21 (x, y) pixel points in frame_bgr's own
+    coordinates -- empty list if no hands found (that's how 'if hands are visible' is decided,
+    no separate hand-presence check needed)."""
+    frame_h, frame_w = frame_bgr.shape[:2]
+    frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
+    result = landmarker.detect(mp_image)
+    return [
+        [(int(lm.x * frame_w), int(lm.y * frame_h)) for lm in hand]
+        for hand in result.hand_landmarks
+    ]
+
+
+def draw_hand_landmarks(frame: np.ndarray, hands: list[list[tuple[int, int]]]) -> None:
+    """Draw each hand's skeleton (joints + connecting bones) directly onto frame, same
+    HUD palette as the body pose skeleton."""
+    for hand in hands:
+        for point_a, point_b in HAND_CONNECTIONS:
+            cv2.line(frame, hand[point_a], hand[point_b], (0, 255, 0), 2, cv2.LINE_AA)
+        for point in hand:
+            cv2.circle(frame, point, 4, (0, 255, 255), thickness=-1, lineType=cv2.FILLED)
+
+
 def draw_outlined_text(frame: np.ndarray, text: str, org: tuple[int, int], color: tuple[int, int, int]) -> None:
     """Draw text with a black outline so it stays readable over any background. Clamps origin
     so text stays inside the frame, and shrinks the font if the text is wider than the frame
@@ -559,14 +1054,50 @@ def analyze_frame(
     active_expression: set,
     active_recognition: set,
     gallery: dict,
+    active_facial_hair: set,
+    active_skin_tone: set,
+    active_glasses: set,
+    active_mask: set,
+    active_hair_color: set,
+    active_eye_color: set,
+    active_pose: set,
+    active_face_landmarks: set,
+    active_hands: set,
+    global_adjustments: dict,
+    face_adjustments: dict,
 ):
     """Detect faces and run inference for whichever model keys are active per feature.
     Multiple active models for the same feature (e.g. active_age = {"caffe", "ssrnet"})
-    all run and are shown together. No Streamlit calls (safe for background threads)."""
+    all run and are shown together. No Streamlit calls (safe for background threads).
+
+    global_adjustments apply to the whole frame first, before face detection even runs --
+    every output derived from this call (the annotated image, every face crop, every
+    classification) sees the adjusted pixels. face_adjustments apply again, per detected
+    face, to that face's own crop only, after detection but before classification -- they
+    affect just that one face's thumbnail/attributes, not the shared frame or other faces."""
+    if global_adjustments and any(global_adjustments.values()):
+        frame = apply_image_adjustments(frame, global_adjustments)
+
     annotated_frame = frame.copy()
     face_boxes = detect_faces(models.face_net, frame, conf_threshold)
     cropped_faces = []
     any_drowsy = False
+
+    pose_detected = False
+    pose_net = models.pose_nets.get("mpi")
+    if pose_net is not None and "mpi" in active_pose:
+        pose_points = detect_pose_mpi(pose_net, frame)
+        if sum(p is not None for p in pose_points) >= MIN_POSE_POINTS:
+            pose_detected = True
+            draw_pose_skeleton(annotated_frame, pose_points)
+
+    hands_detected = False
+    hand_net = models.hand_nets.get("mediapipe")
+    if hand_net is not None and "mediapipe" in active_hands:
+        hands = detect_hand_landmarks_mediapipe(hand_net, frame)
+        if hands:
+            hands_detected = True
+            draw_hand_landmarks(annotated_frame, hands)
 
     need_blob227 = ("caffe" in active_age and "caffe" in models.age_nets) or \
                    ("caffe" in active_gender and "caffe" in models.gender_nets)
@@ -593,6 +1124,9 @@ def analyze_frame(
         face = crop_frame[y1_crop:y2_crop, x1_crop:x2_crop]
         if face.size == 0:
             continue
+
+        if face_adjustments and any(face_adjustments.values()):
+            face = apply_image_adjustments(face, face_adjustments)
 
         blob227 = None
         if need_blob227:
@@ -676,6 +1210,53 @@ def analyze_frame(
             value = f"{match[0]} ({match[1] * 100:.0f}%)" if match else "UNKNOWN"
             recognition_pairs.append((key, value))
 
+        facial_hair_pairs = []
+        for key in active_facial_hair:
+            net = models.facial_hair_nets.get(key)
+            if net is None:
+                continue
+            value = predict_facial_hair_bisenet(net, face)
+            facial_hair_pairs.append((key, value))
+
+        skin_tone_pairs = []
+        for key in active_skin_tone:
+            net = models.skin_tone_nets.get(key)
+            if net is None:
+                continue
+            value = predict_skin_tone_vgg16(net, face)
+            skin_tone_pairs.append((key, value))
+
+        glasses_pairs = []
+        for key in active_glasses:
+            net = models.glasses_nets.get(key)
+            if net is None:
+                continue
+            value = predict_glasses_mobilenet(net, face)
+            glasses_pairs.append((key, value))
+
+        mask_pairs = []
+        for key in active_mask:
+            net = models.mask_nets.get(key)
+            if net is None:
+                continue
+            value = predict_mask_mobilenetv2(net, face)
+            mask_pairs.append((key, value))
+
+        hair_color_pairs = []
+        for key in active_hair_color:
+            if key not in models.hair_color_nets:
+                continue
+            value = predict_hair_color_colorimetric(crop_frame, (cx1, cy1, cx2, cy2))
+            hair_color_pairs.append((key, value))
+
+        eye_color_pairs = []
+        for key in active_eye_color:
+            net = models.eye_color_nets.get(key)
+            if net is None:
+                continue
+            value = predict_eye_color_colorimetric(net, face)
+            eye_color_pairs.append((key, value))
+
         drowsy_pairs = []
         face_drowsy = False
         for key in active_drowsiness:
@@ -695,6 +1276,12 @@ def analyze_frame(
         cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), (0, 255, 0), box_thickness, 8)
         draw_outlined_text(annotated_frame, str(idx), (x1, max(20, y1 - 10)), (0, 255, 255))
 
+        landmarks_net = models.face_landmarks_nets.get("blendshapes")
+        if landmarks_net is not None and "blendshapes" in active_face_landmarks:
+            landmark_points = predict_face_landmarks_mediapipe(landmarks_net, face)
+            if landmark_points is not None:
+                draw_face_landmarks(annotated_frame, landmark_points, (x1, y1, x2, y2))
+
         drowsy_parts = _format_results(drowsy_pairs)
         status = drowsy_parts[0] if len(drowsy_parts) == 1 else (", ".join(drowsy_parts) if drowsy_parts else None)
 
@@ -707,9 +1294,15 @@ def analyze_frame(
             "emotion": _format_results(emotion_pairs),
             "expression": _format_results(expression_pairs),
             "identity": _format_results(recognition_pairs),
+            "facial_hair": _format_results(facial_hair_pairs),
+            "skin_tone": _format_results(skin_tone_pairs),
+            "glasses": _format_results(glasses_pairs),
+            "mask": _format_results(mask_pairs),
+            "hair_color": _format_results(hair_color_pairs),
+            "eye_color": _format_results(eye_color_pairs),
             "embedding": face_embedding.tolist() if face_embedding is not None else None,
             "status": status,
             "drowsy": face_drowsy if drowsy_pairs else None,
         })
 
-    return annotated_frame, cropped_faces, any_drowsy, bool(face_boxes)
+    return annotated_frame, cropped_faces, any_drowsy, bool(face_boxes), pose_detected, hands_detected

@@ -6,13 +6,14 @@
 ![Streamlit](https://img.shields.io/badge/Streamlit-UI-00ff66?style=flat-square&logo=streamlit&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Ready-00ff66?style=flat-square&logo=docker&logoColor=white)
 
-> Computer vision pipeline for face detection with age, gender, race, emotion, expression (blendshapes), and drowsiness inference. A containerized Streamlit web app.
+> Computer vision pipeline for face detection with age, gender, race, emotion, expression (blendshapes), drowsiness, facial hair, glasses, mask, and hair/eye color inference. A containerized Streamlit web app.
 
 ---
 
 ## Key Features
 
-- **Multi-model face analysis:** face detection, age, gender, race, emotion, expression (blendshapes), and drowsiness -- most features have 2+ selectable model backends.
+- **Multi-model face analysis:** face detection, age, gender, race, emotion, expression (blendshapes), drowsiness, facial hair, glasses, face mask, colorimetric hair/eye color, face landmarks, plus whole-frame auto-colorization, body pose estimation, and hand landmarks -- most features have 2+ selectable model backends.
+- **Image adjustments, two stages:** 11 Lightroom-style sliders (exposure, contrast, shadows/highlights, saturation/vibrance, sharpness, noise reduction, etc.) -- one panel applied to the whole image before face detection, a second applied to each detected face crop before classification.
 - **Docker-packaged Streamlit app:** `src/app.py`, all features including race and expression.
 - **Build-time feature toggles:** disable any model at Docker build time to shrink the image (see [Docker](#docker-web-app)).
 - **Graceful degradation:** any model missing at runtime (file or dependency not present) is skipped, not a crash -- the rest of the pipeline keeps working.
@@ -105,7 +106,110 @@ Enrollment happens in the web app: under any detected face with a computed embed
 | ------------------------- | --------- | ------------------ |
 | Haar cascade eye detector | OpenCV    | `DROWSY` / `ALERT` |
 
-Model provenance: DAN, SSR-Net, and DeepFace's race model are vendored research code (`src/nets/`). DAN and SSR-Net have no explicit upstream license file (research/educational use). DeepFace (race, gender, and recognition/`deepface_vgg.h5`) is MIT. FairFace's ONNX conversion is MIT (underlying dataset CC BY 4.0). InsightFace's model is non-commercial research use only (see Gender above).
+### Facial Hair (web app only)
+
+| Backend    | Framework      | Output                    |
+| ---------- | -------------- | -------------------------- |
+| `bisenet`  | ONNX (cv2.dnn) | `beard` / `clean-shaven`  |
+
+BiSeNet 19-class face parsing (yakhyo/face-parsing, MIT, `models/bisenet_face_parsing.onnx`, 512x512 RGB, ImageNet-normalized). CelebAMask-HQ's 19-class scheme has **no dedicated beard/facial-hair class** -- annotators fold facial hair into the same `hair` class as scalp hair. This backend approximates facial hair by checking how much of the `hair` class falls in the *lower* part of the face crop (jaw/chin/mouth), where scalp hair rarely appears in a tight box -- reported `beard` if that coverage clears 15%. Treat this as a coarse proxy, not a purpose-built facial-hair classifier.
+
+### Skin Tone (web app only, no working backend currently shipped)
+
+The only known pretrained source for this attribute, [behra527/Skin-Tone-Classification-model](https://github.com/behra527/Skin-Tone-Classification-model) (`mobilenetv2_skin_tone.h5`), **ships a corrupted weight file**: its saved Keras config doesn't deserialize under current Keras 3, under the legacy `tf_keras` shim, or via a hand-reconstructed matching architecture + `load_weights()` (a nested-submodel weight-order mismatch persists even then). This was verified directly, not assumed -- all three loading paths were tried against the actual downloaded file before giving up.
+
+The Python-side plumbing (`src/inference.py`'s `skin_tone_nets`, `src/nets/skin_tone_model.py`'s `build_skin_tone_model()`, sidebar checkbox, target-card row) is fully wired and will pick up a working weight file automatically if one is dropped in as `models/skin_tone_mobilenetv2.h5` -- but no such file is bundled or built into Docker images today (no `SKIN_TONE_MODEL` build ARG exists). The feature shows as offline until a working source is found.
+
+### Glasses (web app only)
+
+| Backend     | Framework      | Output              |
+| ----------- | -------------- | -------------------- |
+| `mobilenet` | ONNX (cv2.dnn) | `glasses` / `none`  |
+
+Sorour190/Glasses-Detector, `models/glasses_detector.onnx` (MobileNetV3-Large, 224x224 RGB, normalization baked into the ONNX graph itself -- feed raw uint8 pixels). **License unstated by the source repo** -- same treatment as DAN/SSR-Net, use at your own discretion.
+
+### Mask (web app only)
+
+| Backend        | Framework        | Output                        |
+| --------------- | ----------------- | ------------------------------ |
+| `mobilenetv2`  | Keras/TensorFlow  | `with_mask` / `without_mask`  |
+
+chandrikadeb7/Face-Mask-Detection (MIT), MobileNetV2 backbone + AveragePooling2D/Flatten/Dense(128)/Dropout/Dense(2, softmax) head, 224x224 RGB, `mobilenet_v2.preprocess_input` scaling ([-1, 1]). Needs TensorFlow, like deepface/mini_xception/recognition.
+
+### Hair Color (web app only -- heuristic, not ML)
+
+| Backend         | Framework | Output                                              |
+| ---------------- | --------- | ---------------------------------------------------- |
+| `colorimetric`  | OpenCV    | `black` / `brown` / `blonde` / `red` / `grey` / `white` |
+
+No model file, no dependency, always available. Samples the region above the detected face box, excludes likely-skin pixels (rough HSV skin-color range), takes the median HSV of what's left, and buckets by hue/saturation/value against fixed thresholds. **This is a plain colorimetric heuristic, not a trained classifier** -- accuracy is meaningfully lower than the model-backed attributes and is sensitive to lighting, hats, camera white-balance, and hairstyle framing. Treat results as a rough guess, not a benchmark-grade prediction.
+
+### Eye Color (web app only -- heuristic, not ML)
+
+| Backend         | Framework | Output                                                  |
+| ---------------- | --------- | --------------------------------------------------------- |
+| `colorimetric`  | OpenCV    | `brown` / `blue` / `green` / `hazel` / `grey` / `amber`  |
+
+No model file. Reuses the same `haarcascade_eye.xml` already required for Drowsiness, so it's only available if that file is present. Locates the largest detected eye box, samples its center 40% (avoiding sclera/eyelid), and buckets the median HSV against fixed thresholds. **Also a plain colorimetric heuristic, not a trained classifier** -- same lighting/pose-sensitivity caveats as Hair Color, generally the least reliable attribute in the app.
+
+### Colorization (web app only, not a face attribute)
+
+| Backend    | Framework       | Output                              |
+| ---------- | --------------- | ------------------------------------ |
+| `eccv16`   | Caffe (cv2.dnn) | Colorized BGR frame, or unchanged   |
+
+Zhang et al.'s ECCV16 colorization model (`models/colorization_deploy_v2.prototxt` / `_release_v2.caffemodel` / `pts_in_hull.npy`, BSD-2-Clause, richzhang/colorization). Unlike every other feature above, this isn't a per-face attribute -- it's a whole-frame preprocessing step applied *before* face detection. If the uploaded/captured frame is auto-detected as grayscale (near-zero difference between its B/G/R channels), it's colorized in Lab space (predict `ab` from `L`, per `ideas/colorization.md`) before the rest of the pipeline runs, so downstream color-dependent attributes (skin tone, hair color, eye color) see the colorized version too. On by default; toggle off in the sidebar (`AUTO-COLORIZE B&W`) to leave grayscale images untouched. Already-color images are left alone regardless of the toggle (the grayscale check skips them).
+
+### Pose Estimation (web app only, not a face attribute)
+
+| Backend   | Framework       | Output                                  |
+| --------- | --------------- | ----------------------------------------- |
+| `mpi`     | Caffe (cv2.dnn) | 15-point body skeleton overlay, or nothing |
+
+CMU OpenPose's MPI single-person body pose model (`models/pose_deploy_linevec_faster_4_stages.prototxt` / `pose_iter_160000.caffemodel`, per `ideas/pose.md`). Like Colorization, this is a whole-frame feature, not a per-face attribute -- it runs once per frame regardless of how many faces are detected (or even if none are). If fewer than `MIN_POSE_POINTS` (3) keypoints clear the confidence threshold, nothing is drawn and nothing is reported -- this is how "only run if a body is visible" is implemented, there's no separate body detector. When a body is found, the skeleton (joints + bones) is drawn directly onto the annotated frame and a `[ POSE DETECTED ]` caption is shown. On by default; toggle off in the sidebar (`POSE ESTIMATION`).
+
+**ACADEMIC/NON-COMMERCIAL RESEARCH USE ONLY** (Carnegie Mellon University's OpenPose license) -- same treatment as the `dex` age and `insightface` age/gender backends: not for commercial deployments without independent licensing. The original CMU model-hosting server (`posefs1.perception.cs.cmu.edu`) referenced in `ideas/pose.md` is offline; the weight file was sourced from a Hugging Face mirror instead (same file, verified by size).
+
+### Face Landmarks (web app only, no build ARG of its own)
+
+| Backend        | Framework | Output                                    |
+| --------------- | --------- | -------------------------------------------- |
+| `blendshapes`  | MediaPipe | 468-point face mesh overlay, drawn per face |
+
+Reuses the exact same `FaceLandmarker` model instance as Expression's blendshapes backend (`models/face_landmarker.task`) -- one loaded model, two independent toggles, same pattern as `insightface` sharing one ONNX file for age+gender. No separate build ARG: it's available whenever `EXPRESSION_MODEL=blendshapes` is built in. Draws 468 small dots per detected face directly onto the shared annotated image (unlike text attributes, landmarks are inherently visual). Toggle in the sidebar (`FACE LANDMARKS`).
+
+### Hand Landmarks (web app only)
+
+| Backend      | Framework | Output                                        |
+| ------------- | --------- | ------------------------------------------------ |
+| `mediapipe`  | MediaPipe | 21-point skeleton per detected hand, up to 2 hands |
+
+Google's MediaPipe HandLandmarker (`models/hand_landmarker.task`, Apache 2.0). Like Pose and Colorization, this is a whole-frame feature -- it runs once per frame independent of face detection, so hands are found (or not) whether or not a face is in view. If no hands are detected, nothing is drawn and nothing reported -- that's how "if hands are visible" is implemented, there's no separate hand-presence check beyond the model's own empty-result case. When hands are found, each one's 21-point skeleton is drawn directly onto the frame and a `[ HANDS DETECTED ]` caption is shown. Toggle in the sidebar (`HAND LANDMARKS`).
+
+### Image Adjustments (web app only, not a model)
+
+| Slider            | Range        | Effect                                                    |
+| ------------------- | ------------ | ------------------------------------------------------------ |
+| Exposure           | -3.0 .. 3.0  | stops (2^value gain)                                        |
+| Brightness         | -100 .. 100  | additive offset                                              |
+| Contrast           | -100 .. 100  | classic contrast-correction-factor curve around midtone      |
+| Highlights         | -100 .. 100  | luminance-weighted lift/cut on bright tones only             |
+| Shadows            | -100 .. 100  | luminance-weighted lift/cut on dark tones only               |
+| Black Point        | -100 .. 100  | remaps the shadow floor (levels-style)                       |
+| Saturation         | -100 .. 100  | uniform HSV saturation scale                                 |
+| Vibrance           | -100 .. 100  | saturation boost weighted toward already-desaturated pixels (protects skin tones) |
+| Sharpness          | 0 .. 100     | small-radius unsharp mask                                    |
+| Definition         | 0 .. 100     | large-radius unsharp mask on LAB lightness only ("clarity")  |
+| Noise Reduction    | 0 .. 100     | bilateral filter                                              |
+
+Eleven Lightroom-style sliders, all defaulting to 0 (no-op). Pure OpenCV/numpy -- no model file, no build ARG, always available. There are **two independent slider panels**, applied at two different points in the pipeline:
+
+- **GLOBAL IMAGE ADJUSTMENTS**: applied to the whole image first, before face detection even runs. Every downstream output -- the annotated image, every face crop, every classification -- sees the adjusted pixels. Useful for e.g. brightening a dark source image so face detection itself finds more faces.
+- **PER-FACE IMAGE ADJUSTMENTS**: applied again, separately, to each detected face's own crop -- after detection, before any classifier runs on it. This only affects that one face's thumbnail and attribute results, not the shared frame or other faces.
+
+Both panels use the same 11 sliders and the same underlying `apply_image_adjustments()` function; an untouched slider is skipped entirely, so leaving either panel at defaults costs nothing extra per frame.
+
+Model provenance: DAN, SSR-Net, and DeepFace's race model are vendored research code (`src/nets/`). DAN and SSR-Net have no explicit upstream license file (research/educational use). DeepFace (race, gender, and recognition/`deepface_vgg.h5`) is MIT. FairFace's ONNX conversion is MIT (underlying dataset CC BY 4.0). InsightFace's model is non-commercial research use only (see Gender above). BiSeNet face-parsing (facial hair) and Face-Mask-Detection (mask) are MIT; the glasses detector's license is unstated.
 
 ---
 
@@ -134,7 +238,15 @@ multimodal-face-analyzer/
 │   ├── deepface_gender.h5                       # gender: deepface backend
 │   ├── deepface_vgg.h5                          # recognition: vggface backend
 │   ├── face_landmarker.task                     # expression: blendshapes backend
-│   └── haarcascade_eye.xml                      # drowsiness
+│   ├── haarcascade_eye.xml                      # drowsiness + eye color
+│   ├── bisenet_face_parsing.onnx                # facial hair: bisenet backend
+│   ├── glasses_detector.onnx                    # glasses: mobilenet backend
+│   ├── mask_detector.h5                         # mask: mobilenetv2 backend
+│   ├── colorization_deploy_v2.prototxt / colorization_release_v2.caffemodel / pts_in_hull.npy  # colorization
+│   ├── pose_deploy_linevec_faster_4_stages.prototxt / pose_iter_160000.caffemodel  # pose (mpi)
+│   ├── hand_landmarker.task                     # hand landmarks: mediapipe backend
+│   # face_landmarker.task (above) is also reused for the Face Landmarks toggle
+│   # (no skin_tone_mobilenetv2.h5 -- no working weight file exists yet, see README)
 │
 └── src/                    # Streamlit app module
     ├── app.py              # UI only (page layout, sidebar, tabs)
@@ -147,6 +259,8 @@ multimodal-face-analyzer/
         ├── mini_xception_model.py
         ├── deepface_gender.py
         ├── deepface_recognition.py
+        ├── mask_model.py                        # mask: mobilenetv2 backend
+        ├── skin_tone_model.py                   # skin tone architecture (no working weights yet)
         └── mivolo/                              # MiVOLO ViT (Apache 2.0)
             ├── __init__.py
             ├── loader.py                        # HF checkpoint adapter
@@ -201,6 +315,12 @@ docker build \
   --build-arg RACE_MODEL=fairface,deepface \
   --build-arg EXPRESSION_MODEL=blendshapes \
   --build-arg RECOGNITION_MODEL=vggface \
+  --build-arg FACIAL_HAIR_MODEL=bisenet \
+  --build-arg GLASSES_MODEL=mobilenet \
+  --build-arg MASK_MODEL=mobilenetv2 \
+  --build-arg COLORIZATION_MODEL=eccv16 \
+  --build-arg POSE_MODEL=mpi \
+  --build-arg HAND_MODEL=mediapipe \
   -t face-analyzer .
 ```
 
@@ -213,10 +333,18 @@ docker build \
 | `RACE_MODEL`       | `fairface`, `deepface`                   |
 | `EXPRESSION_MODEL` | `blendshapes`                            |
 | `RECOGNITION_MODEL` | `vggface`                               |
+| `FACIAL_HAIR_MODEL` | `bisenet`                               |
+| `GLASSES_MODEL`    | `mobilenet`                              |
+| `MASK_MODEL`       | `mobilenetv2`                            |
+| `COLORIZATION_MODEL` | `eccv16`                                |
+| `POSE_MODEL`       | `mpi`                                     |
+| `HAND_MODEL`       | `mediapipe`                               |
+
+There's no `SKIN_TONE_MODEL` build ARG -- see [Skin Tone](#skin-tone-web-app-only-no-working-backend-currently-shipped) above. Hair Color and Eye Color are colorimetric heuristics with no model file and thus no build ARG either -- they're always available in the web app (Eye Color additionally needs `haarcascade_eye.xml`, already required for Drowsiness). Face Landmarks also has no build ARG -- it rides along with `EXPRESSION_MODEL=blendshapes`, reusing that same model file.
 
 Multiple models per feature (e.g. `AGE_MODEL=caffe,ssrnet`) can be built in together -- the web app sidebar shows a checkbox per built model, and checking more than one for the same feature runs and displays all of them at once.
 
-Disabled model files never land in an image layer (BuildKit bind-mount + conditional copy). `torch`/`torchvision` (~200MB) are only installed if `ssrnet`, `dan`, and/or `mivolo` are requested. `tensorflow-cpu`/`tf-keras` (~200-400MB, plus deepface's 513MB weight file) are only installed if `deepface` is requested -- by far the heaviest single option in the repo (note: `mivolo` at ~110MB checkpoint plus ultralytics/timm dependencies is the second-heaviest, still much lighter than deepface's full stack). `mediapipe` is only installed if the `blendshapes` expression backend is requested.
+Disabled model files never land in an image layer (BuildKit bind-mount + conditional copy). `torch`/`torchvision` (~200MB) are only installed if `ssrnet`, `dan`, and/or `mivolo` are requested. `tensorflow-cpu`/`tf-keras` (~200-400MB, plus deepface's 513MB weight file) are only installed if `deepface`, `mini_xception`, `vggface`, and/or `mask` are requested -- deepface race remains by far the heaviest single option in the repo (note: `mivolo` at ~110MB checkpoint plus ultralytics/timm dependencies is the second-heaviest, still much lighter than deepface's full stack). `mediapipe` is only installed if the `blendshapes` expression backend is requested.
 
 ### Run
 

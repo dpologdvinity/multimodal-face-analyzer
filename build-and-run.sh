@@ -74,6 +74,24 @@ EXPRESSION_MODEL="$REPLY_MODEL"
 prompt_feature "RECOGNITION" vggface
 RECOGNITION_MODEL="$REPLY_MODEL"
 
+prompt_feature "FACIAL HAIR" bisenet
+FACIAL_HAIR_MODEL="$REPLY_MODEL"
+
+prompt_feature "GLASSES" mobilenet
+GLASSES_MODEL="$REPLY_MODEL"
+
+prompt_feature "MASK" mobilenetv2
+MASK_MODEL="$REPLY_MODEL"
+
+prompt_feature "COLORIZATION" eccv16
+COLORIZATION_MODEL="$REPLY_MODEL"
+
+prompt_feature "POSE" mpi
+POSE_MODEL="$REPLY_MODEL"
+
+prompt_feature "HAND LANDMARKS" mediapipe
+HAND_MODEL="$REPLY_MODEL"
+
 echo "" >&2
 echo "Building ${IMAGE_TAG} with:" >&2
 echo "  AGE_MODEL=${AGE_MODEL}" >&2
@@ -83,6 +101,12 @@ echo "  DROWSINESS_MODEL=${DROWSINESS_MODEL}" >&2
 echo "  RACE_MODEL=${RACE_MODEL}" >&2
 echo "  EXPRESSION_MODEL=${EXPRESSION_MODEL}" >&2
 echo "  RECOGNITION_MODEL=${RECOGNITION_MODEL}" >&2
+echo "  FACIAL_HAIR_MODEL=${FACIAL_HAIR_MODEL}" >&2
+echo "  GLASSES_MODEL=${GLASSES_MODEL}" >&2
+echo "  MASK_MODEL=${MASK_MODEL}" >&2
+echo "  COLORIZATION_MODEL=${COLORIZATION_MODEL}" >&2
+echo "  POSE_MODEL=${POSE_MODEL}" >&2
+echo "  HAND_MODEL=${HAND_MODEL}" >&2
 echo "" >&2
 
 docker build \
@@ -93,6 +117,12 @@ docker build \
     --build-arg RACE_MODEL="$RACE_MODEL" \
     --build-arg EXPRESSION_MODEL="$EXPRESSION_MODEL" \
     --build-arg RECOGNITION_MODEL="$RECOGNITION_MODEL" \
+    --build-arg FACIAL_HAIR_MODEL="$FACIAL_HAIR_MODEL" \
+    --build-arg GLASSES_MODEL="$GLASSES_MODEL" \
+    --build-arg MASK_MODEL="$MASK_MODEL" \
+    --build-arg COLORIZATION_MODEL="$COLORIZATION_MODEL" \
+    --build-arg POSE_MODEL="$POSE_MODEL" \
+    --build-arg HAND_MODEL="$HAND_MODEL" \
     -t "$IMAGE_TAG" .
 
 echo "" >&2
