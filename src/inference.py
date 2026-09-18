@@ -32,6 +32,12 @@ try:
 except ImportError:
     MIVOLO_SUPPORTED = False
 
+try:
+    import mediapipe as mp
+    MEDIAPIPE_SUPPORTED = True
+except ImportError:
+    MEDIAPIPE_SUPPORTED = False
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 MODEL_DIR = BASE_DIR / "models"
 
@@ -54,6 +60,7 @@ DEEPFACE_GENDER_MODEL = MODEL_DIR / "deepface_gender.h5"
 DEX_PROTO = MODEL_DIR / "dex_age.prototxt"
 DEX_MODEL = MODEL_DIR / "dex_age.caffemodel"
 MIVOLO_MODEL = MODEL_DIR / "mivolo_v2.safetensors"
+BLENDSHAPES_MODEL = MODEL_DIR / "face_landmarker.task"
 
 MODEL_MEAN_VALUES = (78.4263377603, 87.768914374, 114.895847746)
 AGE_LIST = ['(0-2)', '(4-6)', '(8-12)', '(15-20)', '(25-32)', '(38-43)', '(48-53)', '(60-100)']
@@ -80,6 +87,7 @@ FAIRFACE_AGE_LABELS = ["0-2", "3-9", "10-19", "20-29", "30-39", "40-49", "50-59"
 EMOTION_MODEL_OPTIONS = ["efficientnet", "ferplus", "mini_xception", "dan"]
 DROWSINESS_MODEL_OPTIONS = ["haarcascade"]
 RACE_MODEL_OPTIONS = ["fairface", "deepface"]
+EXPRESSION_MODEL_OPTIONS = ["blendshapes"]
 
 
 @dataclass
@@ -90,6 +98,7 @@ class Models:
     emotion_nets: dict = field(default_factory=dict)
     drowsiness_nets: dict = field(default_factory=dict)
     race_nets: dict = field(default_factory=dict)
+    expression_nets: dict = field(default_factory=dict)
 
     @property
     def offline_features(self) -> list[str]:
@@ -97,7 +106,7 @@ class Models:
             name for name, nets in [
                 ("AGE", self.age_nets), ("GENDER", self.gender_nets),
                 ("EMOTION", self.emotion_nets), ("DROWSINESS", self.drowsiness_nets),
-                ("RACE", self.race_nets),
+                ("RACE", self.race_nets), ("EXPRESSION", self.expression_nets),
             ] if not nets
         ]
 
@@ -180,7 +189,17 @@ def load_models() -> Models:
     if TF_SUPPORTED and DEEPFACE_RACE_MODEL.exists():
         race_nets["deepface"] = build_race_model(str(DEEPFACE_RACE_MODEL))
 
-    return Models(face_net, age_nets, gender_nets, emotion_nets, drowsiness_nets, race_nets)
+    expression_nets = {}
+    if MEDIAPIPE_SUPPORTED and BLENDSHAPES_MODEL.exists():
+        options = mp.tasks.vision.FaceLandmarkerOptions(
+            base_options=mp.tasks.BaseOptions(model_asset_path=str(BLENDSHAPES_MODEL)),
+            output_face_blendshapes=True,
+            running_mode=mp.tasks.vision.RunningMode.IMAGE,
+        )
+        landmarker = mp.tasks.vision.FaceLandmarker.create_from_options(options)
+        expression_nets["blendshapes"] = landmarker
+
+    return Models(face_net, age_nets, gender_nets, emotion_nets, drowsiness_nets, race_nets, expression_nets)
 
 
 def detect_faces(net: cv2.dnn.Net, frame: np.ndarray, conf_threshold: float = 0.7) -> list[list[int]]:
@@ -394,6 +413,37 @@ def predict_gender_deepface(net, face_bgr: np.ndarray) -> str:
     return "Male" if np.argmax(probs) == 1 else "Female"
 
 
+def predict_expression_blendshapes(landmarker, face_bgr: np.ndarray) -> str:
+    """Predict facial expression via MediaPipe's BlendShapes (52 continuous muscle coefficients).
+    Returns the top 3 highest-scoring blendshapes as a comma-separated string,
+    or 'no landmarks' if no face is detected."""
+    face_rgb = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2RGB)
+    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=face_rgb)
+
+    result = landmarker.detect(mp_image)
+
+    if not result.face_blendshapes or len(result.face_blendshapes) == 0:
+        return "no landmarks"
+
+    blendshapes = result.face_blendshapes[0]
+    # Sort by score descending
+    sorted_blendshapes = sorted(blendshapes, key=lambda x: x.score, reverse=True)
+
+    # Take top 3, skip "_neutral" if present
+    top_blendshapes = []
+    for bs in sorted_blendshapes:
+        if bs.category_name != "_neutral":
+            top_blendshapes.append(bs)
+        if len(top_blendshapes) >= 3:
+            break
+
+    if not top_blendshapes:
+        return "no landmarks"
+
+    # Format as "name1 0.82, name2 0.15, name3 0.09"
+    return ", ".join(f"{bs.category_name} {bs.score:.2f}" for bs in top_blendshapes)
+
+
 def draw_outlined_text(frame: np.ndarray, text: str, org: tuple[int, int], color: tuple[int, int, int]) -> None:
     """Draw text with a black outline so it stays readable over any background. Clamps origin
     so text stays inside the frame, and shrinks the font if the text is wider than the frame
@@ -425,6 +475,7 @@ def analyze_frame(
     active_emotion: set,
     active_drowsiness: set,
     active_race: set,
+    active_expression: set,
 ):
     """Detect faces and run inference for whichever model keys are active per feature.
     Multiple active models for the same feature (e.g. active_age = {"caffe", "ssrnet"})
@@ -510,6 +561,14 @@ def analyze_frame(
             value = predict_race_fairface(net, frame, (x1, y1, x2, y2)) if key == "fairface" else predict_race_deepface(net, face)
             race_pairs.append((key, value))
 
+        expression_pairs = []
+        for key in active_expression:
+            net = models.expression_nets.get(key)
+            if net is None:
+                continue
+            value = predict_expression_blendshapes(net, face)
+            expression_pairs.append((key, value))
+
         drowsy_pairs = []
         face_drowsy = False
         for key in active_drowsiness:
@@ -539,6 +598,7 @@ def analyze_frame(
             "gender": _format_results(gender_pairs),
             "race": _format_results(race_pairs),
             "emotion": _format_results(emotion_pairs),
+            "expression": _format_results(expression_pairs),
             "status": status,
             "drowsy": face_drowsy if drowsy_pairs else None,
         })

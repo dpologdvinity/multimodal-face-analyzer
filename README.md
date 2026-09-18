@@ -6,14 +6,14 @@
 ![Streamlit](https://img.shields.io/badge/Streamlit-UI-00ff66?style=flat-square&logo=streamlit&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Ready-00ff66?style=flat-square&logo=docker&logoColor=white)
 
-> Computer vision pipeline for face detection with age, gender, race, emotion, and drowsiness inference. Terminal CLI and a containerized Streamlit web app share the same detection pipeline.
+> Computer vision pipeline for face detection with age, gender, race, emotion, expression (blendshapes), and drowsiness inference. Terminal CLI and a containerized Streamlit web app share the same detection pipeline.
 
 ---
 
 ## Key Features
 
-- **Multi-model face analysis:** face detection, age, gender, race, emotion, and drowsiness -- most features have 2+ selectable model backends.
-- **Dual deployment:** terminal CLI (`detect.py`, age/gender/emotion/drowsiness only) or Docker-packaged Streamlit app (`src/app.py`, all features including race).
+- **Multi-model face analysis:** face detection, age, gender, race, emotion, expression (blendshapes), and drowsiness -- most features have 2+ selectable model backends.
+- **Dual deployment:** terminal CLI (`detect.py`, age/gender/emotion/drowsiness only) or Docker-packaged Streamlit app (`src/app.py`, all features including race and expression).
 - **Build-time feature toggles:** disable any model at Docker build time to shrink the image (see [Docker](#docker-web-app)).
 - **Graceful degradation:** any model missing at runtime (file or dependency not present) is skipped, not a crash -- the rest of the pipeline keeps working.
 - **Batch processing:** single image files or entire directories.
@@ -24,7 +24,7 @@
 
 ## Models
 
-Face detection is required; age, gender, race, emotion, and drowsiness are each independently optional -- if a model's file(s) or dependencies aren't present, that feature is skipped and the rest still runs. Race is web-app-only (no CLI equivalent).
+Face detection is required; age, gender, race, emotion, expression, and drowsiness are each independently optional -- if a model's file(s) or dependencies aren't present, that feature is skipped and the rest still runs. Race and expression are web-app-only (no CLI equivalents).
 
 ### Face Detection
 
@@ -83,6 +83,14 @@ If the top-2 predicted classes are within 10 percentage points of each other, bo
 
 Note the class label order (and count) differs between backends -- each is tracked as a separate constant, never assumed to match. `mini_xception` is tiny (853KB, oarriaga/face_classification, MIT) but needs TensorFlow like the deepface models. `ferplus` is the official ONNX Model Zoo emotion model (MIT, 35MB, no extra framework -- pure cv2.dnn ONNX), used in place of a third-party PyTorch checkpoint for security reasons (no untrusted pickle deserialization).
 
+### Expression (web app only)
+
+| Backend        | Framework | Output                                                             |
+| -------------- | --------- | ------------------------------------------------------------------ |
+| `blendshapes`  | MediaPipe | Top 3 facial muscle coefficients, e.g. `mouthSmileLeft 0.82, jawOpen 0.15, browDownRight 0.09` |
+
+Raw output of Google's MediaPipe Face Landmarker (Apache 2.0), a separate feature from Emotion. BlendShapes outputs 52 continuous facial-muscle-movement coefficients (e.g. mouthSmileLeft, browDownRight, jawOpen, eyeBlinkLeft, etc.) tracking individual facial movements, whereas Emotion backends predict discrete emotion classes (angry, happy, sad, etc.). There is no validated mapping from blendshapes to emotion labels, so Expression surfaces the raw top-N-scoring blendshape coefficients as-is. Web app only (no CLI equivalent).
+
 ### Drowsiness
 
 | Backend                   | Framework | Output             |
@@ -117,6 +125,7 @@ multimodal-face-analyzer/
 │   ├── fairface_7class.onnx                     # age + gender + race: fairface backend
 │   ├── deepface_race.h5                         # race: deepface backend
 │   ├── deepface_gender.h5                       # gender: deepface backend
+│   ├── face_landmarker.task                     # expression: blendshapes backend
 │   └── haarcascade_eye.xml                      # drowsiness
 │
 └── src/                    # Streamlit app module
@@ -218,6 +227,7 @@ docker build \
   --build-arg EMOTION_MODEL=efficientnet,ferplus,mini_xception,dan \
   --build-arg DROWSINESS_MODEL=haarcascade \
   --build-arg RACE_MODEL=fairface,deepface \
+  --build-arg EXPRESSION_MODEL=blendshapes \
   -t face-analyzer .
 ```
 
@@ -228,10 +238,11 @@ docker build \
 | `EMOTION_MODEL`    | `efficientnet`, `ferplus`, `mini_xception`, `dan` |
 | `DROWSINESS_MODEL` | `haarcascade`                            |
 | `RACE_MODEL`       | `fairface`, `deepface`                   |
+| `EXPRESSION_MODEL` | `blendshapes`                            |
 
 Multiple models per feature (e.g. `AGE_MODEL=caffe,ssrnet`) can be built in together -- the web app sidebar shows a checkbox per built model, and checking more than one for the same feature runs and displays all of them at once.
 
-Disabled model files never land in an image layer (BuildKit bind-mount + conditional copy). `torch`/`torchvision` (~200MB) are only installed if `ssrnet`, `dan`, and/or `mivolo` are requested. `tensorflow-cpu`/`tf-keras` (~200-400MB, plus deepface's 513MB weight file) are only installed if `deepface` is requested -- by far the heaviest single option in the repo (note: `mivolo` at ~110MB checkpoint plus ultralytics/timm dependencies is the second-heaviest, still much lighter than deepface's full stack).
+Disabled model files never land in an image layer (BuildKit bind-mount + conditional copy). `torch`/`torchvision` (~200MB) are only installed if `ssrnet`, `dan`, and/or `mivolo` are requested. `tensorflow-cpu`/`tf-keras` (~200-400MB, plus deepface's 513MB weight file) are only installed if `deepface` is requested -- by far the heaviest single option in the repo (note: `mivolo` at ~110MB checkpoint plus ultralytics/timm dependencies is the second-heaviest, still much lighter than deepface's full stack). `mediapipe` is only installed if the `blendshapes` expression backend is requested.
 
 ### Run
 

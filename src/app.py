@@ -129,6 +129,7 @@ active_gender = _model_checkboxes("GENDER", models.gender_nets)
 active_race = _model_checkboxes("RACE", models.race_nets)
 active_emotion = _model_checkboxes("EMOTION", models.emotion_nets)
 active_drowsiness = _model_checkboxes("DROWSINESS", models.drowsiness_nets)
+active_expression = _model_checkboxes("EXPRESSION", models.expression_nets)
 
 # Sidebar Interface Controls
 st.sidebar.markdown("### CONTROL PANEL")
@@ -139,7 +140,7 @@ def _target_card_html(face: dict) -> str:
     """Render one face's results as a HUD-style dossier card (native markup, not pixel text --
     keeps results legible no matter how many faces are packed into one image)."""
     rows = ""
-    for label, values in (("AGE", face["age"]), ("GENDER", face["gender"]), ("RACE", face["race"]), ("MOOD", face["emotion"])):
+    for label, values in (("AGE", face["age"]), ("GENDER", face["gender"]), ("RACE", face["race"]), ("MOOD", face["emotion"]), ("EXPR", face["expression"])):
         if values:
             rows += f'<div class="target-card-row"><span class="k">{label}</span><span class="v">{" / ".join(values)}</span></div>'
     if face["status"] is not None:
@@ -154,7 +155,7 @@ def _target_card_html(face: dict) -> str:
 def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: float) -> None:
     """Run detection/inference on frame and render result in Streamlit."""
     annotated_frame, cropped_faces, any_drowsy, has_faces = inference.analyze_frame(
-        models, frame, conf_threshold, active_age, active_gender, active_emotion, active_drowsiness, active_race
+        models, frame, conf_threshold, active_age, active_gender, active_emotion, active_drowsiness, active_race, active_expression
     )
 
     if not has_faces:
@@ -207,7 +208,7 @@ with tab_webcam:
         def _video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
             img = frame.to_ndarray(format="bgr24")
             annotated_frame, _, _, _ = inference.analyze_frame(
-                models, img, conf_threshold, active_age, active_gender, active_emotion, active_drowsiness, active_race
+                models, img, conf_threshold, active_age, active_gender, active_emotion, active_drowsiness, active_race, active_expression
             )
             return av.VideoFrame.from_ndarray(annotated_frame, format="bgr24")
 
