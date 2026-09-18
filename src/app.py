@@ -365,7 +365,7 @@ def _target_card_html(face: dict) -> str:
     rows = ""
     for label, values in (
         ("AGE", face["age"]), ("GENDER", face["gender"]), ("RACE", face["race"]), ("MOOD", face["emotion"]),
-        ("EXPR", face["expression"]), ("GAZE", face["gaze"]), ("EYE CONTACT", face["eye_contact"]), ("HEAD POSE", face["head_pose"]), ("IDENTITY", face["identity"]), ("FACIAL HAIR", face["facial_hair"]),
+        ("EXPR", face["expression"]), ("GAZE", face["gaze"]), ("EYE CONTACT", face["eye_contact"]), ("HEAD POSE", face["head_pose"]), ("MAKEUP", face["makeup"]), ("IDENTITY", face["identity"]), ("FACIAL HAIR", face["facial_hair"]),
         ("SKIN TONE", face["skin_tone"]), ("GLASSES", face["glasses"]), ("MASK", face["mask"]),
         ("HAIR COLOR", face["hair_color"]), ("EYE COLOR", face["eye_color"]),
     ):
@@ -735,4 +735,15 @@ with tab_webcam:
                     })
             if emotion_rows:
                 st.markdown("#### Emotion over time")
-                st.dataframe(pd.DataFrame(emotion_rows), hide_index=True, use_container_width=True)
+                emotion_frame = pd.DataFrame(emotion_rows)
+                for model_name, model_frame in emotion_frame.groupby("Model"):
+                    labels = sorted(model_frame["Emotion"].unique())
+                    chart_rows = []
+                    for _, row in model_frame.iterrows():
+                        chart_rows.append({
+                            "Seconds": row["Seconds"],
+                            **{label: float(label == row["Emotion"]) for label in labels},
+                        })
+                    chart = pd.DataFrame(chart_rows).groupby("Seconds").max().sort_index()
+                    st.caption(f"{model_name}: dominant emotion (1 = active, 0 = inactive)")
+                    st.line_chart(chart, height=220)
