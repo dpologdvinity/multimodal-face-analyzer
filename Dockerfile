@@ -187,6 +187,7 @@ RUN --mount=type=bind,source=models/age_deploy.prototxt,target=/tmp/models/age_d
     --mount=type=bind,source=models/pose_iter_160000.caffemodel,target=/tmp/models/pose_iter_160000.caffemodel \
     --mount=type=bind,source=models/hand_landmarker.task,target=/tmp/models/hand_landmarker.task \
     --mount=type=bind,source=models/BFM/similarity_Lm3D_all.mat,target=/tmp/models/BFM/similarity_Lm3D_all.mat \
+    --mount=type=bind,source=models/deep3d_recon_resnet50.pth,target=/tmp/models/deep3d_recon_resnet50.pth \
     --mount=type=bind,source=models/yolov8n_face.onnx,target=/tmp/models/yolov8n_face.onnx \
     set -e; \
     age_csv=",$AGE_MODEL,"; gender_csv=",$GENDER_MODEL,"; emotion_csv=",$EMOTION_MODEL,"; \
@@ -218,7 +219,7 @@ RUN --mount=type=bind,source=models/age_deploy.prototxt,target=/tmp/models/age_d
     case "$colorization_csv" in *,eccv16,*) cp /tmp/models/colorization_deploy_v2.prototxt /tmp/models/colorization_release_v2.caffemodel /tmp/models/pts_in_hull.npy models/ ;; esac; \
     case "$pose_csv" in *,mpi,*) cp /tmp/models/pose_deploy_linevec_faster_4_stages.prototxt /tmp/models/pose_iter_160000.caffemodel models/ ;; esac; \
     case "$hand_csv" in *,mediapipe,*) cp /tmp/models/hand_landmarker.task models/ ;; esac; \
-    case "$recon3d_csv" in *,deep3d,*) mkdir -p models/BFM && cp /tmp/models/BFM/similarity_Lm3D_all.mat models/BFM/ ;; esac; \
+    case "$recon3d_csv" in *,deep3d,*) mkdir -p models/BFM && cp /tmp/models/BFM/similarity_Lm3D_all.mat models/BFM/ && cp /tmp/models/deep3d_recon_resnet50.pth models/ ;; esac; \
     case "$yolo_face_csv" in *,yolo,*) cp /tmp/models/yolov8n_face.onnx models/ ;; esac
 
 # Expose default Streamlit port
