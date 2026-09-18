@@ -1,4 +1,7 @@
 import base64
+import threading
+import time
+from collections import deque
 import csv
 import io
 import json
@@ -7,10 +10,14 @@ from html import escape
 import av
 import cv2
 import numpy as np
+import pandas as pd
 import streamlit as st
 from streamlit_webrtc import webrtc_streamer
 
 import inference
+
+LIVE_METRICS = deque(maxlen=120)
+LIVE_METRICS_LOCK = threading.Lock()
 
 # Page setup and visual system
 st.set_page_config(page_title="MULTIMODAL_FACE_ANALYZER", layout="wide")
@@ -275,6 +282,7 @@ active_colorization = _model_checkboxes("AUTO-COLORIZE B&W", models.colorization
 active_pose = _model_checkboxes("POSE ESTIMATION", models.pose_nets)
 active_face_landmarks = _model_checkboxes("FACE LANDMARKS", models.face_landmarks_nets)
 active_hands = _model_checkboxes("HAND LANDMARKS", models.hand_nets)
+active_gaze = _model_checkboxes("GAZE", models.gaze_nets)
 
 
 def _reset_adjustments(prefixes: tuple[str, ...]) -> None:
@@ -349,7 +357,7 @@ def _target_card_html(face: dict) -> str:
     rows = ""
     for label, values in (
         ("AGE", face["age"]), ("GENDER", face["gender"]), ("RACE", face["race"]), ("MOOD", face["emotion"]),
-        ("EXPR", face["expression"]), ("IDENTITY", face["identity"]), ("FACIAL HAIR", face["facial_hair"]),
+        ("EXPR", face["expression"]), ("GAZE", face["gaze"]), ("IDENTITY", face["identity"]), ("FACIAL HAIR", face["facial_hair"]),
         ("SKIN TONE", face["skin_tone"]), ("GLASSES", face["glasses"]), ("MASK", face["mask"]),
         ("HAIR COLOR", face["hair_color"]), ("EYE COLOR", face["eye_color"]),
     ):
@@ -398,7 +406,7 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
         models, frame, conf_threshold, active_age, active_gender, active_emotion, active_drowsiness, active_race, active_expression,
         active_recognition, st.session_state.get("gallery", {}),
         active_facial_hair, active_skin_tone, active_glasses, active_mask, active_hair_color, active_eye_color,
-        active_pose, active_face_landmarks, active_hands, global_adjustments, face_adjustments, face_detector=active_face_detector,
+        active_pose, active_face_landmarks, active_hands, active_gaze, global_adjustments, face_adjustments, face_detector=active_face_detector,
     )
 
     if was_colorized:
@@ -621,14 +629,21 @@ with tab_webcam:
         st.caption("Live analysis updates as people enter or leave view.")
 
         def _video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
+            frame_started = time.perf_counter()
+            metrics = {}
             img = frame.to_ndarray(format="bgr24")
             img, _ = inference.maybe_colorize(models, img, active_colorization)
             annotated_frame, _, _, _, _, _ = inference.analyze_frame(
                 models, img, conf_threshold, active_age, active_gender, active_emotion, active_drowsiness, active_race, active_expression,
-                active_recognition, st.session_state.get("gallery", {}),
+                active_recognition, dict(st.session_state.get("gallery", {})),
                 active_facial_hair, active_skin_tone, active_glasses, active_mask, active_hair_color, active_eye_color,
-                active_pose, active_face_landmarks, active_hands, global_adjustments, face_adjustments, face_detector=active_face_detector,
+                active_pose, active_face_landmarks, active_hands, active_gaze, global_adjustments, face_adjustments,
+                face_detector=active_face_detector, metrics=metrics,
             )
+            metrics["frame_ms"] = (time.perf_counter() - frame_started) * 1000
+            metrics["timestamp"] = time.monotonic()
+            with LIVE_METRICS_LOCK:
+                LIVE_METRICS.append(metrics)
             return av.VideoFrame.from_ndarray(annotated_frame, format="bgr24")
 
         webrtc_streamer(
@@ -637,3 +652,19 @@ with tab_webcam:
             media_stream_constraints={"video": True, "audio": False},
             rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
         )
+
+        with LIVE_METRICS_LOCK:
+            live_metrics = list(LIVE_METRICS)
+        if live_metrics:
+            intervals = np.diff([item["timestamp"] for item in live_metrics[-30:]])
+            fps = 1.0 / float(np.mean(intervals)) if len(intervals) and np.mean(intervals) > 0 else 0.0
+            st.metric("LIVE FPS", f"{fps:.1f}")
+            latency_rows = []
+            for item in live_metrics:
+                for model_name, values in item.get("model_latency_ms", {}).items():
+                    latency_rows.extend({"Model": model_name, "Latency (ms)": value} for value in values)
+            if latency_rows:
+                latency_frame = pd.DataFrame(latency_rows)
+                summary = latency_frame.groupby("Model", as_index=False)["Latency (ms)"].mean()
+                summary["Latency (ms)"] = summary["Latency (ms)"].round(1)
+                st.dataframe(summary, hide_index=True, use_container_width=True)

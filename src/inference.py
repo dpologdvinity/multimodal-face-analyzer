@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import random
 import sqlite3
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -223,6 +224,7 @@ class Models:
     hand_nets: dict = field(default_factory=dict)
     reconstruction_3d_nets: dict = field(default_factory=dict)
     yolo_face_nets: dict = field(default_factory=dict)
+    gaze_nets: dict = field(default_factory=dict)
 
     @property
     def offline_features(self) -> list[str]:
@@ -231,6 +233,7 @@ class Models:
                 ("AGE", self.age_nets), ("GENDER", self.gender_nets),
                 ("EMOTION", self.emotion_nets), ("DROWSINESS", self.drowsiness_nets),
                 ("RACE", self.race_nets), ("EXPRESSION", self.expression_nets),
+                ("GAZE", self.gaze_nets),
                 ("RECOGNITION", self.recognition_nets), ("FACIAL_HAIR", self.facial_hair_nets),
                 ("SKIN_TONE", self.skin_tone_nets), ("GLASSES", self.glasses_nets),
                 ("MASK", self.mask_nets), ("HAIR_COLOR", self.hair_color_nets),
@@ -336,6 +339,7 @@ def load_models() -> Models:
 
     expression_nets = {}
     face_landmarks_nets = {}
+    gaze_nets = {}
     if MEDIAPIPE_SUPPORTED and BLENDSHAPES_MODEL.exists():
         options = mp.tasks.vision.FaceLandmarkerOptions(
             base_options=mp.tasks.BaseOptions(model_asset_path=str(BLENDSHAPES_MODEL)),
@@ -345,6 +349,7 @@ def load_models() -> Models:
         landmarker = mp.tasks.vision.FaceLandmarker.create_from_options(options)
         expression_nets["blendshapes"] = landmarker
         face_landmarks_nets["blendshapes"] = landmarker  # same model instance, two features
+        gaze_nets["mediapipe"] = landmarker
 
     facial_hair_nets = {}
     if BISENET_MODEL.exists():
@@ -401,6 +406,7 @@ def load_models() -> Models:
         face_net, age_nets, gender_nets, emotion_nets, drowsiness_nets, race_nets, expression_nets, recognition_nets,
         facial_hair_nets, skin_tone_nets, glasses_nets, mask_nets, hair_color_nets, eye_color_nets, colorization_nets,
         pose_nets, face_landmarks_nets, hand_nets, reconstruction_3d_nets, yolo_face_nets,
+        gaze_nets,
     )
 
 
@@ -1553,6 +1559,50 @@ def predict_face_landmarks_mediapipe(landmarker, face_bgr: np.ndarray) -> list[t
     return [(lm.x, lm.y) for lm in result.face_landmarks[0]]
 
 
+def predict_gaze_mediapipe(landmarker, face_bgr: np.ndarray) -> str:
+    """Estimate coarse gaze direction from MediaPipe iris and eye landmarks.
+
+    The result describes the direction relative to the face crop. It is a geometric
+    attention cue, not a calibrated eye tracker.
+    """
+    points = predict_face_landmarks_mediapipe(landmarker, face_bgr)
+    if points is None or len(points) < 478:
+        return "unknown"
+
+    def center(indices: tuple[int, ...]) -> np.ndarray:
+        return np.mean([points[index] for index in indices], axis=0)
+
+    directions = []
+    for iris, corners, vertical in (
+        ((468, 469, 470, 471, 472), (33, 133), (159, 145)),
+        ((473, 474, 475, 476, 477), (362, 263), (386, 374)),
+    ):
+        iris_center = center(iris)
+        left_corner, right_corner = (points[index] for index in corners)
+        eye_width = abs(right_corner[0] - left_corner[0])
+        eye_height = abs(points[vertical[0]][1] - points[vertical[1]][1])
+        if eye_width < 1e-6 or eye_height < 1e-6:
+            continue
+        horizontal = (iris_center[0] - min(left_corner[0], right_corner[0])) / eye_width
+        vertical_position = (iris_center[1] - min(points[index][1] for index in vertical)) / eye_height
+        directions.append((horizontal, vertical_position))
+
+    if not directions:
+        return "unknown"
+    horizontal, vertical_position = np.mean(directions, axis=0)
+    horizontal_label = "left" if horizontal < 0.38 else "right" if horizontal > 0.62 else "center"
+    vertical_label = "up" if vertical_position < 0.35 else "down" if vertical_position > 0.65 else "level"
+    return f"{horizontal_label}/{vertical_label}"
+
+
+def _record_model_latency(metrics: dict | None, feature: str, model: str, started: float) -> None:
+    if metrics is None:
+        return
+    metrics.setdefault("model_latency_ms", {}).setdefault(f"{feature}/{model}", []).append(
+        (time.perf_counter() - started) * 1000
+    )
+
+
 def run_3d_reconstruction(models: "Models", face_bgr: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
     """Deep3DFaceRecon_pytorch-based 3D reconstruction (see src/nets/deep3d_recon.py) for one
     face crop. Reuses the same FaceLandmarker instance as Expression/Face Landmarks to derive
@@ -1662,9 +1712,11 @@ def analyze_frame(
     active_pose: set,
     active_face_landmarks: set,
     active_hands: set,
+    active_gaze: set,
     global_adjustments: dict,
     face_adjustments: dict,
     face_detector: str = "ssd",
+    metrics: dict | None = None,
 ):
     """Detect faces and run inference for whichever model keys are active per feature.
     Multiple active models for the same feature (e.g. active_age = {"caffe", "ssrnet"})
@@ -1750,6 +1802,7 @@ def analyze_frame(
             net = models.age_nets.get(key)
             if net is None:
                 continue
+            started = time.perf_counter()
             if key == "caffe":
                 value = predict_age_caffe(net, blob227)
             elif key == "ssrnet":
@@ -1763,12 +1816,14 @@ def analyze_frame(
             else:
                 value = predict_age_insightface(net, crop_frame, (cx1, cy1, cx2, cy2))
             age_pairs.append((key, value))
+            _record_model_latency(metrics, "age", key, started)
 
         gender_pairs = []
         for key in active_gender:
             net = models.gender_nets.get(key)
             if net is None:
                 continue
+            started = time.perf_counter()
             if key == "caffe":
                 value = predict_gender_caffe(net, blob227)
             elif key == "deepface":
@@ -1780,12 +1835,14 @@ def analyze_frame(
             else:
                 value = predict_gender_insightface(net, crop_frame, (cx1, cy1, cx2, cy2))
             gender_pairs.append((key, value))
+            _record_model_latency(metrics, "gender", key, started)
 
         emotion_pairs = []
         for key in active_emotion:
             net = models.emotion_nets.get(key)
             if net is None:
                 continue
+            started = time.perf_counter()
             if key == "dan":
                 value = predict_emotion_dan(net, face)
             elif key == "mini_xception":
@@ -1795,22 +1852,37 @@ def analyze_frame(
             else:
                 value = predict_emotion_efficientnet(net, face)
             emotion_pairs.append((key, value))
+            _record_model_latency(metrics, "emotion", key, started)
 
         race_pairs = []
         for key in active_race:
             net = models.race_nets.get(key)
             if net is None:
                 continue
+            started = time.perf_counter()
             value = predict_race_fairface(net, crop_frame, (cx1, cy1, cx2, cy2)) if key == "fairface" else predict_race_deepface(net, face)
             race_pairs.append((key, value))
+            _record_model_latency(metrics, "race", key, started)
 
         expression_pairs = []
         for key in active_expression:
             net = models.expression_nets.get(key)
             if net is None:
                 continue
+            started = time.perf_counter()
             value = predict_expression_blendshapes(net, face)
             expression_pairs.append((key, value))
+            _record_model_latency(metrics, "expression", key, started)
+
+        gaze_pairs = []
+        for key in active_gaze:
+            net = models.gaze_nets.get(key)
+            if net is None:
+                continue
+            started = time.perf_counter()
+            value = predict_gaze_mediapipe(net, face)
+            gaze_pairs.append((key, value))
+            _record_model_latency(metrics, "gaze", key, started)
 
         recognition_pairs = []
         face_embedding = None
@@ -1818,6 +1890,7 @@ def analyze_frame(
             net = models.recognition_nets.get(key)
             if net is None:
                 continue
+            started = time.perf_counter()
             if key == "lbph":
                 if lbph_trained is None:
                     value = "UNKNOWN"
@@ -1830,53 +1903,66 @@ def analyze_frame(
                 match = match_face_identity(face_embedding, gallery)
                 value = f"{match[0]} ({match[1] * 100:.0f}%)" if match else "UNKNOWN"
             recognition_pairs.append((key, value))
+            _record_model_latency(metrics, "recognition", key, started)
 
         facial_hair_pairs = []
         for key in active_facial_hair:
             net = models.facial_hair_nets.get(key)
             if net is None:
                 continue
+            started = time.perf_counter()
             value = predict_facial_hair_bisenet(net, face)
             facial_hair_pairs.append((key, value))
+            _record_model_latency(metrics, "facial_hair", key, started)
 
         skin_tone_pairs = []
         for key in active_skin_tone:
             net = models.skin_tone_nets.get(key)
             if net is None:
                 continue
+            started = time.perf_counter()
             value = predict_skin_tone_vgg16(net, face)
             skin_tone_pairs.append((key, value))
+            _record_model_latency(metrics, "skin_tone", key, started)
 
         glasses_pairs = []
         for key in active_glasses:
             net = models.glasses_nets.get(key)
             if net is None:
                 continue
+            started = time.perf_counter()
             value = predict_glasses_mobilenet(net, face)
             glasses_pairs.append((key, value))
+            _record_model_latency(metrics, "glasses", key, started)
 
         mask_pairs = []
         for key in active_mask:
             net = models.mask_nets.get(key)
             if net is None:
                 continue
+            started = time.perf_counter()
             value = predict_mask_mobilenetv2(net, face)
             mask_pairs.append((key, value))
+            _record_model_latency(metrics, "mask", key, started)
 
         hair_color_pairs = []
         for key in active_hair_color:
             if key not in models.hair_color_nets:
                 continue
+            started = time.perf_counter()
             value = predict_hair_color_colorimetric(crop_frame, (cx1, cy1, cx2, cy2))
             hair_color_pairs.append((key, value))
+            _record_model_latency(metrics, "hair_color", key, started)
 
         eye_color_pairs = []
         for key in active_eye_color:
             net = models.eye_color_nets.get(key)
             if net is None:
                 continue
+            started = time.perf_counter()
             value = predict_eye_color_colorimetric(net, face)
             eye_color_pairs.append((key, value))
+            _record_model_latency(metrics, "eye_color", key, started)
 
         drowsy_pairs = []
         face_drowsy = False
@@ -1884,9 +1970,11 @@ def analyze_frame(
             net = models.drowsiness_nets.get(key)
             if net is None:
                 continue
+            started = time.perf_counter()
             drowsy = detect_drowsiness_haarcascade(net, face)
             face_drowsy = face_drowsy or drowsy
             drowsy_pairs.append((key, "DROWSY" if drowsy else "ALERT"))
+            _record_model_latency(metrics, "drowsiness", key, started)
         any_drowsy = any_drowsy or face_drowsy
 
         # Attribute text is intentionally NOT drawn on the shared image -- with several faces
@@ -1908,7 +1996,7 @@ def analyze_frame(
 
         raw_columns = _gather_face_results({
             "age": age_pairs, "gender": gender_pairs, "race": race_pairs, "emotion": emotion_pairs,
-            "expression": expression_pairs, "identity": recognition_pairs, "facial_hair": facial_hair_pairs,
+            "expression": expression_pairs, "gaze": gaze_pairs, "identity": recognition_pairs, "facial_hair": facial_hair_pairs,
             "skin_tone": skin_tone_pairs, "glasses": glasses_pairs, "mask": mask_pairs,
             "hair_color": hair_color_pairs, "eye_color": eye_color_pairs, "drowsiness": drowsy_pairs,
         })
@@ -1922,6 +2010,7 @@ def analyze_frame(
             "race": _format_results(race_pairs),
             "emotion": _format_results(emotion_pairs),
             "expression": _format_results(expression_pairs),
+            "gaze": _format_results(gaze_pairs),
             "identity": _format_results(recognition_pairs),
             "facial_hair": _format_results(facial_hair_pairs),
             "skin_tone": _format_results(skin_tone_pairs),
