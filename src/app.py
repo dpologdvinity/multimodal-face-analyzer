@@ -281,10 +281,11 @@ def _model_checkboxes(label: str, nets: dict) -> set:
 st.sidebar.markdown("### MODEL SELECTION")
 
 active_face_detector = "ssd"
-if models.yolo_face_nets:
+_face_detector_options = ["ssd"] + (["yolo"] if models.yolo_face_nets else []) + (["scrfd"] if models.scrfd_face_nets else [])
+if len(_face_detector_options) > 1:
     active_face_detector = st.sidebar.selectbox(
-        "FACE DETECTOR", ["ssd", "yolo"], index=0,
-        help="Exactly one detector runs per frame -- ssd is the original TensorFlow SSD/ResNet-10 detector (always available), yolo is YOLOv8-Face.",
+        "FACE DETECTOR", _face_detector_options, index=0,
+        help="Exactly one detector runs per frame -- ssd is the original TensorFlow SSD/ResNet-10 detector (always available), yolo is YOLOv8-Face, scrfd is SCRFD.",
     )
 
 active_age = _model_checkboxes("AGE", models.age_nets)

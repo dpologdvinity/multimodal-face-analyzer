@@ -90,6 +90,7 @@ MODEL_DIR = BASE_DIR / "models"
 FACE_PROTO = MODEL_DIR / "opencv_face_detector.pbtxt"
 FACE_MODEL = MODEL_DIR / "opencv_face_detector_uint8.pb"
 YOLO_FACE_MODEL = MODEL_DIR / "yolov8n_face.onnx"
+SCRFD_FACE_MODEL = MODEL_DIR / "scrfd_2.5g_bnkps.onnx"
 AGE_PROTO = MODEL_DIR / "age_deploy.prototxt"
 AGE_MODEL = MODEL_DIR / "age_net.caffemodel"
 GENDER_PROTO = MODEL_DIR / "gender_deploy.prototxt"
@@ -166,13 +167,17 @@ RACE_MODEL_OPTIONS = ["fairface", "deepface"]
 EXPRESSION_MODEL_OPTIONS = ["blendshapes"]
 LIVENESS_MODEL_OPTIONS = ["mediapipe"]
 RECOGNITION_MODEL_OPTIONS = ["vggface", "lbph"]
-FACE_DETECTOR_OPTIONS = ["ssd", "yolo"]  # ssd is the original required detector, always on
+FACE_DETECTOR_OPTIONS = ["ssd", "yolo", "scrfd"]  # ssd is the original required detector, always on
 IOU_TRACKING_THRESHOLD = 0.3  # greedy-match a track to a detection only above this IoU
 TRACKING_MAX_MISSED_FRAMES = 10  # frames a track survives with zero matching detections
 # (brief occlusion) before its ID is dropped and freed for reuse
 YOLO_FACE_INPUT_SIZE = 640
 YOLO_FACE_STRIDES = (8, 16, 32)
 YOLO_FACE_IOU_THRESHOLD = 0.45
+SCRFD_FACE_INPUT_SIZE = 640
+SCRFD_FACE_STRIDES = (8, 16, 32)
+SCRFD_FACE_NUM_ANCHORS = 2  # bnkps variant's anchors-per-location, fixed by the checkpoint
+SCRFD_FACE_NMS_THRESHOLD = 0.4
 FACIAL_HAIR_MODEL_OPTIONS = ["bisenet"]
 SKIN_TONE_MODEL_OPTIONS = ["mobilenetv2"]
 GLASSES_MODEL_OPTIONS = ["mobilenet"]
@@ -289,6 +294,7 @@ class Models:
     hand_nets: dict = field(default_factory=dict)
     reconstruction_3d_nets: dict = field(default_factory=dict)
     yolo_face_nets: dict = field(default_factory=dict)
+    scrfd_face_nets: dict = field(default_factory=dict)
     gaze_nets: dict = field(default_factory=dict)
     body_composition_nets: dict = field(default_factory=dict)
 
@@ -309,6 +315,7 @@ class Models:
                 ("HANDS", self.hand_nets), ("RECONSTRUCTION_3D", self.reconstruction_3d_nets),
                 ("FACE_DETECTOR_YOLO", self.yolo_face_nets),
                 ("BODY_COMPOSITION", self.body_composition_nets),
+                ("FACE_DETECTOR_SCRFD", self.scrfd_face_nets),
             ] if not nets
         ]
 
@@ -476,10 +483,14 @@ def load_models() -> Models:
     if ONNXRUNTIME_SUPPORTED and YOLO_FACE_MODEL.exists():
         yolo_face_nets["yolo"] = onnxruntime.InferenceSession(str(YOLO_FACE_MODEL), providers=["CPUExecutionProvider"])
 
+    scrfd_face_nets = {}
+    if ONNXRUNTIME_SUPPORTED and SCRFD_FACE_MODEL.exists():
+        scrfd_face_nets["scrfd"] = onnxruntime.InferenceSession(str(SCRFD_FACE_MODEL), providers=["CPUExecutionProvider"])
+
     return Models(
         face_net, age_nets, gender_nets, emotion_nets, drowsiness_nets, race_nets, expression_nets, liveness_nets, recognition_nets,
         facial_hair_nets, skin_tone_nets, glasses_nets, mask_nets, hair_color_nets, eye_color_nets, colorization_nets,
-        pose_nets, face_landmarks_nets, hand_nets, reconstruction_3d_nets, yolo_face_nets,
+        pose_nets, face_landmarks_nets, hand_nets, reconstruction_3d_nets, yolo_face_nets, scrfd_face_nets,
         gaze_nets, body_composition_nets,
     )
 
@@ -556,6 +567,65 @@ def detect_faces_yolo(session, frame: np.ndarray, conf_threshold: float = 0.5) -
     boxes[:, [1, 3]] -= dh
     boxes[:, :4] /= scale
     frame_h, frame_w = frame.shape[:2]
+    boxes[:, [0, 2]] = boxes[:, [0, 2]].clip(0, frame_w)
+    boxes[:, [1, 3]] = boxes[:, [1, 3]].clip(0, frame_h)
+
+    return boxes.astype(int).tolist()
+
+
+def _scrfd_distance2bbox(points: np.ndarray, distance: np.ndarray) -> np.ndarray:
+    x1 = points[:, 0] - distance[:, 0]
+    y1 = points[:, 1] - distance[:, 1]
+    x2 = points[:, 0] + distance[:, 2]
+    y2 = points[:, 1] + distance[:, 3]
+    return np.stack([x1, y1, x2, y2], axis=-1)
+
+
+def detect_faces_scrfd(session, frame: np.ndarray, conf_threshold: float = 0.5) -> list[list[int]]:
+    """SCRFD (deepinsight/insightface's detection/scrfd, 2.5GF bnkps checkpoint, weights
+    non-commercial research-only -- same license posture as this repo's insightface age/gender
+    backend, see README) via onnxruntime. Resizes preserving aspect ratio into a top-left-padded
+    square (matching upstream's own tools/scrfd.py, unlike YOLO's centered letterbox), then
+    decodes the raw 3-feature-map anchor output (strides 8/16/32, 2 anchors/location) into boxes
+    via distance-to-bbox regression -- no DFL softmax needed, this checkpoint regresses distances
+    directly. The 5-point landmark outputs aren't decoded since nothing downstream uses them.
+    Returns boxes in the same [x1, y1, x2, y2] int-list contract as detect_faces()."""
+    frame_h, frame_w = frame.shape[:2]
+    scale = SCRFD_FACE_INPUT_SIZE / max(frame_h, frame_w)
+    resized = cv2.resize(frame, (int(frame_w * scale), int(frame_h * scale)), interpolation=cv2.INTER_LINEAR)
+    padded = np.zeros((SCRFD_FACE_INPUT_SIZE, SCRFD_FACE_INPUT_SIZE, 3), dtype=np.uint8)
+    padded[: resized.shape[0], : resized.shape[1]] = resized
+
+    blob = cv2.dnn.blobFromImage(padded, 1.0 / 128, (SCRFD_FACE_INPUT_SIZE, SCRFD_FACE_INPUT_SIZE), (127.5, 127.5, 127.5), swapRB=True)
+    input_name = session.get_inputs()[0].name
+    outputs = session.run(None, {input_name: blob})
+
+    all_boxes, all_scores = [], []
+    for idx, stride in enumerate(SCRFD_FACE_STRIDES):
+        scores = outputs[idx]
+        bbox_preds = outputs[3 + idx] * stride
+        fm_size = SCRFD_FACE_INPUT_SIZE // stride
+        anchor_centers = np.stack(np.mgrid[:fm_size, :fm_size][::-1], axis=-1).astype(np.float32)
+        anchor_centers = (anchor_centers * stride).reshape(-1, 2)
+        anchor_centers = np.repeat(anchor_centers, SCRFD_FACE_NUM_ANCHORS, axis=0)
+
+        mask = scores[:, 0] > conf_threshold
+        if not np.any(mask):
+            continue
+        all_boxes.append(_scrfd_distance2bbox(anchor_centers[mask], bbox_preds[mask]))
+        all_scores.append(scores[mask, 0])
+
+    if not all_scores:
+        return []
+
+    boxes = np.concatenate(all_boxes, axis=0) / scale
+    scores = np.concatenate(all_scores, axis=0)
+
+    nms_boxes = [[x1, y1, x2 - x1, y2 - y1] for x1, y1, x2, y2 in boxes]
+    keep = cv2.dnn.NMSBoxes(nms_boxes, scores.tolist(), conf_threshold, SCRFD_FACE_NMS_THRESHOLD)
+    if len(keep) == 0:
+        return []
+    boxes = boxes[np.array(keep).flatten()]
     boxes[:, [0, 2]] = boxes[:, [0, 2]].clip(0, frame_w)
     boxes[:, [1, 3]] = boxes[:, [1, 3]].clip(0, frame_h)
 
@@ -2218,8 +2288,8 @@ def analyze_frame(
 
     face_detector picks which face detection backend runs (unlike every other feature,
     exactly one runs per frame -- running two detectors and merging their boxes would just
-    produce duplicate/overlapping faces, not a meaningfully combined result). "yolo" falls
-    back to "ssd" (the always-required detector) if the YOLO model isn't loaded.
+    produce duplicate/overlapping faces, not a meaningfully combined result). "yolo"/"scrfd"
+    fall back to "ssd" (the always-required detector) if that model isn't loaded.
 
     tracker (#2) is optional and stays None for single-image callers (upload/snapshot have no
     "next frame" for an ID to persist into). When a FaceTracker is passed -- video/webcam LIVE
@@ -2239,8 +2309,11 @@ def analyze_frame(
 
     annotated_frame = frame.copy()
     yolo_net = models.yolo_face_nets.get("yolo")
+    scrfd_net = models.scrfd_face_nets.get("scrfd")
     if face_detector == "yolo" and yolo_net is not None:
         face_boxes = detect_faces_yolo(yolo_net, frame, conf_threshold)
+    elif face_detector == "scrfd" and scrfd_net is not None:
+        face_boxes = detect_faces_scrfd(scrfd_net, frame, conf_threshold)
     else:
         face_boxes = detect_faces(models.face_net, frame, conf_threshold)
     track_ids = tracker.update(face_boxes) if tracker is not None else [None] * len(face_boxes)
