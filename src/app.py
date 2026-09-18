@@ -255,6 +255,21 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
 
     st.image(cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB), use_container_width=True)
 
+    if st.button("SCAN ALL FACES: RECOGNIZED / UNRECOGNIZED", key=f"scan_btn_{identifier}"):
+        faces_bgr = [cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR) for face in cropped_faces]
+        matches = inference.match_faces_eigenfaces_batch(faces_bgr)
+        scan_frame = frame.copy()
+        inference.draw_recognition_scan(scan_frame, [(face["box"], match is not None) for face, match in zip(cropped_faces, matches)])
+        st.image(cv2.cvtColor(scan_frame, cv2.COLOR_BGR2RGB), caption="Recognition scan", use_container_width=True)
+
+        recognized_count = sum(match is not None for match in matches)
+        st.caption(f"[ SCAN COMPLETE ] {recognized_count}/{len(matches)} face(s) recognized against saved faces (eigen/)")
+        for face, match in zip(cropped_faces, matches):
+            if match:
+                st.text(f"#{face['idx']}: Recognized -- saved face ID {match[0]} (distance {match[1]:.0f})")
+            else:
+                st.text(f"#{face['idx']}: Unrecognized")
+
     cols = st.columns(min(len(cropped_faces), 4))
     for i, face in enumerate(cropped_faces):
         with cols[i % 4]:
