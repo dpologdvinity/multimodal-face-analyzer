@@ -912,19 +912,13 @@ def _load_eigen_images() -> tuple[list[int], np.ndarray]:
     return ids, (np.array(vectors) if vectors else np.empty((0, dim)))
 
 
-def match_face_eigenfaces(face_bgr: np.ndarray, k: int = 15) -> tuple[int, float] | None:
-    """Turk & Pentland eigenfaces (PCA), per ideas/eigenfaces.md: trains fresh on every call
-    directly against eigen/ (the training set is just previously-SAVEd faces, so this is cheap
-    at the scale it's meant for). Uses the M x M covariance trick from the paper (A @ A.T
+def _train_eigenfaces(k: int = 15) -> tuple[list[int], np.ndarray, np.ndarray, np.ndarray] | None:
+    """Turk & Pentland eigenfaces (PCA) training step, per ideas/eigenfaces.md: trains fresh
+    against every image in eigen/ (the training set is just previously-SAVEd faces, so this is
+    cheap at the scale it's meant for). Uses the M x M covariance trick from the paper (A @ A.T
     instead of A.T @ A) since the number of saved faces M is much smaller than the pixel
-    dimension N*N. Returns (matched_face_id, L2_distance) for the closest training face if it
-    clears EIGENFACE_DISTANCE_THRESHOLD, else None -- also None if eigen/ has fewer than 2
-    images (PCA needs at least 2 samples to have any variance to project onto).
-
-    EIGENFACE_DISTANCE_THRESHOLD is an untuned heuristic -- unlike RECOGNITION_COSINE_THRESHOLD
-    (deepface's own published default), there's no established reference value for raw
-    grayscale-pixel eigenspace distance at this face size; treat match/no-match near the
-    threshold with skepticism until tuned against real saved-face data."""
+    dimension N*N. Returns (ids, mean_face, eigenfaces, weights) or None if eigen/ has fewer
+    than 2 images (PCA needs at least 2 samples to have any variance to project onto)."""
     ids, data = _load_eigen_images()
     if len(ids) < 2:
         return None
@@ -943,14 +937,44 @@ def match_face_eigenfaces(face_bgr: np.ndarray, k: int = 15) -> tuple[int, float
     eigenfaces = eigenfaces / norms
 
     weights = A @ eigenfaces  # (M, k') -- training faces' coordinates in eigenspace
+    return ids, mean_face, eigenfaces, weights
 
+
+def match_face_eigenfaces(face_bgr: np.ndarray, k: int = 15) -> tuple[int, float] | None:
+    """Match one face against eigen/ (see _train_eigenfaces). Returns (matched_face_id,
+    L2_distance) for the closest training face if it clears EIGENFACE_DISTANCE_THRESHOLD, else
+    None. For matching several faces from the same image, prefer match_faces_eigenfaces_batch
+    -- this trains PCA fresh on every call, which is wasteful when called once per face.
+
+    EIGENFACE_DISTANCE_THRESHOLD is an untuned heuristic -- unlike RECOGNITION_COSINE_THRESHOLD
+    (deepface's own published default), there's no established reference value for raw
+    grayscale-pixel eigenspace distance at this face size; treat match/no-match near the
+    threshold with skepticism until tuned against real saved-face data."""
+    trained = _train_eigenfaces(k)
+    if trained is None:
+        return None
+    ids, mean_face, eigenfaces, weights = trained
+    return _match_against_trained(face_bgr, ids, mean_face, eigenfaces, weights)
+
+
+def _match_against_trained(face_bgr: np.ndarray, ids: list[int], mean_face: np.ndarray, eigenfaces: np.ndarray, weights: np.ndarray) -> tuple[int, float] | None:
     query = _crop_and_resize_for_eigenfaces(face_bgr).flatten().astype(np.float64) - mean_face
-    query_weights = query @ eigenfaces  # (k',)
-
+    query_weights = query @ eigenfaces
     distances = np.linalg.norm(weights - query_weights, axis=1)
     best_idx = int(np.argmin(distances))
     best_dist = float(distances[best_idx])
     return (ids[best_idx], best_dist) if best_dist <= EIGENFACE_DISTANCE_THRESHOLD else None
+
+
+def match_faces_eigenfaces_batch(faces_bgr: list[np.ndarray], k: int = 15) -> list[tuple[int, float] | None]:
+    """Match several faces from the same image against eigen/ in one PCA training pass --
+    used by the 'scan all faces' recognized/unrecognized button so an N-face image doesn't
+    retrain PCA N times. Returns one match (or None) per input face, same order."""
+    trained = _train_eigenfaces(k)
+    if trained is None:
+        return [None] * len(faces_bgr)
+    ids, mean_face, eigenfaces, weights = trained
+    return [_match_against_trained(face_bgr, ids, mean_face, eigenfaces, weights) for face_bgr in faces_bgr]
 
 
 def build_gallery_from_directory(face_net, recognition_net, directory: str | Path) -> dict[str, np.ndarray]:
@@ -1225,6 +1249,17 @@ def draw_outlined_text(frame: np.ndarray, text: str, org: tuple[int, int], color
     cv2.putText(frame, text, org, font, scale, color, thickness, cv2.LINE_AA)
 
 
+def draw_recognition_scan(frame: np.ndarray, faces: list[tuple[tuple[int, int, int, int], bool]]) -> None:
+    """Draw the 'scan all faces' button's result onto frame: a green box + 'Recognized' label
+    for faces matched against eigen/, red + 'Unrecognized' otherwise -- same color convention
+    as ideas/recognition.md's own implementation."""
+    for (x1, y1, x2, y2), recognized in faces:
+        color = (0, 255, 0) if recognized else (0, 0, 255)
+        box_thickness = int(round(frame.shape[0] / 150)) or 1
+        cv2.rectangle(frame, (x1, y1), (x2, y2), color, box_thickness, 8)
+        draw_outlined_text(frame, "Recognized" if recognized else "Unrecognized", (x1, max(20, y1 - 10)), color)
+
+
 def analyze_frame(
     models: Models,
     frame: np.ndarray,
@@ -1477,6 +1512,7 @@ def analyze_frame(
 
         cropped_faces.append({
             "idx": idx,
+            "box": (x1, y1, x2, y2),
             "image": cv2.cvtColor(face, cv2.COLOR_BGR2RGB),
             "age": _format_results(age_pairs),
             "gender": _format_results(gender_pairs),
