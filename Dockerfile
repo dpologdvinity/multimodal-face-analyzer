@@ -24,12 +24,13 @@ ARG DROWSINESS_MODEL=haarcascade
 ARG RACE_MODEL=fairface
 ARG EXPRESSION_MODEL=blendshapes
 
-# Install system dependencies for OpenCV and MediaPipe (libegl1 needed by mediapipe's
-# face landmarker even in CPU-only/headless use)
+# Install system dependencies for OpenCV and MediaPipe (libegl1/libgles2 needed by
+# mediapipe's face landmarker even in CPU-only/headless use)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     libglib2.0-0 \
     libegl1 \
+    libgles2 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
