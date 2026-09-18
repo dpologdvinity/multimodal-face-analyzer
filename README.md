@@ -26,6 +26,8 @@
 - **Input validation:** empty or invalid image uploads show a clear error, and LBPH enrollment names are restricted to safe single directory names.
 - **Cyberpunk web interface:** terminal-styled drag-and-drop Streamlit UI, plus snapshot/live webcam tabs.
 - **Live performance metrics:** webcam LIVE mode reports recent FPS and average latency for each active feature/model pair.
+- **Crowd count / demographics:** opt-in (off by default), whole-image age/gender/race breakdown aggregated from per-face results, no new model.
+- **Performance controls:** LIVE-mode classifier frame skip, plus content-hash caching of per-face classifier outputs (see [Performance](#performance)).
 
 ---
 
@@ -150,6 +152,10 @@ Every detected face's card also has SAVE and (now dual-purpose) SEARCH buttons:
 ### Recognized / Unrecognized Scan (web app only, no model)
 
 A `SCAN ALL FACES: RECOGNIZED / UNRECOGNIZED` button above the per-face cards, following `ideas/recognition.md`'s Recognized/Unrecognized labeling convention. Unlike SEARCH (one face, on demand), this checks **every** face detected in the image in a single pass: it eigenfaces-matches each one against `eigen/` (previously-SAVEd faces), then redraws the image with a green box + "Recognized" label per matched face or a red box + "Unrecognized" label otherwise, plus a text summary listing each face's matched saved-face ID where applicable. `match_faces_eigenfaces_batch()` trains PCA once for the whole image rather than once per face (`match_face_eigenfaces()`, used by the single-face SEARCH button, retrains on every call -- fine for one face, wasteful for N). Same untuned-threshold caveat as above.
+
+### Crowd Count / Demographics (web app only, no model)
+
+An opt-in `CROWD COUNT / DEMOGRAPHICS` sidebar checkbox, **off by default** (privacy-sensitive: it turns per-face results into an aggregate statistic about everyone in the image at once). Enabling it shows a caption explaining the tradeoff, and adds a `CROWD COUNT: N face(s) detected` expander below each analyzed image with a total count plus a bar-chart breakdown per currently active age/gender/race model. No new model or Docker build argument -- it's a pure tally (`aggregate_demographics()` in `src/inference.py`) over the age/gender/race outputs `analyze_frame()` already computed for that image; if two models are active for the same feature (e.g. `caffe` + `ssrnet` age), each gets its own independent breakdown rather than being merged, for the same reason DAN and EfficientNet emotion labels aren't mixed (different label sets/granularity). Image upload and webcam SNAPSHOT only -- not webcam LIVE mode, which has no per-frame result panel to attach this to.
 
 ### 3D Reconstruction (web app only, ships no working weights)
 
@@ -307,6 +313,11 @@ Open **SELECT REGION & TRANSFORM** beneath an uploaded image or webcam snapshot,
 Each detected face has an **Edit face** expander containing its sliders, **IMAGE OP** selector, and **APPLY IMAGE OP** button. The filters stay hidden until that expander opens. Operations act on that face's displayed crop; the result can be downloaded as a PNG. Intensity, sharpen, and denoise expose a method selector. These operations need no model files or Docker build arguments. CNN and GAN denoising are not included because trained weights are not supplied.
 
 Model provenance: DAN, SSR-Net, and DeepFace's race model are vendored research code (`src/nets/`). DAN and SSR-Net have no explicit upstream license file (research/educational use). DeepFace (race, gender, and recognition/`deepface_vgg.h5`) is MIT. FairFace's ONNX conversion is MIT (underlying dataset CC BY 4.0). InsightFace's model is non-commercial research use only (see Gender above). BiSeNet face-parsing (facial hair) and Face-Mask-Detection (mask) are MIT; the glasses detector's license is unstated.
+
+## Performance
+
+- **Classifier frame skip (webcam LIVE mode only):** a `CLASSIFIER FRAME SKIP` slider (1-10, default 1 = every frame) above the LIVE video feed runs age/gender/emotion/race/recognition/facial-hair/skin-tone/glasses/mask/hair-color/eye-color/drowsiness classifiers every Nth frame instead of every frame. Face detection and the pose/hand/face-landmark overlays still run every frame, so the video itself stays smooth. This is safe to skip freely: those classifiers' outputs aren't otherwise drawn onto the LIVE video (per-face text cards only exist for Image upload / webcam SNAPSHOT), so there's no visible staleness to interpolate around -- skipping only reduces CPU load.
+- **Per-face result caching:** `src/inference.py` memoizes most per-face classifier calls (age, gender, emotion, race, expression, facial hair, skin tone, glasses, mask, eye color, drowsiness, and the recognition embedding step) keyed on a hash of the exact preprocessed face-crop bytes fed to that model, not a face-identity embedding -- an embedding hash isn't a stable cache key for an adjusted or re-cropped face, but identical input bytes always produce identical deterministic output, so hashing the input itself is correct with no accuracy risk. This mainly helps Streamlit's rerun-the-whole-script-on-any-widget-change model: toggling one unrelated sidebar option no longer recomputes every classifier for every face from scratch. `fairface` and `insightface` (which key off the full frame + box rather than an isolated face crop) and the identity **match** step (which must stay live since the gallery can change between calls) are intentionally not cached. The cache is bounded (LRU-evicted, 2048 entries) and shared process-wide.
 
 ---
 
