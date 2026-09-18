@@ -9,7 +9,9 @@ SCRIPT = Path(__file__).parents[1] / "install-and-run.sh"
 
 
 class NativeInstallerVerbosityTests(unittest.TestCase):
-    def _run_installer(self, *args: str, input_data: str | None = None) -> str:
+    def _run_installer(
+        self, *args: str, input_data: str | None = None, capture_env: bool = False
+    ) -> str:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
             fake_bin = temp / "bin"
@@ -22,12 +24,18 @@ class NativeInstallerVerbosityTests(unittest.TestCase):
                 (fake_bin / name).chmod(0o755)
             (fake_bin / "sudo").write_text("#!/bin/sh\nexec \"$@\"\n")
             (fake_bin / "sudo").chmod(0o755)
-            venv_python.write_text("#!/bin/sh\nexit 0\n")
+            venv_python.write_text(
+                '#!/bin/sh\n'
+                'if [ -n "$CAPTURE_ENV" ]; then env > "$CAPTURE_ENV"; fi\n'
+                'exit 0\n'
+            )
             venv_python.chmod(0o755)
 
             env = os.environ.copy()
             env["PATH"] = f"{fake_bin}:{env['PATH']}"
             env["VENV_DIR"] = str(temp / "venv")
+            if capture_env:
+                env["CAPTURE_ENV"] = str(temp / "captured-env")
             result = subprocess.run(
                 ["bash", str(SCRIPT), *args],
                 cwd=SCRIPT.parent,
@@ -38,7 +46,10 @@ class NativeInstallerVerbosityTests(unittest.TestCase):
                 check=False,
             )
             self.assertEqual(result.returncode, 0, result.stderr)
-            return result.stdout + result.stderr
+            output = result.stdout + result.stderr
+            if capture_env:
+                output += (temp / "captured-env").read_text()
+            return output
 
     def test_default_prompts_hide_dependency_details(self):
         output = self._run_installer()
@@ -161,6 +172,16 @@ class NativeInstallerVerbosityTests(unittest.TestCase):
         self.assertIn("\033[1;32m  1) yolo\033[0m", output)
         self.assertIn("scrfd", output)
         self.assertNotIn("deepface", output)
+
+    def test_native_runtime_receives_selected_models(self):
+        selections = "\n".join(["0", "1", "0", "0", "0", "0", "0", "1"]) + "\n"
+        output = self._run_installer(input_data=selections, capture_env=True)
+
+        self.assertIn("AGE_MODEL=caffe", output)
+        self.assertIn("GENDER_MODEL=", output)
+        self.assertIn("YOLO_FACE_MODEL=", output)
+        self.assertIn("COLORIZATION_MODEL=eccv16", output)
+        self.assertIn("AGE_PROGRESSION_MODEL=", output)
 
 
 if __name__ == "__main__":
