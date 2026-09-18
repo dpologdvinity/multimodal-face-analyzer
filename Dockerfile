@@ -100,12 +100,11 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     recon3d_csv=",$RECONSTRUCTION_3D_MODEL,"; \
     case "$recon3d_csv" in *,deep3d,*) pip install scipy ;; esac
 
-# onnxruntime is only needed for YOLO_FACE_MODEL=yolo -- cv2.dnn cannot load this specific
-# ONNX export (verified), so this feature uses onnxruntime instead of this repo's usual
-# cv2.dnn ONNX path.
+# YOLO's ONNX export cannot load in cv2.dnn; the glasses export loads but fails
+# during inference there. Both use onnxruntime.
 RUN --mount=type=cache,target=/root/.cache/pip \
-    yolo_face_csv=",$YOLO_FACE_MODEL,"; \
-    case "$yolo_face_csv" in *,yolo,*) pip install onnxruntime ;; esac
+    yolo_face_csv=",$YOLO_FACE_MODEL,"; glasses_csv=",$GLASSES_MODEL,"; \
+    case "$yolo_face_csv:$glasses_csv" in *yolo*|*mobilenet*) pip install onnxruntime ;; esac
 
 # tensorflow/tf-keras are only needed for the deepface race, deepface gender,
 # and/or mini_xception emotion models

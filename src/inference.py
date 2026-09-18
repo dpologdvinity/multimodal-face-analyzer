@@ -356,8 +356,8 @@ def load_models() -> Models:
         skin_tone_nets["mobilenetv2"] = build_skin_tone_model(str(SKIN_TONE_MODEL))
 
     glasses_nets = {}
-    if GLASSES_MODEL.exists():
-        glasses_nets["mobilenet"] = cv2.dnn.readNetFromONNX(str(GLASSES_MODEL))
+    if ONNXRUNTIME_SUPPORTED and GLASSES_MODEL.exists():
+        glasses_nets["mobilenet"] = onnxruntime.InferenceSession(str(GLASSES_MODEL), providers=["CPUExecutionProvider"])
 
     mask_nets = {}
     if TF_SUPPORTED and MASK_MODEL.exists():
@@ -895,8 +895,8 @@ def predict_age_dex(net, face_bgr: np.ndarray) -> str:
 
 INSIGHTFACE_INPUT_SIZE = 96  # this genderage.onnx's actual input size (per its ONNX graph) --
 # NOT the 112x112 insightface uses for its face-recognition/embedding models; verified via
-# onnxruntime, which rejects 112x112 with a shape-mismatch error. cv2.dnn silently accepted the
-# wrong shape and produced near-constant garbage output instead of erroring.
+# onnxruntime, which rejects 112x112 with a shape-mismatch error. The graph also embeds
+# Sub/Mul normalization, so normalizing again produces near-constant garbage output.
 
 
 def _margin_align(frame_bgr: np.ndarray, box: tuple[int, int, int, int], output_size: int, margin: float) -> np.ndarray:
@@ -953,14 +953,15 @@ def _rotate_region(frame_bgr: np.ndarray, box: tuple[int, int, int, int], angle_
 def _insightface_forward(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int]) -> np.ndarray:
     # Replicates insightface's own alignment (model_zoo/attribute.py + utils/face_align.py): 1.5x margin.
     aligned = _margin_align(frame_bgr, box, INSIGHTFACE_INPUT_SIZE, margin=1.5)
-    blob = cv2.dnn.blobFromImage(aligned, 1.0 / 128.0, (INSIGHTFACE_INPUT_SIZE, INSIGHTFACE_INPUT_SIZE), (127.5, 127.5, 127.5), swapRB=True)
+    # This export starts with Sub/Mul normalization nodes, so feed raw pixels.
+    blob = cv2.dnn.blobFromImage(aligned, 1.0, (INSIGHTFACE_INPUT_SIZE, INSIGHTFACE_INPUT_SIZE), (0, 0, 0), swapRB=True)
     net.setInput(blob)
     return net.forward().flatten()
 
 
 def predict_gender_insightface(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int]) -> str:
     out = _insightface_forward(net, frame_bgr, box)
-    return "Male" if np.argmax(out[:2]) == 0 else "Female"
+    return "Female" if np.argmax(out[:2]) == 0 else "Male"
 
 
 def predict_age_insightface(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int]) -> str:
@@ -1447,8 +1448,7 @@ def predict_glasses_mobilenet(net, face_bgr: np.ndarray) -> str:
     (flagged in README, same treatment as DAN/SSR-Net)."""
     face_rgb = cv2.cvtColor(cv2.resize(face_bgr, (224, 224)), cv2.COLOR_BGR2RGB)
     blob = face_rgb[np.newaxis, ...].astype(np.uint8)
-    net.setInput(blob)
-    prob = float(net.forward("eyeglasses_prob").flatten()[0])
+    prob = float(net.run(["eyeglasses_prob"], {net.get_inputs()[0].name: blob})[0].flatten()[0])
     return "glasses" if prob >= GLASSES_THRESHOLD else "none"
 
 
