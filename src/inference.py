@@ -2417,9 +2417,12 @@ def analyze_frame(
     number burned into the annotated frame is that track_id instead of this frame's
     detection-order position, so tracking is visible, not just data the caller ignores).
 
-    liveness_tracker is optional for the same reason. Static callers get texture-only evidence;
-    LIVE callers also get blink transitions keyed by the stable track ID. active_liveness selects
-    the loaded liveness backend; omitted callers use every loaded backend."""
+    liveness_tracker is only ever passed by video/webcam LIVE mode -- a single static image has
+    no blink transitions to observe, so liveness is unavailable there by design (not just
+    unchecked): static callers (upload/snapshot) never pass a tracker, and analyze_frame skips
+    liveness entirely -- no "liveness" pairs, no LivenessResult -- whenever liveness_tracker is
+    None, regardless of active_liveness. active_liveness additionally gates it off within LIVE
+    mode itself (unchecked box = skipped); omitted callers default to every loaded backend."""
     if active_liveness is None:
         active_liveness = set(models.liveness_nets)
     if active_body_composition is None:
@@ -2495,7 +2498,12 @@ def analyze_frame(
         # Expression, gaze, head pose, and drawn landmarks all consume the
         # same MediaPipe FaceLandmarker result. Detect once before dispatching
         # feature tasks so the shared model is not run repeatedly per crop.
-        liveness_net = models.liveness_nets.get("mediapipe") if "mediapipe" in active_liveness else None
+        # Liveness only makes sense with a stable track to watch blinks across frames --
+        # video/webcam LIVE mode only (see analyze_frame docstring). Static callers (upload/
+        # snapshot) never pass liveness_tracker, so liveness is skipped there regardless of
+        # active_liveness.
+        run_liveness = liveness_tracker is not None and "mediapipe" in active_liveness
+        liveness_net = models.liveness_nets.get("mediapipe") if run_liveness else None
         body_composition_net = (
             models.body_composition_nets.get("face_geometry")
             if "face_geometry" in active_body_composition else None
@@ -2516,8 +2524,8 @@ def analyze_frame(
             if face_landmarker is not None and needs_face_landmarks
             else None
         )
-        texture_score = predict_texture_artifact_score(face)
-        blink_score = blink_score_from_landmarker(landmarker_result)
+        texture_score = predict_texture_artifact_score(face) if run_liveness else 0.0
+        blink_score = blink_score_from_landmarker(landmarker_result) if run_liveness else None
 
         blob227 = None
         if need_blob227:
@@ -2769,18 +2777,15 @@ def analyze_frame(
             return pairs
 
         def _liveness_task():
+            if not run_liveness:
+                return [], None
             started = time.perf_counter()
-            if liveness_net is None:
-                result = assess_static_liveness(texture_score)
-                key = "heuristic"
-            elif liveness_tracker is not None and track_id is not None:
+            if track_id is not None:
                 result = liveness_tracker.update(track_id, blink_score, texture_score)
-                key = "mediapipe"
             else:
                 result = assess_static_liveness(texture_score)
-                key = "mediapipe"
-            _record_model_latency(metrics, "liveness", key, started)
-            return [(key, result.summary)], result
+            _record_model_latency(metrics, "liveness", "mediapipe", started)
+            return [("mediapipe", result.summary)], result
 
         futures = {
             "age": _INFERENCE_EXECUTOR.submit(_age_task),
@@ -2892,12 +2897,12 @@ def analyze_frame(
             "mask": _format_results(mask_pairs),
             "hair_color": _format_results(hair_color_pairs),
             "eye_color": _format_results(eye_color_pairs),
-            "liveness": [liveness_result.summary],
-            "liveness_status": liveness_result.status,
-            "blink_count": liveness_result.blink_count,
-            "blink_rate": liveness_result.blink_rate,
-            "texture_score": liveness_result.texture_score,
-            "texture_artifact": liveness_result.texture_artifact,
+            "liveness": [liveness_result.summary] if liveness_result is not None else [],
+            "liveness_status": liveness_result.status if liveness_result is not None else None,
+            "blink_count": liveness_result.blink_count if liveness_result is not None else None,
+            "blink_rate": liveness_result.blink_rate if liveness_result is not None else None,
+            "texture_score": liveness_result.texture_score if liveness_result is not None else None,
+            "texture_artifact": liveness_result.texture_artifact if liveness_result is not None else None,
             "embedding": face_embedding.tolist() if face_embedding is not None else None,
             "raw_columns": raw_columns,
             "model_results": model_results,
