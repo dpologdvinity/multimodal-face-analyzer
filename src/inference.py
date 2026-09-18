@@ -64,8 +64,9 @@ RACE_CLOSE_MARGIN = 0.10  # show top-2 race classes together if within this prob
 
 # Model keys per feature, in quickest-to-build order (first = default).
 # Must match the numbered options in build-and-run.sh and the Dockerfile ARGs.
-AGE_MODEL_OPTIONS = ["caffe", "insightface", "ssrnet"]
-GENDER_MODEL_OPTIONS = ["caffe", "insightface", "deepface"]
+AGE_MODEL_OPTIONS = ["caffe", "insightface", "ssrnet", "fairface"]
+GENDER_MODEL_OPTIONS = ["caffe", "insightface", "deepface", "fairface"]
+FAIRFACE_AGE_LABELS = ["0-2", "3-9", "10-19", "20-29", "30-39", "40-49", "50-59", "60-69", "70+"]
 EMOTION_MODEL_OPTIONS = ["efficientnet", "ferplus", "mini_xception", "dan"]
 DROWSINESS_MODEL_OPTIONS = ["haarcascade"]
 RACE_MODEL_OPTIONS = ["fairface", "deepface"]
@@ -143,9 +144,14 @@ def load_models() -> Models:
     if EYE_CASCADE_FILE.exists():
         drowsiness_nets["haarcascade"] = cv2.CascadeClassifier(str(EYE_CASCADE_FILE))
 
+    if FAIRFACE_MODEL.exists():
+        fairface_net = cv2.dnn.readNetFromONNX(str(FAIRFACE_MODEL))
+        age_nets["fairface"] = fairface_net
+        gender_nets["fairface"] = fairface_net
+
     race_nets = {}
     if FAIRFACE_MODEL.exists():
-        race_nets["fairface"] = cv2.dnn.readNetFromONNX(str(FAIRFACE_MODEL))
+        race_nets["fairface"] = age_nets["fairface"]
     if TF_SUPPORTED and DEEPFACE_RACE_MODEL.exists():
         race_nets["deepface"] = build_race_model(str(DEEPFACE_RACE_MODEL))
 
@@ -296,17 +302,34 @@ def _format_race_label(probs: np.ndarray, labels: list[str]) -> str:
     return labels[top1]
 
 
-def predict_race_fairface(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int]) -> str:
-    # FairFace's own pipeline aligns on 5-point landmarks (dlib, padding=0.25); we have no
-    # landmark model, so approximate with the same margin via a bbox-centered crop (padding=0.25
-    # each side ~= a 1.5x margin), instead of an arbitrary fixed-pixel-padding crop+resize.
+def _fairface_forward(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int], output_name: str) -> np.ndarray:
+    # Same alignment as predict_race_fairface -- one ONNX graph, three named outputs
+    # (race_output, gender_output, age_output); re-run per feature for simplicity, matching
+    # the insightface age/gender split.
     aligned = _margin_align(frame_bgr, box, 224, margin=1.5)
     face_rgb = cv2.cvtColor(aligned, cv2.COLOR_BGR2RGB)
     face_norm = (face_rgb.astype(np.float32) / 255.0 - SSRNET_MEAN) / SSRNET_STD
     blob = face_norm.transpose(2, 0, 1)[np.newaxis, ...].astype(np.float32)
     net.setInput(blob)
-    logits = net.forward().flatten()
+    return net.forward(output_name).flatten()
+
+
+def predict_race_fairface(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int]) -> str:
+    # FairFace's own pipeline aligns on 5-point landmarks (dlib, padding=0.25); we have no
+    # landmark model, so approximate with the same margin via a bbox-centered crop (padding=0.25
+    # each side ~= a 1.5x margin), instead of an arbitrary fixed-pixel-padding crop+resize.
+    logits = _fairface_forward(net, frame_bgr, box, "race_output")
     return _format_race_label(_softmax(logits), RACE_LABELS_FAIRFACE)
+
+
+def predict_gender_fairface(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int]) -> str:
+    out = _fairface_forward(net, frame_bgr, box, "gender_output")
+    return "Male" if np.argmax(out) == 0 else "Female"
+
+
+def predict_age_fairface(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int]) -> str:
+    out = _fairface_forward(net, frame_bgr, box, "age_output")
+    return FAIRFACE_AGE_LABELS[int(np.argmax(out))]
 
 
 def predict_race_deepface(net, face_bgr: np.ndarray) -> str:
@@ -389,6 +412,8 @@ def analyze_frame(
                 value = predict_age_caffe(net, blob227)
             elif key == "ssrnet":
                 value = predict_age_ssrnet(net, face)
+            elif key == "fairface":
+                value = predict_age_fairface(net, frame, (x1, y1, x2, y2))
             else:
                 value = predict_age_insightface(net, frame, (x1, y1, x2, y2))
             age_pairs.append((key, value))
@@ -402,6 +427,8 @@ def analyze_frame(
                 value = predict_gender_caffe(net, blob227)
             elif key == "deepface":
                 value = predict_gender_deepface(net, face)
+            elif key == "fairface":
+                value = predict_gender_fairface(net, frame, (x1, y1, x2, y2))
             else:
                 value = predict_gender_insightface(net, frame, (x1, y1, x2, y2))
             gender_pairs.append((key, value))

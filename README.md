@@ -39,6 +39,7 @@ Face detection is required; age, gender, race, emotion, and drowsiness are each 
 | `caffe`       | Caffe (cv2.dnn) | bucketed range, e.g. `(25-32)` |
 | `insightface` | ONNX (cv2.dnn)  | continuous age, e.g. `31`      |
 | `ssrnet`      | PyTorch         | continuous age, e.g. `31`      |
+| `fairface`    | ONNX (cv2.dnn)  | bucketed range, e.g. `20-29` (9 buckets) |
 
 CLI: `--age-model` (`caffe` or `ssrnet` only). Web app: checkbox per built model. Default: `caffe`.
 
@@ -49,8 +50,9 @@ CLI: `--age-model` (`caffe` or `ssrnet` only). Web app: checkbox per built model
 | Levi & Hassner CNN | Caffe (cv2.dnn)       | `Male` / `Female` |
 | `insightface`      | ONNX (cv2.dnn)        | `Male` / `Female` |
 | `deepface`         | Keras/TensorFlow      | `Male` / `Female` |
+| `fairface`         | ONNX (cv2.dnn)        | `Male` / `Female` |
 
-`insightface` shares one small ONNX file (`models/insightface_genderage.onnx`) with the insightface age backend -- one model, two feature outputs. **Non-commercial research-use-only license** (CelebA-derived); not for commercial deployments. `deepface` shares its VGGFace backbone code (`src/nets/deepface_common.py`) with the deepface race backend, but is a separate 537MB weight file (`models/deepface_gender.h5`) and needs TensorFlow like deepface race does.
+`insightface` shares one small ONNX file (`models/insightface_genderage.onnx`) with the insightface age backend -- one model, two feature outputs. **Non-commercial research-use-only license** (CelebA-derived); not for commercial deployments. `deepface` shares its VGGFace backbone code (`src/nets/deepface_common.py`) with the deepface race backend, but is a separate 537MB weight file (`models/deepface_gender.h5`) and needs TensorFlow like deepface race does. `fairface` shares one ONNX file (`models/fairface_7class.onnx`) across all three of age, gender, and race -- one model, three feature outputs (named `age_output`/`gender_output`/`race_output` in the same graph).
 
 ### Race (web app only)
 
@@ -102,7 +104,7 @@ multimodal-face-analyzer/
 │   ├── efficientnet_b0_fer.onnx                 # emotion: efficientnet backend
 │   ├── emotion_ferplus.onnx                     # emotion: ferplus backend
 │   ├── mini_xception_fer.h5                     # emotion: mini_xception backend
-│   ├── fairface_7class.onnx                     # race: fairface backend
+│   ├── fairface_7class.onnx                     # age + gender + race: fairface backend
 │   ├── deepface_race.h5                         # race: deepface backend
 │   ├── deepface_gender.h5                       # gender: deepface backend
 │   └── haarcascade_eye.xml                      # drowsiness
@@ -192,8 +194,8 @@ Each build ARG takes a comma-separated list of model keys for that feature, or e
 
 ```bash
 docker build \
-  --build-arg AGE_MODEL=caffe,insightface,ssrnet \
-  --build-arg GENDER_MODEL=caffe,insightface,deepface \
+  --build-arg AGE_MODEL=caffe,insightface,ssrnet,fairface \
+  --build-arg GENDER_MODEL=caffe,insightface,deepface,fairface \
   --build-arg EMOTION_MODEL=efficientnet,ferplus,mini_xception,dan \
   --build-arg DROWSINESS_MODEL=haarcascade \
   --build-arg RACE_MODEL=fairface,deepface \
@@ -202,8 +204,8 @@ docker build \
 
 | Build arg          | Options (default first)          |
 | ------------------ | -------------------------------- |
-| `AGE_MODEL`        | `caffe`, `insightface`, `ssrnet` |
-| `GENDER_MODEL`     | `caffe`, `insightface`, `deepface` |
+| `AGE_MODEL`        | `caffe`, `insightface`, `ssrnet`, `fairface` |
+| `GENDER_MODEL`     | `caffe`, `insightface`, `deepface`, `fairface` |
 | `EMOTION_MODEL`    | `efficientnet`, `ferplus`, `mini_xception`, `dan` |
 | `DROWSINESS_MODEL` | `haarcascade`                    |
 | `RACE_MODEL`       | `fairface`, `deepface`           |

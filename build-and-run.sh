@@ -53,10 +53,10 @@ prompt_feature() {
     REPLY_MODEL="$result"
 }
 
-prompt_feature "AGE" caffe insightface ssrnet
+prompt_feature "AGE" caffe insightface ssrnet fairface
 AGE_MODEL="$REPLY_MODEL"
 
-prompt_feature "GENDER" caffe insightface deepface
+prompt_feature "GENDER" caffe insightface deepface fairface
 GENDER_MODEL="$REPLY_MODEL"
 
 prompt_feature "EMOTION" efficientnet ferplus mini_xception dan
