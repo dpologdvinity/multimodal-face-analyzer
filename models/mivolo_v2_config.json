@@ -1,0 +1,12 @@
+{
+  "model_name": "mivolo_d1_384",
+  "input_size": 384,
+  "in_chans": 6,
+  "num_classes": 3,
+  "with_persons_model": true,
+  "min_age": 0,
+  "max_age": 122,
+  "avg_age": 61.0,
+  "only_age": false,
+  "num_classes_gender": 2
+}

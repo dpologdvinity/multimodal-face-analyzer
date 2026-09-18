@@ -4,8 +4,8 @@ FROM python:3.11-slim
 # Per-feature model selection. Each ARG takes a comma-separated list of model
 # keys for that feature, or an empty string for "none". Options, in
 # quickest-to-build order (default is the first/quickest):
-#   AGE_MODEL:        caffe, insightface, ssrnet, fairface, dex (default: caffe)
-#   GENDER_MODEL:      caffe, insightface, deepface, fairface (default: caffe)
+#   AGE_MODEL:        caffe, insightface, ssrnet, fairface, dex, mivolo (default: caffe)
+#   GENDER_MODEL:      caffe, insightface, deepface, fairface, mivolo (default: caffe)
 #   EMOTION_MODEL:     efficientnet, ferplus, mini_xception, dan (default: efficientnet)
 #   DROWSINESS_MODEL:  haarcascade                  (default: haarcascade)
 #   RACE_MODEL:        fairface, deepface           (default: fairface)
@@ -34,9 +34,11 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# torch/torchvision are only needed for the ssrnet age model and/or the dan emotion model
-RUN age_csv=",$AGE_MODEL,"; emotion_csv=",$EMOTION_MODEL,"; need_torch=false; \
+# torch/torchvision are needed for ssrnet, dan, and/or mivolo models
+RUN age_csv=",$AGE_MODEL,"; gender_csv=",$GENDER_MODEL,"; emotion_csv=",$EMOTION_MODEL,"; need_torch=false; \
     case "$age_csv" in *,ssrnet,*) need_torch=true ;; esac; \
+    case "$age_csv" in *,mivolo,*) need_torch=true ;; esac; \
+    case "$gender_csv" in *,mivolo,*) need_torch=true ;; esac; \
     case "$emotion_csv" in *,dan,*) need_torch=true ;; esac; \
     if [ "$need_torch" = "true" ]; then \
         pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu torch torchvision; \
@@ -49,6 +51,14 @@ RUN race_csv=",$RACE_MODEL,"; gender_csv=",$GENDER_MODEL,"; emotion_csv=",$EMOTI
     case "$gender_csv" in *,deepface,*) need_tf=true ;; esac; \
     case "$emotion_csv" in *,mini_xception,*) need_tf=true ;; esac; \
     if [ "$need_tf" = "true" ]; then pip install --no-cache-dir tensorflow-cpu tf-keras; fi
+
+# MiVOLO dependencies (ultralytics, timm) are only needed for the mivolo age and/or gender models
+RUN age_csv=",$AGE_MODEL,"; gender_csv=",$GENDER_MODEL,"; need_mivolo=false; \
+    case "$age_csv" in *,mivolo,*) need_mivolo=true ;; esac; \
+    case "$gender_csv" in *,mivolo,*) need_mivolo=true ;; esac; \
+    if [ "$need_mivolo" = "true" ]; then \
+        pip install --no-cache-dir ultralytics==8.1.0 timm==0.8.13.dev0 safetensors huggingface_hub; \
+    fi
 
 # Application code and always-required model files (face detector)
 COPY detect.py ./
@@ -72,6 +82,8 @@ RUN --mount=type=bind,source=models/age_deploy.prototxt,target=/tmp/models/age_d
     --mount=type=bind,source=models/mini_xception_fer.h5,target=/tmp/models/mini_xception_fer.h5 \
     --mount=type=bind,source=models/dex_age.prototxt,target=/tmp/models/dex_age.prototxt \
     --mount=type=bind,source=models/dex_age.caffemodel,target=/tmp/models/dex_age.caffemodel \
+    --mount=type=bind,source=models/mivolo_v2.safetensors,target=/tmp/models/mivolo_v2.safetensors \
+    --mount=type=bind,source=models/mivolo_v2_config.json,target=/tmp/models/mivolo_v2_config.json \
     set -e; \
     age_csv=",$AGE_MODEL,"; gender_csv=",$GENDER_MODEL,"; emotion_csv=",$EMOTION_MODEL,"; \
     drowsiness_csv=",$DROWSINESS_MODEL,"; race_csv=",$RACE_MODEL,"; \
@@ -90,7 +102,9 @@ RUN --mount=type=bind,source=models/age_deploy.prototxt,target=/tmp/models/age_d
     case "$emotion_csv" in *,mini_xception,*) cp /tmp/models/mini_xception_fer.h5 models/ ;; esac; \
     case "$drowsiness_csv" in *,haarcascade,*) cp /tmp/models/haarcascade_eye.xml models/ ;; esac; \
     case "$race_csv" in *,fairface,*) cp /tmp/models/fairface_7class.onnx models/ ;; esac; \
-    case "$race_csv" in *,deepface,*) cp /tmp/models/deepface_race.h5 models/ ;; esac
+    case "$race_csv" in *,deepface,*) cp /tmp/models/deepface_race.h5 models/ ;; esac; \
+    case "$age_csv" in *,mivolo,*) cp /tmp/models/mivolo_v2.safetensors /tmp/models/mivolo_v2_config.json models/ ;; esac; \
+    case "$gender_csv" in *,mivolo,*) cp /tmp/models/mivolo_v2.safetensors /tmp/models/mivolo_v2_config.json models/ ;; esac
 
 # Expose default Streamlit port
 EXPOSE 8501

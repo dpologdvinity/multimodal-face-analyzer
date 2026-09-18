@@ -26,6 +26,12 @@ try:
 except ImportError:
     TF_SUPPORTED = False
 
+try:
+    from nets.mivolo.inference_wrapper import MiVOLOInference
+    MIVOLO_SUPPORTED = True
+except ImportError:
+    MIVOLO_SUPPORTED = False
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 MODEL_DIR = BASE_DIR / "models"
 
@@ -47,6 +53,7 @@ DEEPFACE_RACE_MODEL = MODEL_DIR / "deepface_race.h5"
 DEEPFACE_GENDER_MODEL = MODEL_DIR / "deepface_gender.h5"
 DEX_PROTO = MODEL_DIR / "dex_age.prototxt"
 DEX_MODEL = MODEL_DIR / "dex_age.caffemodel"
+MIVOLO_MODEL = MODEL_DIR / "mivolo_v2.safetensors"
 
 MODEL_MEAN_VALUES = (78.4263377603, 87.768914374, 114.895847746)
 AGE_LIST = ['(0-2)', '(4-6)', '(8-12)', '(15-20)', '(25-32)', '(38-43)', '(48-53)', '(60-100)']
@@ -67,8 +74,8 @@ DEX_MEAN_VALUES = (103.939, 116.779, 123.68)  # VGG-16 ImageNet BGR mean, per DE
 
 # Model keys per feature, in quickest-to-build order (first = default).
 # Must match the numbered options in build-and-run.sh and the Dockerfile ARGs.
-AGE_MODEL_OPTIONS = ["caffe", "insightface", "ssrnet", "fairface", "dex"]
-GENDER_MODEL_OPTIONS = ["caffe", "insightface", "deepface", "fairface"]
+AGE_MODEL_OPTIONS = ["caffe", "insightface", "ssrnet", "fairface", "dex", "mivolo"]
+GENDER_MODEL_OPTIONS = ["caffe", "insightface", "deepface", "fairface", "mivolo"]
 FAIRFACE_AGE_LABELS = ["0-2", "3-9", "10-19", "20-29", "30-39", "40-49", "50-59", "60-69", "70+"]
 EMOTION_MODEL_OPTIONS = ["efficientnet", "ferplus", "mini_xception", "dan"]
 DROWSINESS_MODEL_OPTIONS = ["haarcascade"]
@@ -128,6 +135,19 @@ def load_models() -> Models:
 
     if TF_SUPPORTED and DEEPFACE_GENDER_MODEL.exists():
         gender_nets["deepface"] = build_gender_model(str(DEEPFACE_GENDER_MODEL))
+
+    if MIVOLO_SUPPORTED and MIVOLO_MODEL.exists():
+        mivolo_config = MODEL_DIR / "mivolo_v2_config.json"
+        if mivolo_config.exists():
+            mivolo_net = MiVOLOInference(
+                model_path=str(MIVOLO_MODEL),
+                config_path=str(mivolo_config),
+                device="cpu",
+                half=False,
+                verbose=False,
+            )
+            age_nets["mivolo"] = mivolo_net
+            gender_nets["mivolo"] = mivolo_net
 
     emotion_nets = {}
     if TORCH_SUPPORTED and EMOTION_MODEL.exists():
@@ -251,6 +271,19 @@ def predict_gender_insightface(net, frame_bgr: np.ndarray, box: tuple[int, int, 
 def predict_age_insightface(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int]) -> str:
     out = _insightface_forward(net, frame_bgr, box)
     return f"{round(out[2] * 100):.0f}"
+
+
+def predict_age_mivolo(net: MiVOLOInference, face_bgr: np.ndarray) -> str:
+    """Predict age with MiVOLO on a face crop (face-only mode)."""
+    age, _, _ = net.predict_face(face_bgr)
+    return f"{int(round(age))}"
+
+
+def predict_gender_mivolo(net: MiVOLOInference, face_bgr: np.ndarray) -> str:
+    """Predict gender with MiVOLO on a face crop (face-only mode)."""
+    _, gender, _ = net.predict_face(face_bgr)
+    # MiVOLO returns 'male'/'female' (lowercase); normalize to "Male"/"Female"
+    return "Male" if gender == "male" else "Female"
 
 
 def predict_emotion_dan(net, face_bgr: np.ndarray) -> str:
@@ -431,6 +464,8 @@ def analyze_frame(
                 value = predict_age_fairface(net, frame, (x1, y1, x2, y2))
             elif key == "dex":
                 value = predict_age_dex(net, face)
+            elif key == "mivolo":
+                value = predict_age_mivolo(net, face)
             else:
                 value = predict_age_insightface(net, frame, (x1, y1, x2, y2))
             age_pairs.append((key, value))
@@ -446,6 +481,8 @@ def analyze_frame(
                 value = predict_gender_deepface(net, face)
             elif key == "fairface":
                 value = predict_gender_fairface(net, frame, (x1, y1, x2, y2))
+            elif key == "mivolo":
+                value = predict_gender_mivolo(net, face)
             else:
                 value = predict_gender_insightface(net, frame, (x1, y1, x2, y2))
             gender_pairs.append((key, value))
