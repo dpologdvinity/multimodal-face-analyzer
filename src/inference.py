@@ -5,6 +5,8 @@ more model backends are added.
 """
 from __future__ import annotations
 
+import functools
+import itertools
 import json
 import os
 import hashlib
@@ -13,6 +15,7 @@ import sqlite3
 import threading
 import time
 from collections import OrderedDict
+from math import ceil
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import nullcontext
 from dataclasses import dataclass, field
@@ -91,6 +94,7 @@ FACE_PROTO = MODEL_DIR / "opencv_face_detector.pbtxt"
 FACE_MODEL = MODEL_DIR / "opencv_face_detector_uint8.pb"
 YOLO_FACE_MODEL = MODEL_DIR / "yolov8n_face.onnx"
 SCRFD_FACE_MODEL = MODEL_DIR / "scrfd_2.5g_bnkps.onnx"
+RETINAFACE_MODEL = MODEL_DIR / "retinaface_mobilenet0.25.onnx"
 AGE_PROTO = MODEL_DIR / "age_deploy.prototxt"
 AGE_MODEL = MODEL_DIR / "age_net.caffemodel"
 GENDER_PROTO = MODEL_DIR / "gender_deploy.prototxt"
@@ -167,7 +171,7 @@ RACE_MODEL_OPTIONS = ["fairface", "deepface"]
 EXPRESSION_MODEL_OPTIONS = ["blendshapes"]
 LIVENESS_MODEL_OPTIONS = ["mediapipe"]
 RECOGNITION_MODEL_OPTIONS = ["vggface", "lbph"]
-FACE_DETECTOR_OPTIONS = ["ssd", "yolo", "scrfd"]  # ssd is the original required detector, always on
+FACE_DETECTOR_OPTIONS = ["ssd", "yolo", "scrfd", "retinaface"]  # ssd is the original required detector, always on
 IOU_TRACKING_THRESHOLD = 0.3  # greedy-match a track to a detection only above this IoU
 TRACKING_MAX_MISSED_FRAMES = 10  # frames a track survives with zero matching detections
 # (brief occlusion) before its ID is dropped and freed for reuse
@@ -178,6 +182,13 @@ SCRFD_FACE_INPUT_SIZE = 640
 SCRFD_FACE_STRIDES = (8, 16, 32)
 SCRFD_FACE_NUM_ANCHORS = 2  # bnkps variant's anchors-per-location, fixed by the checkpoint
 SCRFD_FACE_NMS_THRESHOLD = 0.4
+RETINAFACE_INPUT_HEIGHT = 608
+RETINAFACE_INPUT_WIDTH = 640
+RETINAFACE_STEPS = (8, 16, 32)
+RETINAFACE_MIN_SIZES = ((16, 32), (64, 128), (256, 512))
+RETINAFACE_VARIANCE = (0.1, 0.2)
+RETINAFACE_MEAN = (104, 117, 123)  # BGR, biubug6/Pytorch_Retinaface's own training-time mean
+RETINAFACE_NMS_THRESHOLD = 0.4
 FACIAL_HAIR_MODEL_OPTIONS = ["bisenet"]
 SKIN_TONE_MODEL_OPTIONS = ["mobilenetv2"]
 GLASSES_MODEL_OPTIONS = ["mobilenet"]
@@ -295,6 +306,7 @@ class Models:
     reconstruction_3d_nets: dict = field(default_factory=dict)
     yolo_face_nets: dict = field(default_factory=dict)
     scrfd_face_nets: dict = field(default_factory=dict)
+    retinaface_nets: dict = field(default_factory=dict)
     gaze_nets: dict = field(default_factory=dict)
     body_composition_nets: dict = field(default_factory=dict)
 
@@ -314,8 +326,9 @@ class Models:
                 ("POSE", self.pose_nets), ("FACE_LANDMARKS", self.face_landmarks_nets),
                 ("HANDS", self.hand_nets), ("RECONSTRUCTION_3D", self.reconstruction_3d_nets),
                 ("FACE_DETECTOR_YOLO", self.yolo_face_nets),
-                ("BODY_COMPOSITION", self.body_composition_nets),
                 ("FACE_DETECTOR_SCRFD", self.scrfd_face_nets),
+                ("FACE_DETECTOR_RETINAFACE", self.retinaface_nets),
+                ("BODY_COMPOSITION", self.body_composition_nets),
             ] if not nets
         ]
 
@@ -487,10 +500,14 @@ def load_models() -> Models:
     if ONNXRUNTIME_SUPPORTED and SCRFD_FACE_MODEL.exists():
         scrfd_face_nets["scrfd"] = onnxruntime.InferenceSession(str(SCRFD_FACE_MODEL), providers=["CPUExecutionProvider"])
 
+    retinaface_nets = {}
+    if ONNXRUNTIME_SUPPORTED and RETINAFACE_MODEL.exists():
+        retinaface_nets["retinaface"] = onnxruntime.InferenceSession(str(RETINAFACE_MODEL), providers=["CPUExecutionProvider"])
+
     return Models(
         face_net, age_nets, gender_nets, emotion_nets, drowsiness_nets, race_nets, expression_nets, liveness_nets, recognition_nets,
         facial_hair_nets, skin_tone_nets, glasses_nets, mask_nets, hair_color_nets, eye_color_nets, colorization_nets,
-        pose_nets, face_landmarks_nets, hand_nets, reconstruction_3d_nets, yolo_face_nets, scrfd_face_nets,
+        pose_nets, face_landmarks_nets, hand_nets, reconstruction_3d_nets, yolo_face_nets, scrfd_face_nets, retinaface_nets,
         gaze_nets, body_composition_nets,
     )
 
@@ -626,6 +643,77 @@ def detect_faces_scrfd(session, frame: np.ndarray, conf_threshold: float = 0.5) 
     if len(keep) == 0:
         return []
     boxes = boxes[np.array(keep).flatten()]
+    boxes[:, [0, 2]] = boxes[:, [0, 2]].clip(0, frame_w)
+    boxes[:, [1, 3]] = boxes[:, [1, 3]].clip(0, frame_h)
+
+    return boxes.astype(int).tolist()
+
+
+@functools.lru_cache(maxsize=1)
+def _retinaface_priors() -> np.ndarray:
+    """Anchor boxes (cx, cy, w, h, all normalized to [0, 1]) for RetinaFace's fixed
+    608x640 input -- identical for every frame, so computed once and cached rather than
+    regenerated per call. Matches biubug6/Pytorch_Retinaface's own PriorBox exactly."""
+    feature_maps = [(ceil(RETINAFACE_INPUT_HEIGHT / s), ceil(RETINAFACE_INPUT_WIDTH / s)) for s in RETINAFACE_STEPS]
+    anchors = []
+    for k, (fm_h, fm_w) in enumerate(feature_maps):
+        for i, j in itertools.product(range(fm_h), range(fm_w)):
+            for min_size in RETINAFACE_MIN_SIZES[k]:
+                s_kx = min_size / RETINAFACE_INPUT_WIDTH
+                s_ky = min_size / RETINAFACE_INPUT_HEIGHT
+                cx = (j + 0.5) * RETINAFACE_STEPS[k] / RETINAFACE_INPUT_WIDTH
+                cy = (i + 0.5) * RETINAFACE_STEPS[k] / RETINAFACE_INPUT_HEIGHT
+                anchors.append([cx, cy, s_kx, s_ky])
+    return np.array(anchors, dtype=np.float32)
+
+
+def _retinaface_decode(loc: np.ndarray, priors: np.ndarray) -> np.ndarray:
+    boxes = np.concatenate([
+        priors[:, :2] + loc[:, :2] * RETINAFACE_VARIANCE[0] * priors[:, 2:],
+        priors[:, 2:] * np.exp(loc[:, 2:] * RETINAFACE_VARIANCE[1]),
+    ], axis=1)
+    boxes[:, :2] -= boxes[:, 2:] / 2
+    boxes[:, 2:] += boxes[:, :2]
+    return boxes
+
+
+def detect_faces_retinaface(session, frame: np.ndarray, conf_threshold: float = 0.5) -> list[list[int]]:
+    """RetinaFace (biubug6/Pytorch_Retinaface's mobilenet0.25 backbone, MIT-licensed weights via
+    the AMD Ryzen AI model zoo re-export, Apache 2.0) via onnxruntime. Unlike yolo/scrfd, this
+    checkpoint has a fixed 608x640 NHWC input rather than a dynamic square one, so the
+    letterbox pads into that exact canvas instead of a square target. Decodes the raw
+    loc/conf/landm outputs against precomputed anchor priors (see _retinaface_priors) using
+    the same variance-scaled box regression as upstream's own utils/box_utils.py. The 5-point
+    landmark output isn't decoded since nothing downstream uses it. Returns boxes in the same
+    [x1, y1, x2, y2] int-list contract as detect_faces()."""
+    frame_h, frame_w = frame.shape[:2]
+    scale = min(RETINAFACE_INPUT_HEIGHT / frame_h, RETINAFACE_INPUT_WIDTH / frame_w)
+    new_h, new_w = int(frame_h * scale), int(frame_w * scale)
+    resized = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+    canvas = np.zeros((RETINAFACE_INPUT_HEIGHT, RETINAFACE_INPUT_WIDTH, 3), dtype=np.float32)
+    canvas[:new_h, :new_w] = resized.astype(np.float32)
+    canvas -= RETINAFACE_MEAN
+    blob = canvas[np.newaxis, ...]  # NHWC, matching this checkpoint's fixed input layout
+
+    input_name = session.get_inputs()[0].name
+    loc, conf, _landm = session.run(None, {input_name: blob})
+    loc, conf = loc[0], conf[0]
+
+    boxes = _retinaface_decode(loc, _retinaface_priors())
+    boxes[:, 0::2] *= RETINAFACE_INPUT_WIDTH
+    boxes[:, 1::2] *= RETINAFACE_INPUT_HEIGHT
+    scores = _yolo_softmax(conf, axis=-1)[:, 1]
+
+    mask = scores > conf_threshold
+    boxes, scores = boxes[mask], scores[mask]
+    if len(boxes) == 0:
+        return []
+
+    nms_boxes = [[x1, y1, x2 - x1, y2 - y1] for x1, y1, x2, y2 in boxes]
+    keep = cv2.dnn.NMSBoxes(nms_boxes, scores.tolist(), conf_threshold, RETINAFACE_NMS_THRESHOLD)
+    if len(keep) == 0:
+        return []
+    boxes = boxes[np.array(keep).flatten()] / scale
     boxes[:, [0, 2]] = boxes[:, [0, 2]].clip(0, frame_w)
     boxes[:, [1, 3]] = boxes[:, [1, 3]].clip(0, frame_h)
 
@@ -2288,8 +2376,8 @@ def analyze_frame(
 
     face_detector picks which face detection backend runs (unlike every other feature,
     exactly one runs per frame -- running two detectors and merging their boxes would just
-    produce duplicate/overlapping faces, not a meaningfully combined result). "yolo"/"scrfd"
-    fall back to "ssd" (the always-required detector) if that model isn't loaded.
+    produce duplicate/overlapping faces, not a meaningfully combined result). "yolo"/"scrfd"/
+    "retinaface" fall back to "ssd" (the always-required detector) if that model isn't loaded.
 
     tracker (#2) is optional and stays None for single-image callers (upload/snapshot have no
     "next frame" for an ID to persist into). When a FaceTracker is passed -- video/webcam LIVE
@@ -2310,10 +2398,13 @@ def analyze_frame(
     annotated_frame = frame.copy()
     yolo_net = models.yolo_face_nets.get("yolo")
     scrfd_net = models.scrfd_face_nets.get("scrfd")
+    retinaface_net = models.retinaface_nets.get("retinaface")
     if face_detector == "yolo" and yolo_net is not None:
         face_boxes = detect_faces_yolo(yolo_net, frame, conf_threshold)
     elif face_detector == "scrfd" and scrfd_net is not None:
         face_boxes = detect_faces_scrfd(scrfd_net, frame, conf_threshold)
+    elif face_detector == "retinaface" and retinaface_net is not None:
+        face_boxes = detect_faces_retinaface(retinaface_net, frame, conf_threshold)
     else:
         face_boxes = detect_faces(models.face_net, frame, conf_threshold)
     track_ids = tracker.update(face_boxes) if tracker is not None else [None] * len(face_boxes)

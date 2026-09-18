@@ -109,6 +109,9 @@ YOLO_FACE_MODEL="$REPLY_MODEL"
 prompt_feature "SCRFD FACE DETECTOR (additive -- SSD detector stays required/always on)" scrfd
 SCRFD_FACE_MODEL="$REPLY_MODEL"
 
+prompt_feature "RETINAFACE FACE DETECTOR (additive -- SSD detector stays required/always on)" retinaface
+RETINAFACE_MODEL="$REPLY_MODEL"
+
 echo "" >&2
 echo "Building ${IMAGE_TAG} with:" >&2
 echo "  AGE_MODEL=${AGE_MODEL}" >&2
@@ -128,6 +131,7 @@ echo "  HAND_MODEL=${HAND_MODEL}" >&2
 echo "  RECONSTRUCTION_3D_MODEL=${RECONSTRUCTION_3D_MODEL}" >&2
 echo "  YOLO_FACE_MODEL=${YOLO_FACE_MODEL}" >&2
 echo "  SCRFD_FACE_MODEL=${SCRFD_FACE_MODEL}" >&2
+echo "  RETINAFACE_MODEL=${RETINAFACE_MODEL}" >&2
 echo "" >&2
 
 docker build \
@@ -148,6 +152,7 @@ docker build \
     --build-arg RECONSTRUCTION_3D_MODEL="$RECONSTRUCTION_3D_MODEL" \
     --build-arg YOLO_FACE_MODEL="$YOLO_FACE_MODEL" \
     --build-arg SCRFD_FACE_MODEL="$SCRFD_FACE_MODEL" \
+    --build-arg RETINAFACE_MODEL="$RETINAFACE_MODEL" \
     -t "$IMAGE_TAG" .
 
 echo "" >&2
