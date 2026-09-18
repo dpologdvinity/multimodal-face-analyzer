@@ -53,7 +53,7 @@ prompt_feature() {
     REPLY_MODEL="$result"
 }
 
-prompt_feature "AGE" caffe insightface ssrnet fairface
+prompt_feature "AGE" caffe insightface ssrnet fairface dex
 AGE_MODEL="$REPLY_MODEL"
 
 prompt_feature "GENDER" caffe insightface deepface fairface

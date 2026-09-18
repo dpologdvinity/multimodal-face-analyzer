@@ -45,6 +45,8 @@ FERPLUS_MODEL = MODEL_DIR / "emotion_ferplus.onnx"
 FAIRFACE_MODEL = MODEL_DIR / "fairface_7class.onnx"
 DEEPFACE_RACE_MODEL = MODEL_DIR / "deepface_race.h5"
 DEEPFACE_GENDER_MODEL = MODEL_DIR / "deepface_gender.h5"
+DEX_PROTO = MODEL_DIR / "dex_age.prototxt"
+DEX_MODEL = MODEL_DIR / "dex_age.caffemodel"
 
 MODEL_MEAN_VALUES = (78.4263377603, 87.768914374, 114.895847746)
 AGE_LIST = ['(0-2)', '(4-6)', '(8-12)', '(15-20)', '(25-32)', '(38-43)', '(48-53)', '(60-100)']
@@ -61,10 +63,11 @@ MIN_EYES_OPEN = 2
 RACE_LABELS_FAIRFACE = ['White', 'Black', 'Latino_Hispanic', 'East Asian', 'Southeast Asian', 'Indian', 'Middle Eastern']
 RACE_LABELS_DEEPFACE = ['asian', 'indian', 'black', 'white', 'middle eastern', 'latino hispanic']
 RACE_CLOSE_MARGIN = 0.10  # show top-2 race classes together if within this probability margin
+DEX_MEAN_VALUES = (103.939, 116.779, 123.68)  # VGG-16 ImageNet BGR mean, per DEX's own preprocessing
 
 # Model keys per feature, in quickest-to-build order (first = default).
 # Must match the numbered options in build-and-run.sh and the Dockerfile ARGs.
-AGE_MODEL_OPTIONS = ["caffe", "insightface", "ssrnet", "fairface"]
+AGE_MODEL_OPTIONS = ["caffe", "insightface", "ssrnet", "fairface", "dex"]
 GENDER_MODEL_OPTIONS = ["caffe", "insightface", "deepface", "fairface"]
 FAIRFACE_AGE_LABELS = ["0-2", "3-9", "10-19", "20-29", "30-39", "40-49", "50-59", "60-69", "70+"]
 EMOTION_MODEL_OPTIONS = ["efficientnet", "ferplus", "mini_xception", "dan"]
@@ -111,6 +114,8 @@ def load_models() -> Models:
         net.load_state_dict(checkpoint["state_dict"])
         net.eval()
         age_nets["ssrnet"] = net
+    if DEX_PROTO.exists() and DEX_MODEL.exists():
+        age_nets["dex"] = cv2.dnn.readNetFromCaffe(str(DEX_PROTO), str(DEX_MODEL))
 
     gender_nets = {}
     if GENDER_PROTO.exists() and GENDER_MODEL.exists():
@@ -194,6 +199,16 @@ def predict_age_ssrnet(net, face_bgr: np.ndarray) -> str:
     tensor = torch.from_numpy(face_norm.transpose(2, 0, 1)).unsqueeze(0).float()
     with torch.no_grad():
         age = net(tensor).item()
+    return f"{age:.0f}"
+
+
+def predict_age_dex(net, face_bgr: np.ndarray) -> str:
+    """Predict a continuous age with DEX (Deep EXpectation): 101-class softmax over ages 0-100,
+    decoded as an expected value (weighted sum of class centers), not argmax."""
+    blob = cv2.dnn.blobFromImage(face_bgr, 1.0, (224, 224), DEX_MEAN_VALUES, swapRB=False, crop=False)
+    net.setInput(blob)
+    probs = net.forward().flatten()
+    age = sum(p * i for i, p in enumerate(probs))
     return f"{age:.0f}"
 
 
@@ -414,6 +429,8 @@ def analyze_frame(
                 value = predict_age_ssrnet(net, face)
             elif key == "fairface":
                 value = predict_age_fairface(net, frame, (x1, y1, x2, y2))
+            elif key == "dex":
+                value = predict_age_dex(net, face)
             else:
                 value = predict_age_insightface(net, frame, (x1, y1, x2, y2))
             age_pairs.append((key, value))

@@ -4,7 +4,7 @@ FROM python:3.11-slim
 # Per-feature model selection. Each ARG takes a comma-separated list of model
 # keys for that feature, or an empty string for "none". Options, in
 # quickest-to-build order (default is the first/quickest):
-#   AGE_MODEL:        caffe, insightface, ssrnet, fairface   (default: caffe)
+#   AGE_MODEL:        caffe, insightface, ssrnet, fairface, dex (default: caffe)
 #   GENDER_MODEL:      caffe, insightface, deepface, fairface (default: caffe)
 #   EMOTION_MODEL:     efficientnet, ferplus, mini_xception, dan (default: efficientnet)
 #   DROWSINESS_MODEL:  haarcascade                  (default: haarcascade)
@@ -70,6 +70,8 @@ RUN --mount=type=bind,source=models/age_deploy.prototxt,target=/tmp/models/age_d
     --mount=type=bind,source=models/deepface_race.h5,target=/tmp/models/deepface_race.h5 \
     --mount=type=bind,source=models/deepface_gender.h5,target=/tmp/models/deepface_gender.h5 \
     --mount=type=bind,source=models/mini_xception_fer.h5,target=/tmp/models/mini_xception_fer.h5 \
+    --mount=type=bind,source=models/dex_age.prototxt,target=/tmp/models/dex_age.prototxt \
+    --mount=type=bind,source=models/dex_age.caffemodel,target=/tmp/models/dex_age.caffemodel \
     set -e; \
     age_csv=",$AGE_MODEL,"; gender_csv=",$GENDER_MODEL,"; emotion_csv=",$EMOTION_MODEL,"; \
     drowsiness_csv=",$DROWSINESS_MODEL,"; race_csv=",$RACE_MODEL,"; \
@@ -80,6 +82,7 @@ RUN --mount=type=bind,source=models/age_deploy.prototxt,target=/tmp/models/age_d
     case "$gender_csv" in *,insightface,*) cp /tmp/models/insightface_genderage.onnx models/ ;; esac; \
     case "$age_csv" in *,fairface,*) cp /tmp/models/fairface_7class.onnx models/ ;; esac; \
     case "$gender_csv" in *,fairface,*) cp /tmp/models/fairface_7class.onnx models/ ;; esac; \
+    case "$age_csv" in *,dex,*) cp /tmp/models/dex_age.prototxt /tmp/models/dex_age.caffemodel models/ ;; esac; \
     case "$gender_csv" in *,deepface,*) cp /tmp/models/deepface_gender.h5 models/ ;; esac; \
     case "$emotion_csv" in *,dan,*) cp /tmp/models/dan_affecnet7.pth models/ ;; esac; \
     case "$emotion_csv" in *,efficientnet,*) cp /tmp/models/efficientnet_b0_fer.onnx models/ ;; esac; \
