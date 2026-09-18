@@ -3,6 +3,9 @@ import os
 from pathlib import Path
 import cv2
 import numpy as np
+import torch
+
+from dan_model import DAN
 
 # Directory & Model Paths
 BASE_DIR = Path(__file__).resolve().parent
@@ -15,17 +18,21 @@ AGE_MODEL = MODEL_DIR / "age_net.caffemodel"
 GENDER_PROTO = MODEL_DIR / "gender_deploy.prototxt"
 GENDER_MODEL = MODEL_DIR / "gender_net.caffemodel"
 EYE_CASCADE_FILE = MODEL_DIR / "haarcascade_eye.xml"
+EMOTION_MODEL = MODEL_DIR / "dan_affecnet7.pth"
 
 # Constants
 MODEL_MEAN_VALUES = (78.4263377603, 87.768914374, 114.895847746)
 AGE_LIST = ['(0-2)', '(4-6)', '(8-12)', '(15-20)', '(25-32)', '(38-43)', '(48-53)', '(60-100)']
 GENDER_LIST = ['Male', 'Female']
+EMOTION_LABELS = ['neutral', 'happy', 'sad', 'surprise', 'fear', 'disgust', 'anger']
+EMOTION_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
+EMOTION_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 MIN_EYES_OPEN = 2
 
 
 def load_networks():
     """Verify paths and load DNN models into OpenCV."""
-    required_files = [FACE_PROTO, FACE_MODEL, AGE_PROTO, AGE_MODEL, GENDER_PROTO, GENDER_MODEL, EYE_CASCADE_FILE]
+    required_files = [FACE_PROTO, FACE_MODEL, AGE_PROTO, AGE_MODEL, GENDER_PROTO, GENDER_MODEL, EYE_CASCADE_FILE, EMOTION_MODEL]
     for file_path in required_files:
         if not file_path.exists():
             raise FileNotFoundError(
@@ -38,7 +45,22 @@ def load_networks():
     gender_net = cv2.dnn.readNetFromCaffe(str(GENDER_PROTO), str(GENDER_MODEL))
     eye_cascade = cv2.CascadeClassifier(str(EYE_CASCADE_FILE))
 
-    return face_net, age_net, gender_net, eye_cascade
+    emotion_net = DAN(num_class=7, num_head=4, pretrained=False)
+    checkpoint = torch.load(str(EMOTION_MODEL), map_location="cpu")
+    emotion_net.load_state_dict(checkpoint["model_state_dict"])
+    emotion_net.eval()
+
+    return face_net, age_net, gender_net, eye_cascade, emotion_net
+
+
+def predict_emotion(emotion_net, face_bgr):
+    """Classify facial expression into one of EMOTION_LABELS."""
+    face_rgb = cv2.cvtColor(cv2.resize(face_bgr, (224, 224)), cv2.COLOR_BGR2RGB)
+    face_norm = (face_rgb.astype(np.float32) / 255.0 - EMOTION_MEAN) / EMOTION_STD
+    tensor = torch.from_numpy(face_norm.transpose(2, 0, 1)).unsqueeze(0).float()
+    with torch.no_grad():
+        logits, _, _ = emotion_net(tensor)
+    return EMOTION_LABELS[logits[0].argmax().item()]
 
 
 def detect_drowsiness(eye_cascade, face_bgr):
@@ -49,9 +71,18 @@ def detect_drowsiness(eye_cascade, face_bgr):
 
 
 def draw_outlined_text(frame, text, org, color):
-    """Draw text with a black outline so it stays readable over any background."""
-    cv2.putText(frame, text, org, cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 5, cv2.LINE_AA)
-    cv2.putText(frame, text, org, cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2, cv2.LINE_AA)
+    """Draw text with a black outline so it stays readable over any background. Clamps origin so text stays inside the frame."""
+    font, scale, thickness = cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2
+    (text_w, text_h), baseline = cv2.getTextSize(text, font, scale, thickness)
+    frame_h, frame_w = frame.shape[:2]
+
+    x, y = org
+    x = max(0, min(x, frame_w - text_w))
+    y = max(text_h, min(y, frame_h - baseline))
+    org = (x, y)
+
+    cv2.putText(frame, text, org, font, scale, (0, 0, 0), thickness + 3, cv2.LINE_AA)
+    cv2.putText(frame, text, org, font, scale, color, thickness, cv2.LINE_AA)
 
 
 def detect_faces(net, frame, conf_threshold=0.7):
@@ -73,7 +104,7 @@ def detect_faces(net, frame, conf_threshold=0.7):
     return face_boxes
 
 
-def process_image(image_path, face_net, age_net, gender_net, eye_cascade, crop_only=False, show=True, save=False, output_dir="output", conf_threshold=0.7):
+def process_image(image_path, face_net, age_net, gender_net, eye_cascade, emotion_net, crop_only=False, show=True, save=False, output_dir="output", conf_threshold=0.7):
     """Run face detection, age prediction, and gender prediction on an image."""
     frame = cv2.imread(str(image_path))
     if frame is None:
@@ -110,11 +141,13 @@ def process_image(image_path, face_net, age_net, gender_net, eye_cascade, crop_o
         age_net.setInput(blob)
         age = AGE_LIST[age_net.forward()[0].argmax()]
 
+        emotion = predict_emotion(emotion_net, face)
+
         drowsy = detect_drowsiness(eye_cascade, face)
         status_label = "DROWSY" if drowsy else "ALERT"
         status_color = (0, 0, 255) if drowsy else (0, 255, 0)
 
-        label = f"{gender}, {age}"
+        label = f"{gender}, {age}, {emotion}"
 
         # Draw box and text on main image frame, black outline for readability
         cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), (0, 255, 0), int(round(frame.shape[0] / 150)), 8)
@@ -165,7 +198,7 @@ def main():
     args = parser.parse_args()
 
     try:
-        face_net, age_net, gender_net, eye_cascade = load_networks()
+        face_net, age_net, gender_net, eye_cascade, emotion_net = load_networks()
     except Exception as e:
         print(f"Error: {e}")
         return
@@ -180,6 +213,7 @@ def main():
             age_net,
             gender_net,
             eye_cascade,
+            emotion_net,
             crop_only=args.crop,
             show=not args.no_show,
             save=args.save,
