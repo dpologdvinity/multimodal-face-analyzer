@@ -12,6 +12,8 @@ import cv2
 import numpy as np
 import pandas as pd
 import streamlit as st
+from PIL import Image
+from streamlit_cropper import st_cropper
 from streamlit_webrtc import webrtc_streamer
 
 import inference
@@ -444,15 +446,58 @@ def _render_bounded_image(image_rgb: np.ndarray, caption: str, key: str, width: 
     st.image(image_rgb, caption=caption, width=width)
 
 
+def _render_photo_editor(frame_bgr: np.ndarray, identifier: str, adjustment_key: str, caption: str) -> np.ndarray:
+    """Show an optional mouse crop and image-adjustment panel beside the source image."""
+    cropped_key = f"cropped_photo_{identifier}"
+    if cropped_key in st.session_state:
+        frame_bgr = st.session_state[cropped_key]
+    editing_key = f"photo_editor_{identifier}"
+    image_col, editor_col = st.columns([3, 2])
+    with editor_col:
+        if st.button("EDIT IMAGE", key=f"edit_image_{identifier}"):
+            st.session_state[editing_key] = not st.session_state.get(editing_key, False)
+        editing = st.session_state.get(editing_key, False)
+        if editing:
+            st.caption("Drag the crop rectangle with your mouse, then apply adjustments beside the preview.")
+            adjustments = _adjustment_sliders(
+                "Adjust the image before detection.", adjustment_key, column_count=1,
+            )
+        else:
+            adjustments = {
+                name: values[2] for name, values in inference.IMAGE_ADJUSTMENT_RANGES.items()
+            }
+    with image_col:
+        if editing:
+            source = Image.fromarray(cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB))
+            cropped = st_cropper(
+                source, realtime_update=True, box_color="#76dfb1", aspect_ratio=None,
+                return_type="image", key=f"cropper_{identifier}",
+            )
+            edited_bgr = cv2.cvtColor(np.asarray(cropped), cv2.COLOR_RGB2BGR)
+            if st.button("CROP PHOTO", key=f"crop_photo_{identifier}"):
+                st.session_state[f"cropped_photo_{identifier}"] = edited_bgr
+                st.session_state[editing_key] = False
+                st.rerun()
+        else:
+            edited_bgr = frame_bgr
+            _render_bounded_image(cv2.cvtColor(edited_bgr, cv2.COLOR_BGR2RGB), caption, f"source_{identifier}")
+    if any(adjustments.values()):
+        edited_bgr = inference.apply_image_adjustments(edited_bgr, adjustments)
+    return edited_bgr
+
+
 def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: float) -> None:
     """Run detection/inference on frame and render result in Streamlit."""
+    frame = _render_photo_editor(frame, identifier, "global_adj", "SOURCE PHOTO")
     frame, was_colorized = inference.maybe_colorize(models, frame, active_colorization)
 
     annotated_frame, cropped_faces, any_drowsy, has_faces, pose_detected, hands_detected = inference.analyze_frame(
         models, frame, conf_threshold, active_age, active_gender, active_emotion, active_drowsiness, active_race, active_expression,
         active_recognition, st.session_state.get("gallery", {}),
         active_facial_hair, active_skin_tone, active_glasses, active_mask, active_hair_color, active_eye_color,
-        active_pose, active_face_landmarks, active_hands, active_gaze, global_adjustments, face_adjustments, face_detector=active_face_detector,
+        active_pose, active_face_landmarks, active_hands, active_gaze,
+        {name: values[2] for name, values in inference.IMAGE_ADJUSTMENT_RANGES.items()}, face_adjustments,
+        face_detector=active_face_detector,
         active_liveness=active_liveness,
     )
 
@@ -462,43 +507,6 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
         st.caption("[ POSE DETECTED ] -- skeleton overlay drawn")
     if hands_detected:
         st.caption("[ HANDS DETECTED ] -- landmark overlay drawn")
-
-    height, width = frame.shape[:2]
-    region_key = f"region_result_{identifier}"
-    with st.expander("SELECT REGION & TRANSFORM"):
-        x_col, y_col = st.columns(2)
-        x1 = x_col.number_input("X1", min_value=0, max_value=width, value=0, key=f"x1_{identifier}")
-        x2 = x_col.number_input("X2", min_value=0, max_value=width, value=width, key=f"x2_{identifier}")
-        y1 = y_col.number_input("Y1", min_value=0, max_value=height, value=0, key=f"y1_{identifier}")
-        y2 = y_col.number_input("Y2", min_value=0, max_value=height, value=height, key=f"y2_{identifier}")
-        transform = st.selectbox("TRANSFORM", inference.GEOMETRIC_TRANSFORM_OPTIONS, key=f"transform_{identifier}")
-        params = {}
-        if transform == "translate":
-            params = {"dx": st.number_input("DX", value=0, key=f"dx_{identifier}"),
-                      "dy": st.number_input("DY", value=0, key=f"dy_{identifier}")}
-        elif transform == "reflect":
-            params = {"axis": st.selectbox("AXIS", ["horizontal", "vertical"], key=f"reflect_axis_{identifier}")}
-        elif transform == "rotate":
-            params = {"angle": st.number_input("ANGLE (DEGREES)", value=0.0, key=f"angle_{identifier}"),
-                      "scale": st.number_input("ROTATION SCALE", min_value=0.01, value=1.0, key=f"rotation_scale_{identifier}")}
-        elif transform == "scale":
-            params = {"fx": st.number_input("X SCALE", min_value=0.01, value=1.0, key=f"fx_{identifier}"),
-                      "fy": st.number_input("Y SCALE", min_value=0.01, value=1.0, key=f"fy_{identifier}")}
-        elif transform == "shear":
-            params = {"axis": st.selectbox("AXIS", ["x", "y"], key=f"shear_axis_{identifier}"),
-                      "factor": st.number_input("SHEAR FACTOR", value=0.0, key=f"shear_factor_{identifier}")}
-        if st.button("APPLY TRANSFORM", key=f"transform_btn_{identifier}"):
-            region = inference.crop_region(frame, x1, y1, x2, y2)
-            if region.size == 0:
-                st.warning("[ EMPTY REGION ] -- select a rectangle with nonzero width and height")
-            else:
-                result = inference.apply_geometric_transform(region, transform, **params)
-                st.session_state[region_key] = result
-        if region_key in st.session_state:
-            result = st.session_state[region_key]
-            st.image(cv2.cvtColor(result, cv2.COLOR_BGR2RGB), caption="Transformed region")
-            st.download_button("DOWNLOAD TRANSFORMED PNG", cv2.imencode(".png", result)[1].tobytes(),
-                               file_name="transformed_region.png", mime="image/png", key=f"transform_dl_{identifier}")
 
     if not has_faces:
         st.warning(f"[TARGET MISSING] Zero targets detected in file: {identifier}")
@@ -566,13 +574,14 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
     cols = st.columns(min(len(cropped_faces), 2))
     for i, face in enumerate(cropped_faces):
         with cols[i % len(cols)]:
-            with st.expander(f"Edit face {face['idx']}"):
+            face_preview_col, face_editor_col = st.columns([3, 2])
+            face_bgr = cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR)
+            with face_editor_col:
                 individual_adjustments = _adjustment_sliders(
                     "Edit this crop only. Analysis labels use the detected crop.",
                     f"individual_adj_{identifier}_{face['idx']}",
                     column_count=1,
                 )
-                face_bgr = cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR)
                 edited_face_bgr = (
                     inference.apply_image_adjustments(face_bgr, individual_adjustments)
                     if any(individual_adjustments.values()) else face_bgr
@@ -597,6 +606,11 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
                                                         key=f"denoise_method_{identifier}_{face['idx']}")
                 if st.button("APPLY IMAGE OP", key=f"image_op_btn_{identifier}_{face['idx']}"):
                     st.session_state[op_key] = inference.apply_image_op(edited_face_bgr, op, **op_params)
+            with face_preview_col:
+                _render_bounded_image(
+                    cv2.cvtColor(edited_face_bgr, cv2.COLOR_BGR2RGB), f"Face {face['idx']:02d}",
+                    f"face_{identifier}_{face['idx']}", width=360,
+                )
                 if op_key in st.session_state:
                     result = st.session_state[op_key]
                     _render_bounded_image(
@@ -606,10 +620,6 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
                     st.download_button("DOWNLOAD FACE PNG", cv2.imencode(".png", result)[1].tobytes(),
                                        file_name=f"face_{face['idx']}_processed.png", mime="image/png",
                                        key=f"image_op_dl_{identifier}_{face['idx']}")
-            _render_bounded_image(
-                cv2.cvtColor(edited_face_bgr, cv2.COLOR_BGR2RGB), f"Face {face['idx']:02d}",
-                f"face_{identifier}_{face['idx']}", width=360,
-            )
             st.markdown(_target_card_html(face), unsafe_allow_html=True)
             lbph_available = models.recognition_nets.get("lbph") is not None
             if face["embedding"] is not None or lbph_available:
@@ -691,18 +701,12 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
                     )
 
 
-with st.expander("Image editing", expanded=True):
-    if st.button("Reset all adjustments", key="reset_all_adjustments"):
-        _reset_adjustments(("global_adj", "face_adj", "individual_adj"))
-    whole_image_tab, each_face_tab = st.tabs(["Whole image", "Each face"])
-    with whole_image_tab:
-        global_adjustments = _adjustment_sliders(
-            "Adjust the full image before face detection.", "global_adj"
-        )
-    with each_face_tab:
-        face_adjustments = _adjustment_sliders(
-            "Adjust each detected face before classification.", "face_adj"
-        )
+global_adjustments = {
+    name: values[2] for name, values in inference.IMAGE_ADJUSTMENT_RANGES.items()
+}
+face_adjustments = {
+    name: values[2] for name, values in inference.IMAGE_ADJUSTMENT_RANGES.items()
+}
 
 tab_upload, tab_webcam = st.tabs(["Image upload", "Webcam"])
 
