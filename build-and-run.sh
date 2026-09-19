@@ -3,6 +3,7 @@
 # Prompts for which model(s) to build in per feature, then builds and runs the image.
 set -euo pipefail
 
+PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 IMAGE_TAG="face-analyzer"
 CONTAINER_NAME="face_analyzer_container"
 PORT="8501"
@@ -216,6 +217,87 @@ set_additional_feature_models() {
 }
 set_additional_feature_models "$REPLY_MODEL"
 
+# Docker otherwise receives the entire models/ directory as its build context
+# (more than 3GB in this repository). Build a same-filesystem temporary context
+# and hard-link only the selected model files into it, so staging adds no second
+# copy of the large weights.
+BUILD_CONTEXT="$(mktemp -d "$PROJECT_ROOT/.docker-context.XXXXXX")"
+cleanup_build_context() {
+    if [ -n "${BUILD_CONTEXT:-}" ] && [ -d "$BUILD_CONTEXT" ]; then
+        rm -rf -- "$BUILD_CONTEXT"
+    fi
+}
+trap cleanup_build_context EXIT
+
+cp -a "$PROJECT_ROOT/Dockerfile" "$PROJECT_ROOT/requirements.txt" "$BUILD_CONTEXT/"
+cp -a "$PROJECT_ROOT/src" "$BUILD_CONTEXT/src"
+mkdir -p "$BUILD_CONTEXT/models"
+
+link_model() {
+    local model_path="$1"
+    local source="$PROJECT_ROOT/models/$model_path"
+    local target="$BUILD_CONTEXT/models/$model_path"
+    if [ ! -f "$source" ]; then
+        echo "Missing model file: models/$model_path" >&2
+        exit 1
+    fi
+    mkdir -p "$(dirname -- "$target")"
+    [ -e "$target" ] || ln "$source" "$target"
+}
+
+stage_model() {
+    local selected=",$1,"
+    local model_key="$2"
+    shift 2
+    case "$selected" in
+        *,$model_key,*)
+            local model_path
+            for model_path in "$@"; do
+                link_model "$model_path"
+            done
+            ;;
+    esac
+}
+
+# SSD is the required detector fallback. All other files are selected by the
+# same build arguments that control dependency installation and Dockerfile
+# copying.
+link_model opencv_face_detector.pbtxt
+link_model opencv_face_detector_uint8.pb
+stage_model "$AGE_MODEL" caffe age_deploy.prototxt age_net.caffemodel
+stage_model "$AGE_MODEL" insightface insightface_genderage.onnx
+stage_model "$AGE_MODEL" fairface fairface_7class.onnx
+stage_model "$AGE_MODEL" ssrnet ssrnet_morph2.pth
+stage_model "$AGE_MODEL" dex dex_age.prototxt dex_age.caffemodel
+stage_model "$AGE_MODEL" mivolo mivolo_v2.safetensors mivolo_v2_config.json
+stage_model "$GENDER_MODEL" caffe gender_deploy.prototxt gender_net.caffemodel
+stage_model "$GENDER_MODEL" insightface insightface_genderage.onnx
+stage_model "$GENDER_MODEL" fairface fairface_7class.onnx
+stage_model "$GENDER_MODEL" deepface deepface_gender.h5
+stage_model "$GENDER_MODEL" mivolo mivolo_v2.safetensors mivolo_v2_config.json
+stage_model "$EMOTION_MODEL" dan dan_affecnet7.pth
+stage_model "$EMOTION_MODEL" efficientnet efficientnet_b0_fer.onnx
+stage_model "$EMOTION_MODEL" ferplus emotion_ferplus.onnx
+stage_model "$EMOTION_MODEL" hsemotion hsemotion_enet_b0_8_best_vgaf.onnx
+stage_model "$EMOTION_MODEL" mini_xception mini_xception_fer.h5
+stage_model "$DROWSINESS_MODEL" haarcascade haarcascade_eye.xml
+stage_model "$RACE_MODEL" fairface fairface_7class.onnx
+stage_model "$RACE_MODEL" deepface deepface_race.h5
+stage_model "$EXPRESSION_MODEL" blendshapes face_landmarker.task
+stage_model "$LIVENESS_MODEL" mediapipe face_landmarker.task
+stage_model "$RECOGNITION_MODEL" vggface deepface_vgg.h5
+stage_model "$FACIAL_HAIR_MODEL" bisenet bisenet_face_parsing.onnx
+stage_model "$GLASSES_MODEL" mobilenet glasses_detector.onnx
+stage_model "$MASK_MODEL" mobilenetv2 mask_detector.h5
+stage_model "$COLORIZATION_MODEL" eccv16 colorization_deploy_v2.prototxt colorization_release_v2.caffemodel pts_in_hull.npy
+stage_model "$POSE_MODEL" mpi pose_deploy_linevec_faster_4_stages.prototxt pose_iter_160000.caffemodel
+stage_model "$HAND_MODEL" mediapipe hand_landmarker.task
+stage_model "$RECONSTRUCTION_3D_MODEL" deep3d BFM/similarity_Lm3D_all.mat deep3d_recon_resnet50.pth
+stage_model "$YOLO_FACE_MODEL" yolo yolov8n_face.onnx
+stage_model "$SCRFD_FACE_MODEL" scrfd scrfd_2.5g_bnkps.onnx
+stage_model "$RETINAFACE_MODEL" retinaface retinaface_mobilenet0.25.onnx
+stage_model "$AGE_PROGRESSION_MODEL" franunet face_reaging_unet.pth
+
 echo "" >&2
 echo "Building ${IMAGE_TAG} with:" >&2
 echo "  AGE_MODEL=${AGE_MODEL}" >&2
@@ -259,7 +341,10 @@ docker build \
     --build-arg SCRFD_FACE_MODEL="$SCRFD_FACE_MODEL" \
     --build-arg RETINAFACE_MODEL="$RETINAFACE_MODEL" \
     --build-arg AGE_PROGRESSION_MODEL="$AGE_PROGRESSION_MODEL" \
-    -t "$IMAGE_TAG" .
+    -t "$IMAGE_TAG" "$BUILD_CONTEXT"
+
+cleanup_build_context
+BUILD_CONTEXT=""
 
 echo "" >&2
 read -rp "Live-mount src/ for code edits without rebuilding? (testing only, code changes only -- not for Dockerfile/model/dependency changes) [y/N]: " dev_mount
@@ -269,7 +354,7 @@ docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
 
 if [[ "$dev_mount" =~ ^[Yy] ]]; then
     docker run -d -p "127.0.0.1:${PORT}:8501" --name "$CONTAINER_NAME" \
-        -v "$(pwd)/src:/app/src" \
+        -v "$PROJECT_ROOT/src:/app/src" \
         "$IMAGE_TAG"
     echo "" >&2
     echo "Dev mode: edit src/*.py locally, Streamlit auto-reruns in the container." >&2

@@ -80,6 +80,78 @@ class BuildPromptFormattingTests(unittest.TestCase):
                 self.assertIn("SCRFD_FACE_MODEL=scrfd", output)
                 self.assertIn("RETINAFACE_MODEL=retinaface", output)
 
+    def test_build_context_contains_only_required_models(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            fake_bin = temp_path / "bin"
+            fake_bin.mkdir()
+            manifest = temp_path / "models.txt"
+            docker = fake_bin / "docker"
+            docker.write_text(
+                "#!/bin/sh\n"
+                "if [ \"$1\" = build ]; then\n"
+                "  for arg do context=\"$arg\"; done\n"
+                "  find \"$context/models\" -type f -printf '%P\\n' | sort > \"$DOCKER_MODEL_MANIFEST\"\n"
+                "fi\n"
+                "exit 0\n"
+            )
+            docker.chmod(0o755)
+
+            env = os.environ.copy()
+            env["PATH"] = f"{fake_bin}:{env['PATH']}"
+            env["DOCKER_MODEL_MANIFEST"] = str(manifest)
+            result = subprocess.run(
+                ["bash", str(SCRIPT)],
+                cwd=SCRIPT.parent,
+                input="\n".join(["0"] * 8 + ["n", "q"]) + "\n",
+                text=True,
+                capture_output=True,
+                env=env,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(
+                manifest.read_text().splitlines(),
+                ["opencv_face_detector.pbtxt", "opencv_face_detector_uint8.pb"],
+            )
+
+    def test_shared_model_is_staged_once_for_multiple_features(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            fake_bin = temp_path / "bin"
+            fake_bin.mkdir()
+            manifest = temp_path / "models.txt"
+            docker = fake_bin / "docker"
+            docker.write_text(
+                "#!/bin/sh\n"
+                "if [ \"$1\" = build ]; then\n"
+                "  for arg do context=\"$arg\"; done\n"
+                "  find \"$context/models\" -type f -printf '%P\\n' | sort > \"$DOCKER_MODEL_MANIFEST\"\n"
+                "fi\n"
+                "exit 0\n"
+            )
+            docker.chmod(0o755)
+
+            env = os.environ.copy()
+            env["PATH"] = f"{fake_bin}:{env['PATH']}"
+            env["DOCKER_MODEL_MANIFEST"] = str(manifest)
+            result = subprocess.run(
+                ["bash", str(SCRIPT)],
+                cwd=SCRIPT.parent,
+                input="\n".join(["0", "2", "2", "0", "0", "0", "0", "0", "n", "q"]) + "\n",
+                text=True,
+                capture_output=True,
+                env=env,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(
+                manifest.read_text().splitlines(),
+                ["insightface_genderage.onnx", "opencv_face_detector.pbtxt", "opencv_face_detector_uint8.pb"],
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

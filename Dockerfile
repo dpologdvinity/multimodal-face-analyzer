@@ -179,43 +179,9 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 COPY src/ src/
 COPY models/opencv_face_detector.pbtxt models/opencv_face_detector_uint8.pb models/
 
-# Per-feature model files: bind-mount the source so files for unselected models are never written into a layer
-RUN --mount=type=bind,source=models/age_deploy.prototxt,target=/tmp/models/age_deploy.prototxt \
-    --mount=type=bind,source=models/age_net.caffemodel,target=/tmp/models/age_net.caffemodel \
-    --mount=type=bind,source=models/ssrnet_morph2.pth,target=/tmp/models/ssrnet_morph2.pth \
-    --mount=type=bind,source=models/gender_deploy.prototxt,target=/tmp/models/gender_deploy.prototxt \
-    --mount=type=bind,source=models/gender_net.caffemodel,target=/tmp/models/gender_net.caffemodel \
-    --mount=type=bind,source=models/insightface_genderage.onnx,target=/tmp/models/insightface_genderage.onnx \
-    --mount=type=bind,source=models/haarcascade_eye.xml,target=/tmp/models/haarcascade_eye.xml \
-    --mount=type=bind,source=models/dan_affecnet7.pth,target=/tmp/models/dan_affecnet7.pth \
-    --mount=type=bind,source=models/efficientnet_b0_fer.onnx,target=/tmp/models/efficientnet_b0_fer.onnx \
-    --mount=type=bind,source=models/emotion_ferplus.onnx,target=/tmp/models/emotion_ferplus.onnx \
-    --mount=type=bind,source=models/hsemotion_enet_b0_8_best_vgaf.onnx,target=/tmp/models/hsemotion_enet_b0_8_best_vgaf.onnx \
-    --mount=type=bind,source=models/fairface_7class.onnx,target=/tmp/models/fairface_7class.onnx \
-    --mount=type=bind,source=models/deepface_race.h5,target=/tmp/models/deepface_race.h5 \
-    --mount=type=bind,source=models/deepface_gender.h5,target=/tmp/models/deepface_gender.h5 \
-    --mount=type=bind,source=models/deepface_vgg.h5,target=/tmp/models/deepface_vgg.h5 \
-    --mount=type=bind,source=models/mini_xception_fer.h5,target=/tmp/models/mini_xception_fer.h5 \
-    --mount=type=bind,source=models/dex_age.prototxt,target=/tmp/models/dex_age.prototxt \
-    --mount=type=bind,source=models/dex_age.caffemodel,target=/tmp/models/dex_age.caffemodel \
-    --mount=type=bind,source=models/mivolo_v2.safetensors,target=/tmp/models/mivolo_v2.safetensors \
-    --mount=type=bind,source=models/mivolo_v2_config.json,target=/tmp/models/mivolo_v2_config.json \
-    --mount=type=bind,source=models/face_landmarker.task,target=/tmp/models/face_landmarker.task \
-    --mount=type=bind,source=models/bisenet_face_parsing.onnx,target=/tmp/models/bisenet_face_parsing.onnx \
-    --mount=type=bind,source=models/glasses_detector.onnx,target=/tmp/models/glasses_detector.onnx \
-    --mount=type=bind,source=models/mask_detector.h5,target=/tmp/models/mask_detector.h5 \
-    --mount=type=bind,source=models/colorization_deploy_v2.prototxt,target=/tmp/models/colorization_deploy_v2.prototxt \
-    --mount=type=bind,source=models/colorization_release_v2.caffemodel,target=/tmp/models/colorization_release_v2.caffemodel \
-    --mount=type=bind,source=models/pts_in_hull.npy,target=/tmp/models/pts_in_hull.npy \
-    --mount=type=bind,source=models/pose_deploy_linevec_faster_4_stages.prototxt,target=/tmp/models/pose_deploy_linevec_faster_4_stages.prototxt \
-    --mount=type=bind,source=models/pose_iter_160000.caffemodel,target=/tmp/models/pose_iter_160000.caffemodel \
-    --mount=type=bind,source=models/hand_landmarker.task,target=/tmp/models/hand_landmarker.task \
-    --mount=type=bind,source=models/BFM/similarity_Lm3D_all.mat,target=/tmp/models/BFM/similarity_Lm3D_all.mat \
-    --mount=type=bind,source=models/deep3d_recon_resnet50.pth,target=/tmp/models/deep3d_recon_resnet50.pth \
-    --mount=type=bind,source=models/yolov8n_face.onnx,target=/tmp/models/yolov8n_face.onnx \
-    --mount=type=bind,source=models/scrfd_2.5g_bnkps.onnx,target=/tmp/models/scrfd_2.5g_bnkps.onnx \
-    --mount=type=bind,source=models/retinaface_mobilenet0.25.onnx,target=/tmp/models/retinaface_mobilenet0.25.onnx \
-    --mount=type=bind,source=models/face_reaging_unet.pth,target=/tmp/models/face_reaging_unet.pth \
+# Per-feature model files are hard-linked into the reduced build context by
+# build-and-run.sh, so unselected weights never enter this Docker build.
+RUN --mount=type=bind,source=models,target=/tmp/models \
     set -e; \
     age_csv=",$AGE_MODEL,"; gender_csv=",$GENDER_MODEL,"; emotion_csv=",$EMOTION_MODEL,"; \
     drowsiness_csv=",$DROWSINESS_MODEL,"; race_csv=",$RACE_MODEL,"; expression_csv=",$EXPRESSION_MODEL,"; liveness_csv=",$LIVENESS_MODEL,"; recognition_csv=",$RECOGNITION_MODEL,"; \
