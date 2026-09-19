@@ -5,7 +5,6 @@ from collections import deque
 import csv
 import io
 import json
-import re
 from html import escape
 
 import av
@@ -262,10 +261,6 @@ except Exception as e:
     st.error(f"[SYSTEM ERROR] Failed to load models: {e}")
     st.stop()
 
-if models.offline_features:
-    st.sidebar.caption(f"[ OFFLINE: {', '.join(models.offline_features)} ] -- image built without these model file(s)")
-
-
 def _model_checkboxes(label: str, nets: dict) -> set:
     """Render one checkbox per loaded model for a feature; return the set of checked keys."""
     active = set()
@@ -394,15 +389,11 @@ def _target_card_html(face: dict) -> str:
     """Render one face's results as a HUD-style dossier card (native markup, not pixel text --
     keeps results legible no matter how many faces are packed into one image)."""
     rows = ""
-    for label, values in (
-        ("AGE", face["age"]), ("GENDER", face["gender"]), ("RACE", face["race"]), ("MOOD", face["emotion"]),
-        ("EXPR", face["expression"]), ("GAZE", face["gaze"]), ("EYE CONTACT", face["eye_contact"]), ("HEAD POSE", face["head_pose"]), ("IDENTITY", face["identity"]), ("FACIAL HAIR", face["facial_hair"]),
-        ("SKIN TONE", face["skin_tone"]), ("GLASSES", face["glasses"]), ("MASK", face["mask"]),
-        ("HAIR COLOR", face["hair_color"]), ("EYE COLOR", face["eye_color"]),
-        ("LIVENESS", face["liveness"]),
-    ):
-        if values:
-            rows += f'<div class="target-card-row"><span class="k">{label}</span><span class="v">{escape(" / ".join(values))}</span></div>'
+    for result in sorted(face.get("model_results", []), key=lambda row: (row["Feature"], row["Model"])):
+        feature = result["Feature"]
+        model = result["Model"]
+        label = feature if model == "derived" else f"{feature} ({model})"
+        rows += f'<div class="target-card-row"><span class="k">{escape(label)}</span><span class="v">{escape(result["Output"])}</span></div>'
     if face["status"] is not None:
         status_class = "target-card-status-drowsy" if face["drowsy"] else "target-card-status-alert"
         dot = "●"
@@ -410,25 +401,6 @@ def _target_card_html(face: dict) -> str:
     if not rows:
         rows = '<div class="target-card-row"><span class="k">STATUS</span><span class="v">no model output</span></div>'
     return f'<div class="target-card"><div class="target-card-id">FACE {face["idx"]:02d}</div>{rows}</div>'
-
-
-def _comparison_rows(face: dict) -> list[dict[str, str]]:
-    """Turn the sparse per-model result columns into rows for one face's comparison table."""
-    return sorted(face["model_results"], key=lambda row: (row["Feature"], row["Model"]))
-
-
-def _render_confidence(rows: list[dict[str, str]]) -> None:
-    """Render explicit percentage scores only; labels are not confidence."""
-    scored = []
-    for row in rows:
-        match = re.search(r"(\d+(?:\.\d+)?)%", row["Output"])
-        if match:
-            scored.append((row, min(100.0, float(match.group(1)))))
-    if not scored:
-        st.caption("Confidence unavailable: active backend returned labels without calibrated scores.")
-        return
-    for row, score in scored:
-        st.progress(score / 100, text=f"{row['Feature']} / {row['Model']}: {score:.0f}%")
 
 
 def _hoverable_face_image(frame_bgr: np.ndarray, faces: list[dict]) -> str:
@@ -552,14 +524,6 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
 
     st.caption("Hover or tap a face box to see its details.")
     st.markdown(_hoverable_face_image(annotated_frame, cropped_faces), unsafe_allow_html=True)
-
-    st.markdown("#### Model comparison")
-    for face in cropped_faces:
-        rows = _comparison_rows(face)
-        if rows:
-            st.caption(f"Face {face['idx']:02d}")
-            st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
-            _render_confidence(rows)
 
     if st.button("SCAN ALL FACES: RECOGNIZED / UNRECOGNIZED", key=f"scan_btn_{identifier}"):
         faces_bgr = [cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR) for face in cropped_faces]

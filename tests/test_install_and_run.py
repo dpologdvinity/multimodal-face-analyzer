@@ -85,6 +85,7 @@ class NativeInstallerVerbosityTests(unittest.TestCase):
         self.assertIn("  0) none", output)
         self.assertIn("== ADDITIONAL CLASSIFICATIONS ==", output)
         self.assertIn("\033[1;33m  3) expressions - blendshapes\033[0m", output)
+        self.assertIn("\033[1;32m  7) hair color - colorimetric\033[0m", output)
         self.assertIn("\033[1;32m  1) colorization - eccv16\033[0m", output)
 
     def test_requirement_only_models_precede_additional_install_models(self):
@@ -182,6 +183,12 @@ class NativeInstallerVerbosityTests(unittest.TestCase):
         self.assertIn("YOLO_FACE_MODEL=", output)
         self.assertIn("COLORIZATION_MODEL=eccv16", output)
         self.assertIn("AGE_PROGRESSION_MODEL=", output)
+
+    def test_hair_color_selection_reaches_native_runtime(self):
+        selections = "\n".join(["0", "0", "0", "0", "0", "0", "7", "0"]) + "\n"
+        output = self._run_installer(input_data=selections, capture_env=True)
+
+        self.assertIn("HAIR_COLOR_MODEL=colorimetric", output)
 
 
 if __name__ == "__main__":

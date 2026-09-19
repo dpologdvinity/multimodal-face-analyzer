@@ -20,6 +20,10 @@ class NativeModelSelectionTests(unittest.TestCase):
         with patch.dict(os.environ, {"AGE_MODEL": ""}, clear=True):
             self.assertFalse(native_model_selected("AGE_MODEL", "caffe"))
 
+    def test_hair_color_selection_can_disable_colorimetric_backend(self):
+        with patch.dict(os.environ, {"HAIR_COLOR_MODEL": ""}, clear=True):
+            self.assertFalse(native_model_selected("HAIR_COLOR_MODEL", "colorimetric"))
+
 
 if __name__ == "__main__":
     unittest.main()

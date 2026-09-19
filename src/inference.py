@@ -439,7 +439,11 @@ def load_models() -> Models:
     # Colorimetric heuristics need no model file, no dependency beyond OpenCV -- always
     # available. hair_color has no further precondition; eye_color reuses the same
     # haarcascade_eye.xml as drowsiness, so it's gated on that file existing.
-    hair_color_nets = {"colorimetric": True}
+    hair_color_nets = (
+        {"colorimetric": True}
+        if native_model_selected("HAIR_COLOR_MODEL", "colorimetric")
+        else {}
+    )
     eye_color_nets = {}
     if EYE_CASCADE_FILE.exists():
         eye_color_nets["colorimetric"] = drowsiness_nets["haarcascade"] if "haarcascade" in drowsiness_nets else cv2.CascadeClassifier(str(EYE_CASCADE_FILE))

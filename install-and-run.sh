@@ -327,7 +327,8 @@ prompt_feature "ADDITIONAL CLASSIFICATIONS" 0 \
     "blendshapes|expressions - blendshapes|$BASE_PACKAGES,+mediapipe" \
     "mediapipe|liveness - mediapipe|$BASE_PACKAGES,+mediapipe" \
     "mobilenet|glasses - mobilenet|$BASE_PACKAGES,+onnxruntime" \
-    "mobilenetv2|mask - mobilenetv2|$BASE_PACKAGES,+tensorflow-cpu,+tf-keras"
+    "mobilenetv2|mask - mobilenetv2|$BASE_PACKAGES,+tensorflow-cpu,+tf-keras" \
+    "colorimetric|hair color - colorimetric|"
 set_additional_classification_models() {
     EXPRESSION_MODEL=""
     DROWSINESS_MODEL=""
@@ -335,6 +336,7 @@ set_additional_classification_models() {
     FACIAL_HAIR_MODEL=""
     GLASSES_MODEL=""
     MASK_MODEL=""
+    HAIR_COLOR_MODEL=""
     local model
     IFS=',' read -ra models <<< "$1"
     for model in "${models[@]:-}"; do
@@ -345,6 +347,7 @@ set_additional_classification_models() {
             bisenet) FACIAL_HAIR_MODEL="bisenet" ;;
             mobilenet) GLASSES_MODEL="mobilenet" ;;
             mobilenetv2) MASK_MODEL="mobilenetv2" ;;
+            colorimetric) HAIR_COLOR_MODEL="colorimetric" ;;
         esac
     done
 }
@@ -512,7 +515,7 @@ echo "Running at http://localhost:${PORT}" >&2
 echo "Press Ctrl-C to stop Streamlit." >&2
 export AGE_MODEL GENDER_MODEL RACE_MODEL EMOTION_MODEL RECOGNITION_MODEL \
     DROWSINESS_MODEL EXPRESSION_MODEL LIVENESS_MODEL FACIAL_HAIR_MODEL \
-    GLASSES_MODEL MASK_MODEL COLORIZATION_MODEL POSE_MODEL HAND_MODEL \
+    GLASSES_MODEL MASK_MODEL HAIR_COLOR_MODEL COLORIZATION_MODEL POSE_MODEL HAND_MODEL \
     RECONSTRUCTION_3D_MODEL AGE_PROGRESSION_MODEL YOLO_FACE_MODEL \
     SCRFD_FACE_MODEL RETINAFACE_MODEL
 exec "${VENV_PYTHON}" -m streamlit run src/app.py \
