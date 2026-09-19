@@ -36,3 +36,10 @@ db/
 faces/
 eigen/
 known_people/
+
+# BFM09-derived 3D reconstruction data: gated behind individual Basel Face Model
+# registration (faces.dmi.unibas.ch/bfm), not ours to redistribute. See README's
+# 3D Reconstruction section. (models/deep3d_recon_resnet50.pth is NOT listed here --
+# it's an already-committed placeholder the Dockerfile unconditionally bind-mounts;
+# see the skip-worktree note in that same README section instead.)
+models/BFM/BFM_model_front.mat
