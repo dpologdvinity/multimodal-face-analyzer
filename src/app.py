@@ -18,6 +18,7 @@ import inference
 
 LIVE_METRICS = deque(maxlen=120)
 LIVE_METRICS_LOCK = threading.Lock()
+IMAGE_DISPLAY_WIDTH = 900
 
 # Page setup and visual system
 st.set_page_config(page_title="MULTIMODAL_FACE_ANALYZER", layout="wide")
@@ -170,7 +171,7 @@ st.markdown(
     .target-card-status-drowsy { color: var(--alert) !important; }
     .face-hover-image {
         position: relative;
-        width: 100%;
+        width: min(100%, 900px);
         margin-bottom: 1rem;
     }
     .face-hover-image > img {
@@ -429,6 +430,20 @@ def _hoverable_face_image(frame_bgr: np.ndarray, faces: list[dict]) -> str:
     )
 
 
+@st.dialog("IMAGE PREVIEW", width="large")
+def _show_fullscreen_image(image_rgb: np.ndarray, caption: str) -> None:
+    st.image(image_rgb, caption=caption, width="stretch")
+
+
+def _render_bounded_image(image_rgb: np.ndarray, caption: str, key: str, width: int = IMAGE_DISPLAY_WIDTH) -> None:
+    """Keep routine output within the viewport while retaining a full-resolution modal view."""
+    image_tools, _ = st.columns([1, 12])
+    with image_tools:
+        if st.button("🔍", key=f"fullscreen_{key}", help="Open the full-resolution image"):
+            _show_fullscreen_image(image_rgb, caption)
+    st.image(image_rgb, caption=caption, width=width)
+
+
 def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: float) -> None:
     """Run detection/inference on frame and render result in Streamlit."""
     frame, was_colorized = inference.maybe_colorize(models, frame, active_colorization)
@@ -487,7 +502,9 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
 
     if not has_faces:
         st.warning(f"[TARGET MISSING] Zero targets detected in file: {identifier}")
-        st.image(cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB), caption=identifier, use_container_width=True)
+        _render_bounded_image(
+            cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB), identifier, f"annotated_{identifier}"
+        )
         return
 
     st.markdown(f"#### Results for `{identifier}`")
@@ -523,6 +540,10 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
                     st.bar_chart(counts)
 
     st.caption("Hover or tap a face box to see its details.")
+    image_tools, _ = st.columns([1, 12])
+    with image_tools:
+        if st.button("🔍", key=f"fullscreen_annotated_{identifier}", help="Open the full-resolution image"):
+            _show_fullscreen_image(cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB), identifier)
     st.markdown(_hoverable_face_image(annotated_frame, cropped_faces), unsafe_allow_html=True)
 
     if st.button("SCAN ALL FACES: RECOGNIZED / UNRECOGNIZED", key=f"scan_btn_{identifier}"):
@@ -530,7 +551,9 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
         matches = inference.match_faces_eigenfaces_batch(faces_bgr)
         scan_frame = frame.copy()
         inference.draw_recognition_scan(scan_frame, [(face["box"], match is not None) for face, match in zip(cropped_faces, matches)])
-        st.image(cv2.cvtColor(scan_frame, cv2.COLOR_BGR2RGB), caption="Recognition scan", use_container_width=True)
+        _render_bounded_image(
+            cv2.cvtColor(scan_frame, cv2.COLOR_BGR2RGB), "Recognition scan", f"scan_{identifier}"
+        )
 
         recognized_count = sum(match is not None for match in matches)
         st.caption(f"[ SCAN COMPLETE ] {recognized_count}/{len(matches)} face(s) recognized against saved faces (eigen/)")
@@ -576,11 +599,17 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
                     st.session_state[op_key] = inference.apply_image_op(edited_face_bgr, op, **op_params)
                 if op_key in st.session_state:
                     result = st.session_state[op_key]
-                    st.image(cv2.cvtColor(result, cv2.COLOR_BGR2RGB), caption="Processed face")
+                    _render_bounded_image(
+                        cv2.cvtColor(result, cv2.COLOR_BGR2RGB), "Processed face",
+                        f"processed_face_{identifier}_{face['idx']}", width=360,
+                    )
                     st.download_button("DOWNLOAD FACE PNG", cv2.imencode(".png", result)[1].tobytes(),
                                        file_name=f"face_{face['idx']}_processed.png", mime="image/png",
                                        key=f"image_op_dl_{identifier}_{face['idx']}")
-            st.image(cv2.cvtColor(edited_face_bgr, cv2.COLOR_BGR2RGB), use_container_width=True)
+            _render_bounded_image(
+                cv2.cvtColor(edited_face_bgr, cv2.COLOR_BGR2RGB), f"Face {face['idx']:02d}",
+                f"face_{identifier}_{face['idx']}", width=360,
+            )
             st.markdown(_target_card_html(face), unsafe_allow_html=True)
             lbph_available = models.recognition_nets.get("lbph") is not None
             if face["embedding"] is not None or lbph_available:
