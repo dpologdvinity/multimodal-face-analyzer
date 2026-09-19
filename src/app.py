@@ -20,6 +20,8 @@ import inference
 
 LIVE_METRICS = deque(maxlen=120)
 LIVE_METRICS_LOCK = threading.Lock()
+LIVE_STATE = {"faces": [], "error": None, "updated": 0.0}
+LIVE_STATE_LOCK = threading.Lock()
 IMAGE_DISPLAY_WIDTH = 900
 
 # Page setup and visual system
@@ -231,7 +233,7 @@ st.markdown(
 
 st.markdown(
     '<div class="app-hero"><h1>Multimodal Face Analyzer</h1>'
-    '<p>Analyze faces, compare models, and inspect each result.</p></div>',
+    '<p>Analyze faces and inspect each result.</p></div>',
     unsafe_allow_html=True,
 )
 
@@ -786,56 +788,65 @@ with tab_webcam:
         voice_fusion = _get_voice_fusion() if enable_voice_fusion else None
         if voice_fusion is not None and voice_col.button("RESET VOICE BUFFER", key="reset_voice_buffer"):
             voice_fusion.reset()
+        gallery_snapshot = dict(st.session_state.get("gallery", {}))
 
         def _video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
-            frame_started = time.perf_counter()
-            metrics = {}
-            img = frame.to_ndarray(format="bgr24")
-            img, _ = inference.maybe_colorize(models, img, active_colorization)
-            frame_counter["n"] += 1
-            run_classifiers = frame_counter["n"] % frame_skip == 0
-            annotated_frame, cropped_faces, _, _, _, _ = inference.analyze_frame(
-                models, img, conf_threshold,
-                active_age if run_classifiers else _NO_MODELS,
-                active_gender if run_classifiers else _NO_MODELS,
-                active_emotion if run_classifiers else _NO_MODELS,
-                active_drowsiness if run_classifiers else _NO_MODELS,
-                active_race if run_classifiers else _NO_MODELS,
-                active_expression if run_classifiers else _NO_MODELS,
-                active_recognition if run_classifiers else _NO_MODELS, dict(st.session_state.get("gallery", {})),
-                active_facial_hair if run_classifiers else _NO_MODELS,
-                active_skin_tone if run_classifiers else _NO_MODELS,
-                active_glasses if run_classifiers else _NO_MODELS,
-                active_mask if run_classifiers else _NO_MODELS,
-                active_hair_color if run_classifiers else _NO_MODELS,
-                active_eye_color if run_classifiers else _NO_MODELS,
-                active_pose, active_face_landmarks, active_hands,
-                active_gaze if run_classifiers else _NO_MODELS,
-                global_adjustments, face_adjustments,
-                face_detector=active_face_detector, metrics=metrics, tracker=face_tracker,
-                liveness_tracker=liveness_tracker,
-                active_liveness=active_liveness,
-            )
-            metrics["frame_ms"] = (time.perf_counter() - frame_started) * 1000
-            metrics["timestamp"] = time.monotonic()
-            with LIVE_METRICS_LOCK:
-                LIVE_METRICS.append(metrics)
-            if voice_fusion is not None and cropped_faces:
-                # v1 scope (matches #9's own "largest face only" precedent): fuse against the
-                # single largest detected face, not a per-face history -- multi-face voice
-                # attribution would need knowing WHICH face is speaking, which this app has no
-                # signal for (that's a lip-sync/diarization problem, out of scope here). If this
-                # is a skipped (non-classifier) frame, emotion is simply absent this frame --
-                # same "no interpolation" tradeoff CLASSIFIER FRAME SKIP already documents.
-                largest = max(cropped_faces, key=lambda f: (f["box"][2] - f["box"][0]) * (f["box"][3] - f["box"][1]))
-                emotion_label = largest["emotion"][0] if largest["emotion"] else None
-                voice_arousal = voice_fusion.current_arousal()
-                voice_fusion.set_latest_status({
-                    "voice_arousal": voice_arousal,
-                    "emotion": emotion_label,
-                    "consistency": inference.fuse_voice_and_emotion(voice_arousal, emotion_label) if emotion_label else None,
-                })
-            return av.VideoFrame.from_ndarray(annotated_frame, format="bgr24")
+            try:
+                frame_started = time.perf_counter()
+                metrics = {}
+                img = frame.to_ndarray(format="bgr24")
+                img, _ = inference.maybe_colorize(models, img, active_colorization)
+                frame_counter["n"] += 1
+                run_classifiers = frame_counter["n"] % frame_skip == 0
+                annotated_frame, cropped_faces, _, _, _, _ = inference.analyze_frame(
+                    models, img, conf_threshold,
+                    active_age if run_classifiers else _NO_MODELS,
+                    active_gender if run_classifiers else _NO_MODELS,
+                    active_emotion if run_classifiers else _NO_MODELS,
+                    active_drowsiness if run_classifiers else _NO_MODELS,
+                    active_race if run_classifiers else _NO_MODELS,
+                    active_expression if run_classifiers else _NO_MODELS,
+                    active_recognition if run_classifiers else _NO_MODELS, gallery_snapshot,
+                    active_facial_hair if run_classifiers else _NO_MODELS,
+                    active_skin_tone if run_classifiers else _NO_MODELS,
+                    active_glasses if run_classifiers else _NO_MODELS,
+                    active_mask if run_classifiers else _NO_MODELS,
+                    active_hair_color if run_classifiers else _NO_MODELS,
+                    active_eye_color if run_classifiers else _NO_MODELS,
+                    active_pose, active_face_landmarks, active_hands,
+                    active_gaze if run_classifiers else _NO_MODELS,
+                    global_adjustments, face_adjustments,
+                    face_detector=active_face_detector, metrics=metrics, tracker=face_tracker,
+                    liveness_tracker=liveness_tracker,
+                    active_liveness=active_liveness,
+                )
+                metrics["frame_ms"] = (time.perf_counter() - frame_started) * 1000
+                metrics["timestamp"] = time.monotonic()
+                live_faces = [
+                    {key: face[key] for key in ("idx", "model_results", "status", "drowsy")}
+                    for face in cropped_faces
+                ]
+                with LIVE_METRICS_LOCK:
+                    LIVE_METRICS.append(metrics)
+                with LIVE_STATE_LOCK:
+                    LIVE_STATE.update(faces=live_faces, error=None, updated=time.monotonic())
+                if voice_fusion is not None and cropped_faces:
+                    # v1 scope: fuse against the single largest detected face.
+                    largest = max(cropped_faces, key=lambda f: (f["box"][2] - f["box"][0]) * (f["box"][3] - f["box"][1]))
+                    emotion_label = largest["emotion"][0] if largest["emotion"] else None
+                    voice_arousal = voice_fusion.current_arousal()
+                    voice_fusion.set_latest_status({
+                        "voice_arousal": voice_arousal,
+                        "emotion": emotion_label,
+                        "consistency": inference.fuse_voice_and_emotion(voice_arousal, emotion_label) if emotion_label else None,
+                    })
+                return av.VideoFrame.from_ndarray(annotated_frame, format="bgr24")
+            except Exception as exc:
+                # A classifier failure must not tear down the WebRTC track. Return the raw
+                # frame so the camera remains usable while the main thread reports the error.
+                with LIVE_STATE_LOCK:
+                    LIVE_STATE["error"] = f"{type(exc).__name__}: {exc}"
+                return frame
 
         def _audio_frame_callback(frame: av.AudioFrame) -> av.AudioFrame:
             if voice_fusion is not None:
@@ -843,12 +854,13 @@ with tab_webcam:
                 voice_fusion.ingest_audio(samples, frame.sample_rate)
             return frame
 
-        webrtc_streamer(
+        webrtc_ctx = webrtc_streamer(
             key="live-drowsiness-feed",
             video_frame_callback=_video_frame_callback,
             audio_frame_callback=_audio_frame_callback if enable_voice_fusion else None,
             media_stream_constraints={"video": True, "audio": enable_voice_fusion},
             rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
+            async_processing=True,
         )
 
         if voice_fusion is not None:
@@ -862,12 +874,29 @@ with tab_webcam:
                     f"{status['emotion']} | {consistency_text}"
                 )
 
+        live_info = st.empty()
+        live_fps = st.empty()
+        while webrtc_ctx.state.playing:
+            with LIVE_STATE_LOCK:
+                live_snapshot = dict(LIVE_STATE)
+            if live_snapshot["error"]:
+                live_info.error(f"[ LIVE FRAME ERROR ] {live_snapshot['error']}")
+            elif live_snapshot["faces"]:
+                with live_info.container():
+                    st.markdown("#### Live face info")
+                    for face in live_snapshot["faces"]:
+                        st.markdown(_target_card_html(face), unsafe_allow_html=True)
+            else:
+                live_info.caption("[ LIVE ] waiting for a detected face...")
+            with LIVE_METRICS_LOCK:
+                live_metrics = list(LIVE_METRICS)
+            intervals = np.diff([item["timestamp"] for item in live_metrics[-30:]])
+            fps = 1.0 / float(np.mean(intervals)) if len(intervals) and np.mean(intervals) > 0 else 0.0
+            live_fps.metric("LIVE FPS", f"LIVE FPS: {fps:.1f}")
+            time.sleep(0.25)
         with LIVE_METRICS_LOCK:
             live_metrics = list(LIVE_METRICS)
         if live_metrics:
-            intervals = np.diff([item["timestamp"] for item in live_metrics[-30:]])
-            fps = 1.0 / float(np.mean(intervals)) if len(intervals) and np.mean(intervals) > 0 else 0.0
-            st.metric("LIVE FPS", f"{fps:.1f}")
             latency_rows = []
             for item in live_metrics:
                 for model_name, values in item.get("model_latency_ms", {}).items():
