@@ -276,6 +276,20 @@ def _model_checkboxes(label: str, nets: dict) -> set:
     return active
 
 
+def _landmark_enable_button(label: str, nets: dict, state_key: str) -> set:
+    """Expose one clear on/off control for each landmark family."""
+    if not nets:
+        return set()
+    enabled = st.session_state.setdefault(state_key, True)
+    button_label = f"DISABLE {label}" if enabled else f"ENABLE {label}"
+    st.sidebar.markdown(f"**{label}**")
+    if st.sidebar.button(button_label, key=f"enable_{state_key}", use_container_width=True):
+        st.session_state[state_key] = not enabled
+        st.rerun()
+    st.sidebar.caption("Enabled" if enabled else "Disabled")
+    return set(nets) if enabled else set()
+
+
 st.sidebar.markdown("### MODEL SELECTION")
 
 active_face_detector = "yolo" if models.yolo_face_nets else "ssd"
@@ -308,9 +322,9 @@ active_mask = _model_checkboxes("MASK", models.mask_nets)
 active_hair_color = _model_checkboxes("HAIR COLOR", models.hair_color_nets)
 active_eye_color = _model_checkboxes("EYE COLOR", models.eye_color_nets)
 active_colorization = _model_checkboxes("AUTO-COLORIZE B&W", models.colorization_nets)
-active_pose = _model_checkboxes("POSE ESTIMATION", models.pose_nets)
-active_face_landmarks = _model_checkboxes("FACE LANDMARKS", models.face_landmarks_nets)
-active_hands = _model_checkboxes("HAND LANDMARKS", models.hand_nets)
+active_pose = _landmark_enable_button("BODY LANDMARKS", models.pose_nets, "body_landmarks_enabled")
+active_face_landmarks = _landmark_enable_button("FACE LANDMARKS", models.face_landmarks_nets, "face_landmarks_enabled")
+active_hands = _landmark_enable_button("HAND LANDMARKS", models.hand_nets, "hand_landmarks_enabled")
 active_gaze = _model_checkboxes("GAZE", models.gaze_nets)
 
 
