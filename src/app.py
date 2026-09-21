@@ -589,6 +589,12 @@ st.markdown(
 # neural network weights for each interaction with sliders, buttons, tabs, etc.).
 load_models = st.cache_resource(inference.load_models)
 
+# Same "avoid redoing pure work on an unrelated rerun" reasoning as load_models above: any
+# widget interaction (a model checkbox, an export button) reruns this whole script, which
+# would otherwise re-decode (and re-downscale) the same uploaded/captured image bytes every
+# time. max_entries bounds memory since each cached entry holds a full decoded frame.
+decode_image_bytes = st.cache_data(max_entries=16)(inference.decode_image_bytes)
+
 
 @st.cache_resource
 def _get_face_tracker() -> inference.FaceTracker:
@@ -1158,7 +1164,7 @@ with tab_upload:
     if uploaded_files:
         for uploaded_file in uploaded_files:
             try:
-                frame = inference.decode_image_bytes(uploaded_file.read())
+                frame = decode_image_bytes(uploaded_file.read())
             except ValueError as exc:
                 st.error(f"[INVALID IMAGE] {uploaded_file.name}: {exc}")
                 continue
@@ -1172,7 +1178,7 @@ with tab_webcam:
 
         if webcam_image:
             try:
-                frame = inference.decode_image_bytes(webcam_image.read())
+                frame = decode_image_bytes(webcam_image.read())
             except ValueError as exc:
                 st.error(f"[INVALID IMAGE] WEBCAM_CAPTURE: {exc}")
                 frame = None
