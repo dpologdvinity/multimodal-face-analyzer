@@ -34,13 +34,14 @@ THEME_MARKER_CLASSES = {
     "Phosphor Green": "phosphor-theme",
     "Brutalist": "brutalist-theme",
     "Corporate Slate": "corporate-theme",
+    "Midnight Enterprise": "midnight-theme",
 }
 
 theme = st.sidebar.selectbox(
     "THEME",
     [
         "Dark cyberpunk", "Light cyberpunk", "Amber Terminal", "Synthwave", "Phosphor Green",
-        "Brutalist", "Corporate Slate",
+        "Brutalist", "Corporate Slate", "Midnight Enterprise",
     ],
     key="theme",
 )
@@ -285,6 +286,60 @@ st.markdown(
         border-bottom: 1px solid var(--line);
     }
     body:has(.corporate-theme) button[role="tab"][aria-selected="true"] {
+        color: var(--accent);
+        border-bottom: 2px solid var(--accent);
+    }
+
+    body:has(.midnight-theme) {
+        --base: #0d1117;
+        --surface: #161b22;
+        --surface-raised: #1c2229;
+        --line: #2d333b;
+        --text: #e6edf3;
+        --muted: #8b949e;
+        --accent: #4f8ff0;
+        --alert: #f85149;
+    }
+    body:has(.midnight-theme) .stApp {
+        background: var(--base);
+        font-family: 'DM Sans', sans-serif;
+    }
+    body:has(.midnight-theme) .app-hero {
+        border-left: none;
+        border-bottom: 1px solid var(--line);
+        padding: 0 0 1.4rem;
+        margin: 0 0 2rem;
+    }
+    body:has(.midnight-theme) .app-hero h1 {
+        font-weight: 600;
+        letter-spacing: 0;
+    }
+    body:has(.midnight-theme) section[data-testid="stSidebar"] {
+        background: var(--surface) !important;
+        border-right: 1px solid var(--line) !important;
+    }
+    body:has(.midnight-theme) section[data-testid="stSidebar"] h3 {
+        color: var(--muted);
+        text-transform: none;
+        font-family: 'DM Sans', sans-serif;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+    }
+    body:has(.midnight-theme) .stButton button,
+    body:has(.midnight-theme) .stDownloadButton button {
+        border-radius: 6px !important;
+        border: 1px solid var(--line) !important;
+        background: var(--surface-raised) !important;
+    }
+    body:has(.midnight-theme) [data-testid="stExpander"] {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface);
+    }
+    body:has(.midnight-theme) div[data-testid="stTabs"] [data-baseweb="tab-list"] {
+        border-bottom: 1px solid var(--line);
+    }
+    body:has(.midnight-theme) button[role="tab"][aria-selected="true"] {
         color: var(--accent);
         border-bottom: 2px solid var(--accent);
     }
