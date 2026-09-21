@@ -27,7 +27,12 @@ IMAGE_DISPLAY_WIDTH = 900
 # Page setup and visual system
 st.set_page_config(page_title="MULTIMODAL_FACE_ANALYZER", layout="wide")
 
-theme = st.sidebar.selectbox("THEME", ["Dark cyberpunk", "Light cyberpunk"], key="theme")
+THEME_MARKER_CLASSES = {
+    "Light cyberpunk": "light-theme",
+    "Amber Terminal": "amber-theme",
+}
+
+theme = st.sidebar.selectbox("THEME", ["Dark cyberpunk", "Light cyberpunk", "Amber Terminal"], key="theme")
 
 st.markdown(
     """
@@ -54,6 +59,17 @@ st.markdown(
         --muted: #4f6d63;
         --accent: #087a52;
         --alert: #b42318;
+    }
+
+    body:has(.amber-theme) {
+        --base: #120d05;
+        --surface: #1d1409;
+        --surface-raised: #2b1e0c;
+        --line: #5a3f16;
+        --text: #ffcf7a;
+        --muted: #b8873f;
+        --accent: #ffb02e;
+        --alert: #ff5f4d;
     }
 
     .stApp {
@@ -433,8 +449,8 @@ if enable_crowd_count:
         "policy before using it on images of people who haven't consented to aggregate analysis."
     )
 
-if theme == "Light cyberpunk":
-    st.markdown('<div class="light-theme"></div>', unsafe_allow_html=True)
+if theme in THEME_MARKER_CLASSES:
+    st.markdown(f'<div class="{THEME_MARKER_CLASSES[theme]}"></div>', unsafe_allow_html=True)
 
 
 def _target_card_html(face: dict) -> str:
