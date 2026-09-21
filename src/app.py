@@ -504,15 +504,25 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
     frame = _render_photo_editor(frame, identifier, "global_adj", "SOURCE PHOTO")
     frame, was_colorized = inference.maybe_colorize(models, frame, active_colorization)
 
-    annotated_frame, cropped_faces, has_faces, hands_detected = inference.analyze_frame(
-        models, frame, conf_threshold, active_age, active_gender, active_emotion, active_race,
-        active_recognition, st.session_state.get("gallery", {}),
-        active_glasses, active_mask, active_hair_color, active_eye_color,
-        active_face_landmarks, active_hands, active_gaze,
-        {name: values[2] for name, values in inference.IMAGE_ADJUSTMENT_RANGES.items()}, face_adjustments,
-        face_detector=active_face_detector,
-        active_liveness=active_liveness,
-    )
+    active_labels = [
+        name for name, active in (
+            ("age", active_age), ("gender", active_gender), ("emotion", active_emotion),
+            ("race", active_race), ("recognition", active_recognition), ("glasses", active_glasses),
+            ("mask", active_mask), ("hair color", active_hair_color), ("eye color", active_eye_color),
+            ("gaze", active_gaze), ("liveness", active_liveness),
+        ) if active
+    ]
+    spinner_text = f"Analyzing with {', '.join(active_labels)}..." if active_labels else "Detecting faces..."
+    with st.spinner(spinner_text):
+        annotated_frame, cropped_faces, has_faces, hands_detected = inference.analyze_frame(
+            models, frame, conf_threshold, active_age, active_gender, active_emotion, active_race,
+            active_recognition, st.session_state.get("gallery", {}),
+            active_glasses, active_mask, active_hair_color, active_eye_color,
+            active_face_landmarks, active_hands, active_gaze,
+            {name: values[2] for name, values in inference.IMAGE_ADJUSTMENT_RANGES.items()}, face_adjustments,
+            face_detector=active_face_detector,
+            active_liveness=active_liveness,
+        )
 
     if was_colorized:
         st.caption("[ AUTO-COLORIZED ] -- source detected as grayscale")
