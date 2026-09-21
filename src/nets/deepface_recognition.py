@@ -10,4 +10,4 @@ def build_recognition_model(weights_path: str) -> Model:
     base = vggface_base_model()
     base.load_weights(weights_path)
     embedding = Flatten()(base.layers[-5].output)  # second 4096-d conv layer, pre-classification
-    return Model(inputs=base.inputs, outputs=embedding)
+    return Model(inputs=base.inputs[0], outputs=embedding)

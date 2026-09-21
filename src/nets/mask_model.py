@@ -17,6 +17,6 @@ def build_mask_model(weights_path: str) -> Model:
     head = Dense(128, activation="relu")(head)
     head = Dropout(0.5)(head)
     head = Dense(2, activation="softmax")(head)
-    model = Model(inputs=base.input, outputs=head)
+    model = Model(inputs=base.inputs[0], outputs=head)
     model.load_weights(weights_path)
     return model

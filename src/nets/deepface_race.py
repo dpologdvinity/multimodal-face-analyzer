@@ -15,6 +15,6 @@ def build_race_model(weights_path: str) -> Model:
     output = Flatten()(output)
     output = Activation("softmax")(output)
 
-    race_model = Model(inputs=base.inputs, outputs=output)
+    race_model = Model(inputs=base.inputs[0], outputs=output)
     race_model.load_weights(weights_path)
     return race_model

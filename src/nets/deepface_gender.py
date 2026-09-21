@@ -15,6 +15,6 @@ def build_gender_model(weights_path: str) -> Model:
     output = Flatten()(output)
     output = Activation("softmax")(output)
 
-    gender_model = Model(inputs=base.inputs, outputs=output)
+    gender_model = Model(inputs=base.inputs[0], outputs=output)
     gender_model.load_weights(weights_path)
     return gender_model

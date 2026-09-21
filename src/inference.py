@@ -2203,7 +2203,8 @@ def _detect_face_landmarker(landmarker, face_bgr: np.ndarray):
     face_rgb = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2RGB)
     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=face_rgb)
     with _lock_for(landmarker):
-        return landmarker.detect(mp_image)
+        with _silence_native_logs():
+            return landmarker.detect(mp_image)
 
 
 def predict_texture_artifact_score(face_bgr: np.ndarray) -> float:
@@ -2445,7 +2446,8 @@ def detect_hand_landmarks_mediapipe(landmarker, frame_bgr: np.ndarray) -> list[l
     frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
     with _lock_for(landmarker):
-        result = landmarker.detect(mp_image)
+        with _silence_native_logs():
+            result = landmarker.detect(mp_image)
     return [
         [(int(lm.x * frame_w), int(lm.y * frame_h)) for lm in hand]
         for hand in result.hand_landmarks
