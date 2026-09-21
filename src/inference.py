@@ -1796,10 +1796,16 @@ _PREDICTION_CACHE: "OrderedDict[tuple, object]" = OrderedDict()
 
 
 def _cached_face_predict(feature: str, model_key: str, face_bgr: np.ndarray, predict_fn, *args):
-    """Memoize a predict_*(net, face, ...) call on (feature, model_key, hash(face bytes)).
-    Only used for predictors whose sole content input is the face crop itself -- predictors
-    that instead take the full frame + box (fairface, insightface) or hash a much larger,
-    more adjustment-sensitive buffer for comparatively little benefit are left uncached here."""
+    """Memoize a predict_*(net, face, ...) call on (feature, model_key, hash(image bytes)).
+    Despite the name, `face_bgr` may be a per-face crop OR a whole frame (face detection,
+    hand landmarks) -- the cache key only depends on that array's bytes, not what it depicts.
+    Not used for predictors that take the full frame + box (fairface, insightface) or hash a
+    much larger, more adjustment-sensitive buffer for comparatively little benefit.
+
+    NOTE: only `feature`/`model_key`/`face_bgr` are part of the cache key -- predict_fn's other
+    *args are NOT hashed. Any caller whose behavior also depends on another argument (e.g.
+    conf_threshold for detection) MUST fold that value into `model_key` itself, or a rerun with
+    a changed argument will wrongly return a stale cached result."""
     cache_key = (feature, model_key, face_bgr.shape, hashlib.blake2b(face_bgr.tobytes(), digest_size=16).digest())
     cached = _PREDICTION_CACHE.get(cache_key)
     if cached is not None or cache_key in _PREDICTION_CACHE:
@@ -2385,20 +2391,31 @@ def analyze_frame(
     yolo_net = models.yolo_face_nets.get("yolo")
     scrfd_net = models.scrfd_face_nets.get("scrfd")
     retinaface_net = models.retinaface_nets.get("retinaface")
+    # Detection runs on the whole frame and is independent of which classifiers are active,
+    # but Streamlit reruns this whole function on every unrelated widget interaction (a model
+    # checkbox toggle, an export button) even when the frame bytes are unchanged. Route through
+    # _cached_face_predict (it hashes whatever ndarray it's given, not just face crops) so a
+    # rerun with the same frame + conf_threshold + detector reuses last run's boxes instead of
+    # re-running the detector network. Video/webcam frames differ every call, so this is a
+    # pure win there too -- worst case is one wasted hash per frame, never a wrong cache hit.
+    # conf_threshold is folded into model_key (not just passed as an arg) because
+    # _cached_face_predict's cache key is (feature, model_key, frame hash) -- it does not hash
+    # predict_fn's *args, so a bare "yolo" key would wrongly reuse boxes from a different
+    # confidence threshold.
     if face_detector == "yolo" and yolo_net is not None:
-        face_boxes = detect_faces_yolo(yolo_net, frame, conf_threshold)
+        face_boxes = _cached_face_predict("face_detection", f"yolo:{conf_threshold}", frame, detect_faces_yolo, yolo_net, frame, conf_threshold)
     elif face_detector == "scrfd" and scrfd_net is not None:
-        face_boxes = detect_faces_scrfd(scrfd_net, frame, conf_threshold)
+        face_boxes = _cached_face_predict("face_detection", f"scrfd:{conf_threshold}", frame, detect_faces_scrfd, scrfd_net, frame, conf_threshold)
     elif face_detector == "retinaface" and retinaface_net is not None:
-        face_boxes = detect_faces_retinaface(retinaface_net, frame, conf_threshold)
+        face_boxes = _cached_face_predict("face_detection", f"retinaface:{conf_threshold}", frame, detect_faces_retinaface, retinaface_net, frame, conf_threshold)
     else:
-        face_boxes = detect_faces(models.face_net, frame, conf_threshold)
+        face_boxes = _cached_face_predict("face_detection", f"ssd:{conf_threshold}", frame, detect_faces, models.face_net, frame, conf_threshold)
     track_ids = tracker.update(face_boxes) if tracker is not None else [None] * len(face_boxes)
     cropped_faces = []
     hands_detected = False
     hand_net = models.hand_nets.get("mediapipe")
     if hand_net is not None and "mediapipe" in active_hands:
-        hands = detect_hand_landmarks_mediapipe(hand_net, frame)
+        hands = _cached_face_predict("hand_landmarks", "mediapipe", frame, detect_hand_landmarks_mediapipe, hand_net, frame)
         if hands:
             hands_detected = True
             draw_hand_landmarks(annotated_frame, hands)
