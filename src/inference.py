@@ -21,6 +21,15 @@ from contextlib import nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import warnings
+
+# Vendored net code (src/nets/) uses APIs (torch.jit.script, torchvision positional
+# `weights`, Keras `input_shape` on non-Input layers) that only emit deprecation noise --
+# not actionable here since that code isn't ours to change. Silence before those modules import.
+warnings.filterwarnings("ignore", category=FutureWarning, module="torch.jit")
+warnings.filterwarnings("ignore", category=UserWarning, module="torchvision")
+warnings.filterwarnings("ignore", category=UserWarning, message=r".*input_shape.*")
+
 import cv2
 import numpy as np
 
