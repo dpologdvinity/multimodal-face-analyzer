@@ -12,7 +12,6 @@ FROM python:3.11-slim
 #   FACE_LANDMARKS_MODEL: mediapipe                 (default: mediapipe)
 #   LIVENESS_MODEL:    mediapipe                     (default: mediapipe)
 #   RECOGNITION_MODEL: vggface, lbph                 (default: vggface)
-#   FACIAL_HAIR_MODEL: bisenet                       (default: bisenet)
 #   GLASSES_MODEL:     mobilenet                     (default: mobilenet)
 #   MASK_MODEL:        mobilenetv2                   (default: mobilenetv2)
 #   COLORIZATION_MODEL: eccv16                        (default: eccv16)
@@ -57,7 +56,7 @@ FROM python:3.11-slim
 # (non-commercial research license -- see README). deepface's race model
 # needs TensorFlow (~200-400MB) and a 513MB weight file, much heavier
 # than fairface -- only pulled in if requested. mask also needs TensorFlow
-# (Keras .h5 weights); facial_hair and glasses are plain ONNX.
+# (Keras .h5 weights); glasses are plain ONNX.
 # No SKIN_TONE_MODEL ARG -- the only known source for this feature
 # (behra527/Skin-Tone-Classification-model) ships a corrupted weight file
 # that doesn't load under any Keras version tried; see README's Known Issues.
@@ -74,7 +73,6 @@ ARG RACE_MODEL=fairface
 ARG FACE_LANDMARKS_MODEL=mediapipe
 ARG LIVENESS_MODEL=mediapipe
 ARG RECOGNITION_MODEL=vggface
-ARG FACIAL_HAIR_MODEL=bisenet
 ARG GLASSES_MODEL=mobilenet
 ARG MASK_MODEL=mobilenetv2
 ARG COLORIZATION_MODEL=eccv16
@@ -185,7 +183,7 @@ RUN --mount=type=bind,source=models,target=/tmp/models \
     set -e; \
     age_csv=",$AGE_MODEL,"; gender_csv=",$GENDER_MODEL,"; emotion_csv=",$EMOTION_MODEL,"; \
     drowsiness_csv=",$DROWSINESS_MODEL,"; race_csv=",$RACE_MODEL,"; face_landmarks_csv=",$FACE_LANDMARKS_MODEL,"; liveness_csv=",$LIVENESS_MODEL,"; recognition_csv=",$RECOGNITION_MODEL,"; \
-    facial_hair_csv=",$FACIAL_HAIR_MODEL,"; glasses_csv=",$GLASSES_MODEL,"; mask_csv=",$MASK_MODEL,"; colorization_csv=",$COLORIZATION_MODEL,"; pose_csv=",$POSE_MODEL,"; hand_csv=",$HAND_MODEL,"; recon3d_csv=",$RECONSTRUCTION_3D_MODEL,"; yolo_face_csv=",$YOLO_FACE_MODEL,"; scrfd_face_csv=",$SCRFD_FACE_MODEL,"; retinaface_csv=",$RETINAFACE_MODEL,"; age_progression_csv=",$AGE_PROGRESSION_MODEL,"; \
+    glasses_csv=",$GLASSES_MODEL,"; mask_csv=",$MASK_MODEL,"; colorization_csv=",$COLORIZATION_MODEL,"; pose_csv=",$POSE_MODEL,"; hand_csv=",$HAND_MODEL,"; recon3d_csv=",$RECONSTRUCTION_3D_MODEL,"; yolo_face_csv=",$YOLO_FACE_MODEL,"; scrfd_face_csv=",$SCRFD_FACE_MODEL,"; retinaface_csv=",$RETINAFACE_MODEL,"; age_progression_csv=",$AGE_PROGRESSION_MODEL,"; \
     case "$age_csv" in *,caffe,*) cp /tmp/models/age_deploy.prototxt /tmp/models/age_net.caffemodel models/ ;; esac; \
     case "$age_csv" in *,ssrnet,*) cp /tmp/models/ssrnet_morph2.pth models/ ;; esac; \
     case "$gender_csv" in *,caffe,*) cp /tmp/models/gender_deploy.prototxt /tmp/models/gender_net.caffemodel models/ ;; esac; \
@@ -208,7 +206,6 @@ RUN --mount=type=bind,source=models,target=/tmp/models \
     case "$face_landmarks_csv" in *,mediapipe,*) cp /tmp/models/face_landmarker.task models/ ;; esac; \
     case "$liveness_csv" in *,mediapipe,*) cp /tmp/models/face_landmarker.task models/ ;; esac; \
     case "$recognition_csv" in *,vggface,*) cp /tmp/models/deepface_vgg.h5 models/ ;; esac; \
-    case "$facial_hair_csv" in *,bisenet,*) cp /tmp/models/bisenet_face_parsing.onnx models/ ;; esac; \
     case "$glasses_csv" in *,mobilenet,*) cp /tmp/models/glasses_detector.onnx models/ ;; esac; \
     case "$mask_csv" in *,mobilenetv2,*) cp /tmp/models/mask_detector.h5 models/ ;; esac; \
     case "$colorization_csv" in *,eccv16,*) cp /tmp/models/colorization_deploy_v2.prototxt /tmp/models/colorization_release_v2.caffemodel /tmp/models/pts_in_hull.npy models/ ;; esac; \

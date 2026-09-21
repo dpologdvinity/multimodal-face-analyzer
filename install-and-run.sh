@@ -323,7 +323,6 @@ RECOGNITION_MODEL="$REPLY_MODEL"
 
 prompt_feature "ADDITIONAL CLASSIFICATIONS" 0 \
     "haarcascade|drowsiness - haarcascade|$BASE_PACKAGES" \
-    "bisenet|facial hair - bisenet|$BASE_PACKAGES" \
     "mediapipe|liveness - mediapipe|$BASE_PACKAGES,+mediapipe" \
     "mobilenet|glasses - mobilenet|$BASE_PACKAGES,+onnxruntime" \
     "mobilenetv2|mask - mobilenetv2|$BASE_PACKAGES,+tensorflow-cpu,+tf-keras" \
@@ -331,7 +330,6 @@ prompt_feature "ADDITIONAL CLASSIFICATIONS" 0 \
 set_additional_classification_models() {
     DROWSINESS_MODEL=""
     LIVENESS_MODEL=""
-    FACIAL_HAIR_MODEL=""
     GLASSES_MODEL=""
     MASK_MODEL=""
     HAIR_COLOR_MODEL=""
@@ -341,7 +339,6 @@ set_additional_classification_models() {
         case "$model" in
             haarcascade) DROWSINESS_MODEL="haarcascade" ;;
             mediapipe) LIVENESS_MODEL="mediapipe" ;;
-            bisenet) FACIAL_HAIR_MODEL="bisenet" ;;
             mobilenet) GLASSES_MODEL="mobilenet" ;;
             mobilenetv2) MASK_MODEL="mobilenetv2" ;;
             colorimetric) HAIR_COLOR_MODEL="colorimetric" ;;
@@ -427,7 +424,6 @@ echo "  RACE_MODEL=${RACE_MODEL}" >&2
 echo "  FACE_LANDMARKS_MODEL=${FACE_LANDMARKS_MODEL}" >&2
 echo "  LIVENESS_MODEL=${LIVENESS_MODEL}" >&2
 echo "  RECOGNITION_MODEL=${RECOGNITION_MODEL}" >&2
-echo "  FACIAL_HAIR_MODEL=${FACIAL_HAIR_MODEL}" >&2
 echo "  GLASSES_MODEL=${GLASSES_MODEL}" >&2
 echo "  MASK_MODEL=${MASK_MODEL}" >&2
 echo "  COLORIZATION_MODEL=${COLORIZATION_MODEL}" >&2
@@ -514,7 +510,7 @@ echo "" >&2
 echo "Running at http://localhost:${PORT}" >&2
 echo "Press Ctrl-C to stop Streamlit." >&2
 export AGE_MODEL GENDER_MODEL RACE_MODEL EMOTION_MODEL RECOGNITION_MODEL \
-    DROWSINESS_MODEL FACE_LANDMARKS_MODEL LIVENESS_MODEL FACIAL_HAIR_MODEL \
+    DROWSINESS_MODEL FACE_LANDMARKS_MODEL LIVENESS_MODEL \
     GLASSES_MODEL MASK_MODEL HAIR_COLOR_MODEL COLORIZATION_MODEL POSE_MODEL HAND_MODEL \
     RECONSTRUCTION_3D_MODEL AGE_PROGRESSION_MODEL YOLO_FACE_MODEL \
     SCRFD_FACE_MODEL RETINAFACE_MODEL

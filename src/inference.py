@@ -124,7 +124,6 @@ DEX_PROTO = MODEL_DIR / "dex_age.prototxt"
 DEX_MODEL = MODEL_DIR / "dex_age.caffemodel"
 MIVOLO_MODEL = MODEL_DIR / "mivolo_v2.safetensors"
 FACE_LANDMARKER_MODEL = MODEL_DIR / "face_landmarker.task"
-BISENET_MODEL = MODEL_DIR / "bisenet_face_parsing.onnx"
 SKIN_TONE_MODEL = MODEL_DIR / "skin_tone_mobilenetv2.h5"
 GLASSES_MODEL = MODEL_DIR / "glasses_detector.onnx"
 MASK_MODEL = MODEL_DIR / "mask_detector.h5"
@@ -198,7 +197,6 @@ RETINAFACE_MIN_SIZES = ((16, 32), (64, 128), (256, 512))
 RETINAFACE_VARIANCE = (0.1, 0.2)
 RETINAFACE_MEAN = (104, 117, 123)  # BGR, biubug6/Pytorch_Retinaface's own training-time mean
 RETINAFACE_NMS_THRESHOLD = 0.4
-FACIAL_HAIR_MODEL_OPTIONS = ["bisenet"]
 SKIN_TONE_MODEL_OPTIONS = ["mobilenetv2"]
 GLASSES_MODEL_OPTIONS = ["mobilenet"]
 MASK_MODEL_OPTIONS = ["mobilenetv2"]
@@ -253,7 +251,6 @@ MASK_LABELS = ["with_mask", "without_mask"]  # sklearn LabelBinarizer's alphabet
 HAIR_COLOR_LABELS = ["black", "brown", "blonde", "red", "grey", "white"]
 EYE_COLOR_LABELS = ["brown", "blue", "green", "hazel", "grey", "amber"]
 GLASSES_THRESHOLD = 0.5
-FACIAL_HAIR_COVERAGE_THRESHOLD = 0.15  # fraction of lower-face pixels in BiSeNet's hair/beard class to call it "beard"
 
 
 # --- Thread safety for shared model instances (#19, #B) -----------------------------------
@@ -301,7 +298,6 @@ class Models:
     race_nets: dict = field(default_factory=dict)
     liveness_nets: dict = field(default_factory=dict)
     recognition_nets: dict = field(default_factory=dict)
-    facial_hair_nets: dict = field(default_factory=dict)
     skin_tone_nets: dict = field(default_factory=dict)
     glasses_nets: dict = field(default_factory=dict)
     mask_nets: dict = field(default_factory=dict)
@@ -327,7 +323,7 @@ class Models:
                 ("RACE", self.race_nets),
                 ("LIVENESS", self.liveness_nets),
                 ("GAZE", self.gaze_nets),
-                ("RECOGNITION", self.recognition_nets), ("FACIAL_HAIR", self.facial_hair_nets),
+                ("RECOGNITION", self.recognition_nets),
                 ("SKIN_TONE", self.skin_tone_nets), ("GLASSES", self.glasses_nets),
                 ("MASK", self.mask_nets), ("HAIR_COLOR", self.hair_color_nets),
                 ("EYE_COLOR", self.eye_color_nets), ("COLORIZATION", self.colorization_nets),
@@ -466,10 +462,6 @@ def load_models() -> Models:
             face_landmarks_nets["mediapipe"] = landmarker
         gaze_nets["mediapipe"] = landmarker
 
-    facial_hair_nets = {}
-    if native_model_selected("FACIAL_HAIR_MODEL", "bisenet") and BISENET_MODEL.exists():
-        facial_hair_nets["bisenet"] = cv2.dnn.readNetFromONNX(str(BISENET_MODEL))
-
     skin_tone_nets = {}
     if TF_SUPPORTED and SKIN_TONE_MODEL.exists():
         skin_tone_nets["mobilenetv2"] = build_skin_tone_model(str(SKIN_TONE_MODEL))
@@ -531,7 +523,7 @@ def load_models() -> Models:
 
     return Models(
         face_net, age_nets, gender_nets, emotion_nets, drowsiness_nets, race_nets, liveness_nets, recognition_nets,
-        facial_hair_nets, skin_tone_nets, glasses_nets, mask_nets, hair_color_nets, eye_color_nets, colorization_nets,
+        skin_tone_nets, glasses_nets, mask_nets, hair_color_nets, eye_color_nets, colorization_nets,
         pose_nets, face_landmarks_nets, hand_nets, reconstruction_3d_nets, yolo_face_nets, scrfd_face_nets, retinaface_nets,
         gaze_nets, age_progression_nets,
     )
@@ -2017,34 +2009,6 @@ def predict_texture_artifact_score(face_bgr: np.ndarray) -> float:
     return texture_artifact_score(sample.tolist())
 
 
-BISENET_HAIR_CLASS = 17  # CelebAMask-HQ 19-class scheme (yakhyo/face-parsing's own utils/prepare_labels.py
-# attribute order, 1-indexed after background=0): skin, l_brow, r_brow, l_eye, r_eye, eye_g, l_ear, r_ear,
-# ear_r, nose, mouth, u_lip, l_lip, neck, neck_l, cloth, hair, hat -- there is NO separate beard/facial-hair
-# class; annotators fold facial hair into "hair" too. We approximate facial hair by restricting "hair"-class
-# coverage to the lower part of the crop (jaw/chin/mouth), where scalp hair rarely appears in a tight face box.
-
-
-def predict_facial_hair_bisenet(net, face_bgr: np.ndarray) -> str:
-    """BiSeNet (yakhyo/face-parsing) 19-class face parsing. No dedicated beard class exists in
-    CelebAMask-HQ's scheme (see BISENET_HAIR_CLASS) -- this reports 'beard' if enough of the
-    HAIR class falls in the lower part of the crop, else 'clean-shaven'. Heuristic, not a
-    purpose-trained facial-hair classifier."""
-    face_rgb = cv2.cvtColor(cv2.resize(face_bgr, (512, 512)), cv2.COLOR_BGR2RGB)
-    face_norm = (face_rgb.astype(np.float32) / 255.0 - SSRNET_MEAN) / SSRNET_STD
-    blob = face_norm.transpose(2, 0, 1)[np.newaxis, ...].astype(np.float32)
-    with _lock_for(net):
-        net.setInput(blob)
-        output = net.forward()  # (1, 19, H, W)
-    class_map = output[0].argmax(axis=0)
-
-    h = class_map.shape[0]
-    lower = class_map[int(h * 0.6):, :]
-    if lower.size == 0:
-        return "unknown"
-    coverage = float(np.mean(lower == BISENET_HAIR_CLASS))
-    return "beard" if coverage >= FACIAL_HAIR_COVERAGE_THRESHOLD else "clean-shaven"
-
-
 def predict_skin_tone_vgg16(net, face_bgr: np.ndarray) -> str:
     """behra527/Skin-Tone-Classification-model: MobileNetV2 backbone (despite the repo's
     README describing VGG16), RGB, its own idiosyncratic 90x120 (h,w) input,
@@ -2348,7 +2312,6 @@ def analyze_frame(
     active_race: set,
     active_recognition: set,
     gallery: dict,
-    active_facial_hair: set,
     active_skin_tone: set,
     active_glasses: set,
     active_mask: set,
@@ -2626,18 +2589,6 @@ def analyze_frame(
                 _record_model_latency(metrics, "recognition", key, started)
             return pairs, embedding
 
-        def _facial_hair_task():
-            pairs = []
-            for key in active_facial_hair:
-                net = models.facial_hair_nets.get(key)
-                if net is None:
-                    continue
-                started = time.perf_counter()
-                value = _cached_face_predict("facial_hair", key, face, predict_facial_hair_bisenet, net, face)
-                pairs.append((key, value))
-                _record_model_latency(metrics, "facial_hair", key, started)
-            return pairs
-
         def _skin_tone_task():
             pairs = []
             for key in active_skin_tone:
@@ -2728,7 +2679,6 @@ def analyze_frame(
             "gaze": _INFERENCE_EXECUTOR.submit(_gaze_task),
             "head_pose": _INFERENCE_EXECUTOR.submit(_head_pose_task),
             "recognition": _INFERENCE_EXECUTOR.submit(_recognition_task),
-            "facial_hair": _INFERENCE_EXECUTOR.submit(_facial_hair_task),
             "skin_tone": _INFERENCE_EXECUTOR.submit(_skin_tone_task),
             "glasses": _INFERENCE_EXECUTOR.submit(_glasses_task),
             "mask": _INFERENCE_EXECUTOR.submit(_mask_task),
@@ -2745,7 +2695,6 @@ def analyze_frame(
         gaze_pairs = futures["gaze"].result()
         head_pose_pairs = futures["head_pose"].result()
         recognition_pairs, face_embedding = futures["recognition"].result()
-        facial_hair_pairs = futures["facial_hair"].result()
         skin_tone_pairs = futures["skin_tone"].result()
         glasses_pairs = futures["glasses"].result()
         mask_pairs = futures["mask"].result()
@@ -2783,7 +2732,7 @@ def analyze_frame(
 
         raw_columns = _gather_face_results({
             "age": age_pairs, "gender": gender_pairs, "race": race_pairs, "emotion": emotion_pairs,
-            "gaze": gaze_pairs, "identity": recognition_pairs, "facial_hair": facial_hair_pairs,
+            "gaze": gaze_pairs, "identity": recognition_pairs,
             "eye_contact": [("derived", value) for value in eye_contact], "head_pose": head_pose_pairs,
             "skin_tone": skin_tone_pairs, "glasses": glasses_pairs, "mask": mask_pairs,
             "hair_color": hair_color_pairs, "eye_color": eye_color_pairs, "drowsiness": drowsy_pairs,
@@ -2796,7 +2745,7 @@ def analyze_frame(
                 "gaze": gaze_pairs, "identity": recognition_pairs,
                 "eye contact": [("derived", value) for value in eye_contact],
                 "head pose": head_pose_pairs,
-                "facial hair": facial_hair_pairs, "skin tone": skin_tone_pairs, "glasses": glasses_pairs,
+                "skin tone": skin_tone_pairs, "glasses": glasses_pairs,
                 "mask": mask_pairs, "hair color": hair_color_pairs, "eye color": eye_color_pairs,
                 "drowsiness": drowsy_pairs, "liveness": liveness_pairs,
             }.items()
@@ -2816,7 +2765,6 @@ def analyze_frame(
             "eye_contact": eye_contact,
             "head_pose": _format_results(head_pose_pairs),
             "identity": _format_results(recognition_pairs),
-            "facial_hair": _format_results(facial_hair_pairs),
             "skin_tone": _format_results(skin_tone_pairs),
             "glasses": _format_results(glasses_pairs),
             "mask": _format_results(mask_pairs),
