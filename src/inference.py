@@ -1153,6 +1153,28 @@ def face_crop_bounds(
     )
 
 
+def body_crop_bounds(
+    box: tuple[int, int, int, int], frame_shape: tuple[int, int],
+) -> tuple[int, int, int, int]:
+    """Return a clamped upper-body context crop derived from a face detection box.
+
+    MiVOLO's bundled checkpoint is a face+person model. The detector only gives us a face box,
+    so use a generous region centered on it: a little above the head, substantially below it,
+    and wide enough to include shoulders. This is a fallback for images without a person
+    detector, but still supplies real context instead of the zero tensor used previously.
+    """
+    x1, y1, x2, y2 = box
+    frame_height, frame_width = frame_shape
+    face_width, face_height = max(0, x2 - x1), max(0, y2 - y1)
+    center_x = (x1 + x2) / 2.0
+    return (
+        max(0, round(center_x - 1.25 * face_width)),
+        max(0, round(y1 - 0.5 * face_height)),
+        min(frame_width, round(center_x + 1.25 * face_width)),
+        min(frame_height, round(y2 + 3.0 * face_height)),
+    )
+
+
 def apply_geometric_transform(region: np.ndarray, transform_type: str, **params) -> np.ndarray:
     """Apply one geometric transform to a cropped region. Matches the matrices in
     ideas/transform.md / ideas/geo-transform.md directly (translation, reflection, rotation,
@@ -1437,17 +1459,29 @@ def predict_age_insightface(net, frame_bgr: np.ndarray, box: tuple[int, int, int
     return f"{round(out[2] * 100):.0f}"
 
 
-def predict_age_mivolo(net: MiVOLOInference, face_bgr: np.ndarray) -> str:
-    """Predict age with MiVOLO on a face crop (face-only mode)."""
+def predict_age_mivolo(
+    net: MiVOLOInference, face_bgr: np.ndarray, body_bgr: np.ndarray | None = None,
+) -> str:
+    """Predict age with MiVOLO, using real body context when available."""
     with _lock_for(net):
-        age, _, _ = net.predict_face(face_bgr)
+        result = (
+            net.predict_face_with_body(face_bgr, body_bgr)
+            if body_bgr is not None else net.predict_face(face_bgr)
+        )
+        age, _, _ = result
     return f"{int(round(age))}"
 
 
-def predict_gender_mivolo(net: MiVOLOInference, face_bgr: np.ndarray) -> str:
-    """Predict gender with MiVOLO on a face crop (face-only mode)."""
+def predict_gender_mivolo(
+    net: MiVOLOInference, face_bgr: np.ndarray, body_bgr: np.ndarray | None = None,
+) -> str:
+    """Predict gender with MiVOLO, using real body context when available."""
     with _lock_for(net):
-        _, gender, _ = net.predict_face(face_bgr)
+        result = (
+            net.predict_face_with_body(face_bgr, body_bgr)
+            if body_bgr is not None else net.predict_face(face_bgr)
+        )
+        _, gender, _ = result
     # MiVOLO returns 'male'/'female' (lowercase); normalize to "Male"/"Female"
     return "Male" if gender == "male" else "Female"
 
@@ -2384,6 +2418,9 @@ def analyze_frame(
         if face.size == 0:
             continue
 
+        bx1, by1, bx2, by2 = body_crop_bounds((x1, y1, x2, y2), frame.shape[:2])
+        body = frame[by1:by2, bx1:bx2]
+
         if face_adjustments and any(face_adjustments.values()):
             face = apply_image_adjustments(face, face_adjustments)
 
@@ -2443,7 +2480,7 @@ def analyze_frame(
                 elif key == "dex":
                     value = _cached_face_predict("age", key, face, predict_age_dex, net, face)
                 elif key == "mivolo":
-                    value = _cached_face_predict("age", key, face, predict_age_mivolo, net, face)
+                    value = predict_age_mivolo(net, face, body)
                 else:
                     value = predict_age_insightface(net, crop_frame, (cx1, cy1, cx2, cy2))
                 pairs.append((key, value))
@@ -2464,7 +2501,7 @@ def analyze_frame(
                 elif key == "fairface":
                     value = predict_gender_fairface(net, crop_frame, (cx1, cy1, cx2, cy2))
                 elif key == "mivolo":
-                    value = _cached_face_predict("gender", key, face, predict_gender_mivolo, net, face)
+                    value = predict_gender_mivolo(net, face, body)
                 else:
                     value = predict_gender_insightface(net, crop_frame, (cx1, cy1, cx2, cy2))
                 pairs.append((key, value))
