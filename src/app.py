@@ -30,9 +30,12 @@ st.set_page_config(page_title="MULTIMODAL_FACE_ANALYZER", layout="wide")
 THEME_MARKER_CLASSES = {
     "Light cyberpunk": "light-theme",
     "Amber Terminal": "amber-theme",
+    "Synthwave": "synthwave-theme",
 }
 
-theme = st.sidebar.selectbox("THEME", ["Dark cyberpunk", "Light cyberpunk", "Amber Terminal"], key="theme")
+theme = st.sidebar.selectbox(
+    "THEME", ["Dark cyberpunk", "Light cyberpunk", "Amber Terminal", "Synthwave"], key="theme"
+)
 
 st.markdown(
     """
@@ -70,6 +73,50 @@ st.markdown(
         --muted: #b8873f;
         --accent: #ffb02e;
         --alert: #ff5f4d;
+    }
+
+    body:has(.synthwave-theme) {
+        --base: #170826;
+        --surface: #23103a;
+        --surface-raised: #2e1650;
+        --line: #6b2e8f;
+        --text: #f4e3ff;
+        --muted: #c68fe6;
+        --accent: #ff2fb8;
+        --alert: #ffe45e;
+    }
+    body:has(.synthwave-theme) .stApp {
+        background:
+            linear-gradient(180deg, rgba(255, 47, 184, 0.08) 0%, transparent 40%),
+            repeating-linear-gradient(0deg, rgba(198, 143, 230, 0.06) 0 1px, transparent 1px 32px),
+            repeating-linear-gradient(90deg, rgba(198, 143, 230, 0.06) 0 1px, transparent 1px 32px),
+            var(--base);
+    }
+    body:has(.synthwave-theme) .app-hero {
+        text-align: center;
+        border-left: none;
+        border-bottom: 2px solid var(--accent);
+        padding: 0 0 1.5rem;
+        margin: 0 auto 2.5rem;
+    }
+    body:has(.synthwave-theme) .app-hero h1 {
+        font-family: 'IBM Plex Mono', monospace;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        text-shadow: 0 0 12px var(--accent), 0 0 28px rgba(255, 47, 184, 0.6);
+    }
+    body:has(.synthwave-theme) div[data-testid="stTabs"] [data-baseweb="tab-list"] {
+        justify-content: center;
+        border-bottom: 2px solid var(--line);
+    }
+    body:has(.synthwave-theme) button[role="tab"][aria-selected="true"] {
+        text-shadow: 0 0 8px var(--accent);
+    }
+    body:has(.synthwave-theme) .stButton button,
+    body:has(.synthwave-theme) .stDownloadButton button {
+        border-radius: 999px !important;
+        border: 1px solid var(--accent) !important;
+        box-shadow: 0 0 10px rgba(255, 47, 184, 0.45);
     }
 
     .stApp {
