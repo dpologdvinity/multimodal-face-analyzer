@@ -6,13 +6,13 @@
 ![Streamlit](https://img.shields.io/badge/Streamlit-UI-00ff66?style=flat-square&logo=streamlit&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Ready-00ff66?style=flat-square&logo=docker&logoColor=white)
 
-> Computer vision pipeline for face detection with age, gender, race, emotion, gaze, drowsiness, facial hair, glasses, mask, and hair/eye color inference. A containerized Streamlit web app.
+> Computer vision pipeline for face detection with age, gender, race, emotion, gaze, drowsiness, glasses, mask, and hair/eye color inference. A containerized Streamlit web app.
 
 ---
 
 ## Key Features
 
-- **Multi-model face analysis:** face detection, age, gender, race, emotion, gaze, drowsiness, facial hair, glasses, face mask, colorimetric hair/eye color, face landmarks, plus whole-frame auto-colorization, body pose estimation, and hand landmarks -- most features have 2+ selectable model backends.
+- **Multi-model face analysis:** face detection, age, gender, race, emotion, gaze, drowsiness, glasses, face mask, colorimetric hair/eye color, face landmarks, plus whole-frame auto-colorization, body pose estimation, and hand landmarks -- most features have 2+ selectable model backends.
 - **Image adjustments:** 11 Lightroom-style sliders (exposure, contrast, shadows/highlights, saturation/vibrance, sharpness, noise reduction, etc.) for the whole image, all face crops before classification, and each detected face's preview separately.
 - **Face details on hover:** Hover or focus a detected face box in the annotated image to see its analysis results; full face cards remain below the image.
 - **Identity search:** SEARCH button per detected face, matching against bundled reference photos (`known_people/`, a few famous people out of the box) plus an optional user-specified directory. Local matching only, no live internet search.
@@ -141,7 +141,7 @@ SEARCH also independently checks **eigenfaces** (see below) against every previo
 
 Every detected face's card also has SAVE and (now dual-purpose) SEARCH buttons:
 
-- **SAVE** writes one row to a small SQLite database (`db/faces.db`), the face's color crop to `faces/{id}.jpg`, and a grayscale, tighter-cropped ("zoomed in") version to `eigen/{id}.jpg`. `id` is a random integer 1-999999, retried on collision. The database schema is **sparse and lazy**: there's no fixed column list -- a column (e.g. `age_caffe`, `facial_hair_bisenet`) is only created the first time some SAVEd face actually has a value for that (feature, model) pair. A model that was never run, or never active, never gets a column. Every SAVE call independently extends the schema as needed (`ALTER TABLE ... ADD COLUMN`).
+- **SAVE** writes one row to a small SQLite database (`db/faces.db`), the face's color crop to `faces/{id}.jpg`, and a grayscale, tighter-cropped ("zoomed in") version to `eigen/{id}.jpg`. `id` is a random integer 1-999999, retried on collision. The database schema is **sparse and lazy**: there's no fixed column list -- a column (e.g. `age_caffe`) is only created the first time some SAVEd face actually has a value for that (feature, model) pair. A model that was never run, or never active, never gets a column. Every SAVE call independently extends the schema as needed (`ALTER TABLE ... ADD COLUMN`).
 - **SEARCH**'s eigenfaces half runs Turk & Pentland's PCA algorithm (`ideas/eigenfaces.md`) fresh against every image in `eigen/` -- there's no persisted/trained model file, it retrains on the fly each time (cheap at the scale this is meant for: a personal collection of previously-saved faces, not a large dataset). Faces are normalized to a fixed 100x100 grayscale size; the query face goes through the exact same crop/resize pipeline as SAVE's `eigen/` output so the two are comparable. A match is reported by saved-face **ID** (there's no name at this layer -- look up `db/faces.db` by ID for whatever attributes were saved with it).
 
 **`EIGENFACE_DISTANCE_THRESHOLD` is an untuned heuristic.** Unlike `RECOGNITION_COSINE_THRESHOLD` (deepface's own published default), there's no established reference value for raw-pixel eigenspace L2 distance at this face size -- it was verified to behave correctly (an unmodified saved face matches itself with near-zero distance; unrelated random images produce much larger distances) but the cutoff itself will need real-world tuning against your own saved faces. Per the algorithm's own known limitations (see `ideas/eigenfaces.md`): sensitive to lighting, pose, and scale -- front-facing, consistently-lit photos work best.
@@ -218,14 +218,6 @@ lip-sync, identify which person is speaking, or produce a clinically or scientif
 emotion measurement. With multiple faces, only the largest face is used. Uploads and webcam
 snapshots do not include audio and therefore do not use this fusion feature. Browser microphone
 permissions and a working WebRTC connection are required.
-
-### Facial Hair (web app only)
-
-| Backend    | Framework      | Output                    |
-| ---------- | -------------- | -------------------------- |
-| `bisenet`  | ONNX (cv2.dnn) | `beard` / `clean-shaven`  |
-
-BiSeNet 19-class face parsing (yakhyo/face-parsing, MIT, `models/bisenet_face_parsing.onnx`, 512x512 RGB, ImageNet-normalized). CelebAMask-HQ's 19-class scheme has **no dedicated beard/facial-hair class** -- annotators fold facial hair into the same `hair` class as scalp hair. This backend approximates facial hair by checking how much of the `hair` class falls in the *lower* part of the face crop (jaw/chin/mouth), where scalp hair rarely appears in a tight box -- reported `beard` if that coverage clears 15%. Treat this as a coarse proxy, not a purpose-built facial-hair classifier.
 
 ### Skin Tone (web app only, no working backend currently shipped)
 
@@ -345,12 +337,12 @@ Open **SELECT REGION & TRANSFORM** beneath an uploaded image or webcam snapshot,
 
 Each detected face has an **Edit face** expander containing its sliders, **IMAGE OP** selector, and **APPLY IMAGE OP** button. The filters stay hidden until that expander opens. Operations act on that face's displayed crop; the result can be downloaded as a PNG. Intensity, sharpen, and denoise expose a method selector. These operations need no model files or Docker build arguments. CNN and GAN denoising are not included because trained weights are not supplied.
 
-Model provenance: DAN, SSR-Net, and DeepFace's race model are vendored research code (`src/nets/`). DAN and SSR-Net have no explicit upstream license file (research/educational use). DeepFace (race, gender, and recognition/`deepface_vgg.h5`) is MIT. FairFace's ONNX conversion is MIT (underlying dataset CC BY 4.0). InsightFace's model is non-commercial research use only (see Gender above). BiSeNet face-parsing (facial hair) and Face-Mask-Detection (mask) are MIT; the glasses detector's license is unstated. HSEmotion (HSE-asavchenko/EmotiEffLib) code is Apache-2.0; its AffectNet-8 fine-tuned weight has the same research/educational provenance as DAN. The age-reaging U-Net (`franunet`) is MIT-licensed code, but its BlurPool component (vendored from Adobe's antialiased-cnns) is CC BY-NC-SA 4.0 -- non-commercial use only (see Age Progression / Regression above).
+Model provenance: DAN, SSR-Net, and DeepFace's race model are vendored research code (`src/nets/`). DAN and SSR-Net have no explicit upstream license file (research/educational use). DeepFace (race, gender, and recognition/`deepface_vgg.h5`) is MIT. FairFace's ONNX conversion is MIT (underlying dataset CC BY 4.0). InsightFace's model is non-commercial research use only (see Gender above). Face-Mask-Detection is MIT; the glasses detector's license is unstated. HSEmotion (HSE-asavchenko/EmotiEffLib) code is Apache-2.0; its AffectNet-8 fine-tuned weight has the same research/educational provenance as DAN. The age-reaging U-Net (`franunet`) is MIT-licensed code, but its BlurPool component (vendored from Adobe's antialiased-cnns) is CC BY-NC-SA 4.0 -- non-commercial use only (see Age Progression / Regression above).
 
 ## Performance
 
-- **Classifier frame skip (webcam LIVE mode only):** a `CLASSIFIER FRAME SKIP` slider (1-10, default 1 = every frame) above the LIVE video feed runs age/gender/emotion/race/recognition/facial-hair/skin-tone/glasses/mask/hair-color/eye-color/drowsiness classifiers every Nth frame instead of every frame. Face detection and the pose/hand/face-landmark overlays still run every frame, so the video itself stays smooth. This is safe to skip freely: those classifiers' outputs aren't otherwise drawn onto the LIVE video (per-face text cards only exist for Image upload / webcam SNAPSHOT), so there's no visible staleness to interpolate around -- skipping only reduces CPU load.
-- **Per-face result caching:** `src/inference.py` memoizes most per-face classifier calls (age, gender, emotion, race, expression, facial hair, skin tone, glasses, mask, eye color, drowsiness, and the recognition embedding step) keyed on a hash of the exact preprocessed face-crop bytes fed to that model, not a face-identity embedding -- an embedding hash isn't a stable cache key for an adjusted or re-cropped face, but identical input bytes always produce identical deterministic output, so hashing the input itself is correct with no accuracy risk. This mainly helps Streamlit's rerun-the-whole-script-on-any-widget-change model: toggling one unrelated sidebar option no longer recomputes every classifier for every face from scratch. `fairface` and `insightface` (which key off the full frame + box rather than an isolated face crop) and the identity **match** step (which must stay live since the gallery can change between calls) are intentionally not cached. The cache is bounded (LRU-evicted, 2048 entries) and shared process-wide.
+- **Classifier frame skip (webcam LIVE mode only):** a `CLASSIFIER FRAME SKIP` slider (1-10, default 1 = every frame) above the LIVE video feed runs age/gender/emotion/race/recognition/skin-tone/glasses/mask/hair-color/eye-color/drowsiness classifiers every Nth frame instead of every frame. Face detection and the pose/hand/face-landmark overlays still run every frame, so the video itself stays smooth. This is safe to skip freely: those classifiers' outputs aren't otherwise drawn onto the LIVE video (per-face text cards only exist for Image upload / webcam SNAPSHOT), so there's no visible staleness to interpolate around -- skipping only reduces CPU load.
+- **Per-face result caching:** `src/inference.py` memoizes most per-face classifier calls (age, gender, emotion, race, expression, skin tone, glasses, mask, eye color, drowsiness, and the recognition embedding step) keyed on a hash of the exact preprocessed face-crop bytes fed to that model, not a face-identity embedding -- an embedding hash isn't a stable cache key for an adjusted or re-cropped face, but identical input bytes always produce identical deterministic output, so hashing the input itself is correct with no accuracy risk. This mainly helps Streamlit's rerun-the-whole-script-on-any-widget-change model: toggling one unrelated sidebar option no longer recomputes every classifier for every face from scratch. `fairface` and `insightface` (which key off the full frame + box rather than an isolated face crop) and the identity **match** step (which must stay live since the gallery can change between calls) are intentionally not cached. The cache is bounded (LRU-evicted, 2048 entries) and shared process-wide.
 
 ---
 
@@ -381,7 +373,6 @@ multimodal-face-analyzer/
 │   ├── deepface_vgg.h5                          # recognition: vggface backend
 │   ├── face_landmarker.task                     # face landmarks, gaze, and liveness
 │   ├── haarcascade_eye.xml                      # drowsiness + eye color
-│   ├── bisenet_face_parsing.onnx                # facial hair: bisenet backend
 │   ├── glasses_detector.onnx                    # glasses: mobilenet backend
 │   ├── mask_detector.h5                         # mask: mobilenetv2 backend
 │   ├── colorization_deploy_v2.prototxt / colorization_release_v2.caffemodel / pts_in_hull.npy  # colorization
@@ -525,7 +516,6 @@ docker build \
   --build-arg FACE_LANDMARKS_MODEL=mediapipe \
   --build-arg LIVENESS_MODEL=mediapipe \
   --build-arg RECOGNITION_MODEL=vggface,lbph \
-  --build-arg FACIAL_HAIR_MODEL=bisenet \
   --build-arg GLASSES_MODEL=mobilenet \
   --build-arg MASK_MODEL=mobilenetv2 \
   --build-arg COLORIZATION_MODEL=eccv16 \
@@ -549,7 +539,6 @@ docker build \
 | `FACE_LANDMARKS_MODEL` | `mediapipe`                        |
 | `LIVENESS_MODEL` | `mediapipe` (reuses `face_landmarker.task`) |
 | `RECOGNITION_MODEL` | `vggface`, `lbph`                       |
-| `FACIAL_HAIR_MODEL` | `bisenet`                               |
 | `GLASSES_MODEL`    | `mobilenet`                              |
 | `MASK_MODEL`       | `mobilenetv2`                            |
 | `COLORIZATION_MODEL` | `eccv16`                                |

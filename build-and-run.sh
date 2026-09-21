@@ -164,7 +164,6 @@ RECOGNITION_MODEL="$REPLY_MODEL"
 
 prompt_feature "ADDITIONAL CLASSIFICATIONS" 0 \
     "haarcascade|drowsiness - haarcascade|green" \
-    "bisenet|facial hair - bisenet|green" \
     "mediapipe|liveness - mediapipe|orange" \
     "mobilenet|glasses - mobilenet|orange" \
     "mobilenetv2|mask - mobilenetv2|orange" \
@@ -172,7 +171,6 @@ prompt_feature "ADDITIONAL CLASSIFICATIONS" 0 \
 set_additional_classification_models() {
     DROWSINESS_MODEL=""
     LIVENESS_MODEL=""
-    FACIAL_HAIR_MODEL=""
     GLASSES_MODEL=""
     MASK_MODEL=""
     HAIR_COLOR_MODEL=""
@@ -182,7 +180,6 @@ set_additional_classification_models() {
         case "$model" in
             haarcascade) DROWSINESS_MODEL="haarcascade" ;;
             mediapipe) LIVENESS_MODEL="mediapipe" ;;
-            bisenet) FACIAL_HAIR_MODEL="bisenet" ;;
             mobilenet) GLASSES_MODEL="mobilenet" ;;
             mobilenetv2) MASK_MODEL="mobilenetv2" ;;
             colorimetric) HAIR_COLOR_MODEL="colorimetric" ;;
@@ -289,7 +286,6 @@ stage_model "$RACE_MODEL" deepface deepface_race.h5
 stage_model "$FACE_LANDMARKS_MODEL" facemesh face_landmarker.task
 stage_model "$LIVENESS_MODEL" mediapipe face_landmarker.task
 stage_model "$RECOGNITION_MODEL" vggface deepface_vgg.h5
-stage_model "$FACIAL_HAIR_MODEL" bisenet bisenet_face_parsing.onnx
 stage_model "$GLASSES_MODEL" mobilenet glasses_detector.onnx
 stage_model "$MASK_MODEL" mobilenetv2 mask_detector.h5
 stage_model "$COLORIZATION_MODEL" eccv16 colorization_deploy_v2.prototxt colorization_release_v2.caffemodel pts_in_hull.npy
@@ -311,7 +307,6 @@ echo "  RACE_MODEL=${RACE_MODEL}" >&2
 echo "  FACE_LANDMARKS_MODEL=${FACE_LANDMARKS_MODEL}" >&2
 echo "  LIVENESS_MODEL=${LIVENESS_MODEL}" >&2
 echo "  RECOGNITION_MODEL=${RECOGNITION_MODEL}" >&2
-echo "  FACIAL_HAIR_MODEL=${FACIAL_HAIR_MODEL}" >&2
 echo "  GLASSES_MODEL=${GLASSES_MODEL}" >&2
 echo "  MASK_MODEL=${MASK_MODEL}" >&2
 echo "  HAIR_COLOR_MODEL=${HAIR_COLOR_MODEL}" >&2
@@ -334,7 +329,6 @@ docker build \
     --build-arg FACE_LANDMARKS_MODEL="$FACE_LANDMARKS_MODEL" \
     --build-arg LIVENESS_MODEL="$LIVENESS_MODEL" \
     --build-arg RECOGNITION_MODEL="$RECOGNITION_MODEL" \
-    --build-arg FACIAL_HAIR_MODEL="$FACIAL_HAIR_MODEL" \
     --build-arg GLASSES_MODEL="$GLASSES_MODEL" \
     --build-arg MASK_MODEL="$MASK_MODEL" \
     --build-arg COLORIZATION_MODEL="$COLORIZATION_MODEL" \
