@@ -1,0 +1,106 @@
+{
+  "_comment": [
+    "Hand-labelled ground truth for the assets/ benchmark images.",
+    "Each face is bound to its normalized (x, y) centre so labels survive detector changes.",
+    "race/emotion are lists of ACCEPTABLE answers (some faces are genuinely ambiguous);",
+    "age is an inclusive [min, max] year range a prediction must overlap to count correct.",
+    "Canonical race keys: white, black, asian, indian, latino, middle_eastern."
+  ],
+  "joe-biden.jpg": [
+    {"center": [0.533, 0.272], "gender": "Male", "race": ["white"], "age": [70, 85], "emotion": ["happy"]}
+  ],
+  "5yr-asian-girl-happy.jpg": [
+    {"center": [0.420, 0.306], "gender": "Female", "race": ["asian"], "age": [3, 8], "emotion": ["happy"]}
+  ],
+  "3yr-white-girl-sad.jpg": [
+    {"center": [0.572, 0.307], "gender": "Female", "race": ["white"], "age": [2, 6], "emotion": ["sad"]}
+  ],
+  "000006.jpg": [
+    {"center": [0.527, 0.307], "gender": "Female", "race": ["latino", "middle_eastern", "white"], "age": [22, 38]}
+  ],
+  "pia-wurtzbach-1.jpg": [
+    {"center": [0.533, 0.351], "gender": "Female", "race": ["asian"], "age": [22, 33], "emotion": ["happy"]}
+  ],
+  "black-family.webp": [
+    {"center": [0.174, 0.186], "gender": "Male", "race": ["black"], "age": [28, 45], "emotion": ["happy"]},
+    {"center": [0.292, 0.260], "gender": "Female", "race": ["black"], "age": [4, 9], "emotion": ["happy"]},
+    {"center": [0.437, 0.360], "gender": "Female", "race": ["black"], "age": [55, 75], "emotion": ["happy", "neutral"]},
+    {"center": [0.587, 0.274], "gender": "Male", "race": ["black"], "age": [60, 80], "emotion": ["happy"]},
+    {"center": [0.765, 0.317], "gender": "Female", "race": ["black"], "age": [28, 45], "emotion": ["happy"]},
+    {"center": [0.880, 0.290], "gender": "Male", "race": ["black"], "age": [3, 8], "emotion": ["happy"]}
+  ],
+  "grayscale-white-family.jpg": [
+    {"center": [0.295, 0.173], "gender": "Female", "race": ["white"], "age": [20, 32], "emotion": ["happy"]},
+    {"center": [0.408, 0.362], "gender": "Male", "race": ["white"], "age": [55, 72], "emotion": ["happy"]},
+    {"center": [0.492, 0.138], "gender": "Male", "race": ["white"], "age": [33, 50], "emotion": ["happy"]},
+    {"center": [0.598, 0.372], "gender": "Female", "race": ["white"], "age": [52, 70], "emotion": ["happy"]},
+    {"center": [0.679, 0.190], "gender": "Female", "race": ["white"], "age": [22, 35], "emotion": ["happy"]}
+  ],
+  "hispanic-family.jpg": [
+    {"center": [0.223, 0.216], "gender": "Male", "race": ["latino", "white"], "age": [32, 50]},
+    {"center": [0.249, 0.508], "gender": "Female", "race": ["latino", "white"], "age": [22, 38]},
+    {"center": [0.357, 0.158], "gender": "Female", "race": ["latino", "white"], "age": [28, 45]},
+    {"center": [0.362, 0.271], "gender": "Male", "race": ["latino", "white"], "age": [8, 15]},
+    {"center": [0.466, 0.280], "gender": "Female", "race": ["latino", "white"], "age": [9, 16]},
+    {"center": [0.487, 0.155], "gender": "Male", "race": ["latino", "white"], "age": [32, 50]},
+    {"center": [0.634, 0.225], "gender": "Male", "race": ["latino", "white"], "age": [35, 55]}
+  ],
+  "multiracial-family.jpg": [
+    {"center": [0.090, 0.096], "gender": "Male", "race": ["white"], "age": [4, 9], "emotion": ["happy"]},
+    {"center": [0.121, 0.227], "gender": "Male", "race": ["white"], "age": [28, 42], "emotion": ["happy"]},
+    {"center": [0.268, 0.264], "gender": "Male", "race": ["white"], "age": [55, 75], "emotion": ["happy"]},
+    {"center": [0.360, 0.336], "gender": "Female", "race": ["black"], "age": [55, 75], "emotion": ["happy"]},
+    {"center": [0.481, 0.352], "gender": "Female", "race": ["white"], "age": [60, 80], "emotion": ["happy", "surprise"]},
+    {"center": [0.513, 0.523], "gender": "Female", "race": ["black", "latino"], "age": [5, 11], "emotion": ["happy"]},
+    {"center": [0.572, 0.287], "gender": "Female", "race": ["white"], "age": [28, 45], "emotion": ["happy"]},
+    {"center": [0.641, 0.383], "gender": "Female", "race": ["indian", "latino", "black"], "age": [8, 14], "emotion": ["happy"]},
+    {"center": [0.710, 0.276], "gender": "Male", "race": ["white"], "age": [55, 72], "emotion": ["happy"]},
+    {"center": [0.816, 0.268], "gender": "Male", "race": ["black", "indian", "latino"], "age": [28, 45], "emotion": ["happy"]},
+    {"center": [0.899, 0.240], "gender": "Male", "race": ["black", "latino", "white"], "age": [7, 14], "emotion": ["happy", "surprise"]}
+  ],
+  "many-people.jpg": [
+    {"center": [0.125, 0.098], "gender": "Male", "race": ["white"], "age": [20, 32], "emotion": ["happy"]},
+    {"center": [0.373, 0.101], "gender": "Female", "race": ["white"], "age": [22, 35], "emotion": ["happy"]},
+    {"center": [0.623, 0.099], "gender": "Male", "race": ["middle_eastern", "latino", "white"], "age": [24, 38], "emotion": ["happy"]},
+    {"center": [0.882, 0.101], "gender": "Female", "race": ["white"], "age": [20, 32], "emotion": ["happy"]},
+    {"center": [0.125, 0.335], "gender": "Female", "race": ["white"], "age": [22, 35], "emotion": ["happy"]},
+    {"center": [0.379, 0.335], "gender": "Male", "race": ["white"], "age": [22, 35], "emotion": ["happy"]},
+    {"center": [0.615, 0.330], "gender": "Female", "race": ["black"], "age": [20, 32], "emotion": ["happy"]},
+    {"center": [0.877, 0.337], "gender": "Male", "race": ["white"], "age": [24, 38], "emotion": ["happy"]},
+    {"center": [0.119, 0.550], "gender": "Male", "race": ["white"], "age": [17, 28], "emotion": ["happy"]},
+    {"center": [0.377, 0.559], "gender": "Female", "race": ["white"], "age": [22, 35], "emotion": ["happy"]},
+    {"center": [0.631, 0.564], "gender": "Male", "race": ["black"], "age": [24, 38], "emotion": ["happy"]},
+    {"center": [0.870, 0.560], "gender": "Female", "race": ["white"], "age": [20, 32], "emotion": ["happy"]},
+    {"center": [0.113, 0.796], "gender": "Female", "race": ["white"], "age": [18, 30], "emotion": ["happy"]},
+    {"center": [0.374, 0.802], "gender": "Male", "race": ["white"], "age": [35, 52], "emotion": ["happy"]},
+    {"center": [0.620, 0.793], "gender": "Female", "race": ["black", "latino"], "age": [20, 32], "emotion": ["happy"]},
+    {"center": [0.880, 0.799], "gender": "Male", "race": ["black"], "age": [24, 38], "emotion": ["happy"]}
+  ],
+  "expressions.jpg": [
+    {"center": [0.102, 0.470], "gender": "Female", "race": ["white"], "age": [22, 38]},
+    {"center": [0.102, 0.662], "gender": "Female", "race": ["white"], "age": [22, 38]},
+    {"center": [0.106, 0.276], "gender": "Female", "race": ["white"], "age": [22, 38]},
+    {"center": [0.109, 0.070], "gender": "Female", "race": ["white"], "age": [22, 38]},
+    {"center": [0.111, 0.864], "gender": "Female", "race": ["white"], "age": [22, 38]},
+    {"center": [0.297, 0.463], "gender": "Female", "race": ["white"], "age": [22, 38]},
+    {"center": [0.303, 0.670], "gender": "Female", "race": ["white"], "age": [22, 38]},
+    {"center": [0.298, 0.860], "gender": "Female", "race": ["white"], "age": [22, 38]},
+    {"center": [0.303, 0.265], "gender": "Female", "race": ["white"], "age": [22, 38]},
+    {"center": [0.305, 0.062], "gender": "Female", "race": ["white"], "age": [22, 38]},
+    {"center": [0.494, 0.262], "gender": "Female", "race": ["white"], "age": [22, 38]},
+    {"center": [0.500, 0.474], "gender": "Female", "race": ["white"], "age": [22, 38]},
+    {"center": [0.500, 0.076], "gender": "Female", "race": ["white"], "age": [22, 38]},
+    {"center": [0.502, 0.662], "gender": "Female", "race": ["white"], "age": [22, 38]},
+    {"center": [0.505, 0.863], "gender": "Female", "race": ["white"], "age": [22, 38]},
+    {"center": [0.692, 0.463], "gender": "Female", "race": ["white"], "age": [22, 38]},
+    {"center": [0.700, 0.070], "gender": "Female", "race": ["white"], "age": [22, 38]},
+    {"center": [0.697, 0.664], "gender": "Female", "race": ["white"], "age": [22, 38]},
+    {"center": [0.702, 0.263], "gender": "Female", "race": ["white"], "age": [22, 38]},
+    {"center": [0.702, 0.855], "gender": "Female", "race": ["white"], "age": [22, 38]},
+    {"center": [0.891, 0.268], "gender": "Female", "race": ["white"], "age": [22, 38]},
+    {"center": [0.892, 0.073], "gender": "Female", "race": ["white"], "age": [22, 38]},
+    {"center": [0.894, 0.474], "gender": "Female", "race": ["white"], "age": [22, 38]},
+    {"center": [0.894, 0.861], "gender": "Female", "race": ["white"], "age": [22, 38]},
+    {"center": [0.898, 0.664], "gender": "Female", "race": ["white"], "age": [22, 38]}
+  ]
+}
