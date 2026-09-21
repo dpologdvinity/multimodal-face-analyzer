@@ -71,3 +71,8 @@ def test_model_labels_preserve_canonical_product_names():
     for label in ("SSR-Net", "MiVOLO", "FairFace", "DeepFace", "HSEmotion", "MediaPipe"):
         assert f'"{label}"' in APP_SOURCE
     assert "format_func=_display_model_name" in APP_SOURCE
+
+
+def test_brutalist_theme_keeps_accent_actions_and_readouts_legible():
+    assert 'body:has(.brutalist-theme) .app-hero-readout strong' in APP_SOURCE
+    assert 'body:has(.brutalist-theme) div[data-testid="stFileUploader"] button *' in APP_SOURCE
