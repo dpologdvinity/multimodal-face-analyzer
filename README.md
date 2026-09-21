@@ -70,6 +70,13 @@ MediaPipe is an approximation of the original dlib landmark detector, not an ide
 replacement. Missing or degenerate landmarks retain the bbox crop. Geometry and pipeline
 tests verify the contract; accuracy gains still require a labeled photo benchmark.
 
+InsightFace's **age/gender** model uses the original frame and detector box at 1.5x margin,
+96x96 raw RGB, with normalization embedded in this ONNX export. Its
+[attribute model](https://github.com/deepinsight/insightface/blob/master/python-package/insightface/model_zoo/attribute.py)
+does not use the ArcFace landmark template used by face recognition. Landmark warping or
+the shared Haar roll correction would change that input contract. Other classifiers' shared
+roll correction rotates in the direction that levels the detected eye line.
+
 `dex` (Deep EXpectation, Rothe et al. ICCV 2015) is a VGG-16 trained on IMDB-WIKI, a heavy age option (513MB caffemodel). **Research/academic-use license** (ETH Zurich, IMDB-WIKI-derived) -- not for commercial deployments without independent licensing.
 
 `mivolo` (MiVOLO: Multi-input Transformer for Age/Gender, Apache 2.0, WildChlamydia/MiVOLO) is a vision transformer that runs in face-only mode (no body context in this pipeline), sharing one checkpoint with the gender backend. Accuracy is ~4.24 years age MAE (face-only mode); heaviest option (~110MB checkpoint plus ultralytics/timm dependencies). Web app only.
