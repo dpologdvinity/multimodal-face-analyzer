@@ -37,7 +37,7 @@ THEME_MARKER_CLASSES = {
     "Midnight Enterprise": "midnight-theme",
 }
 THEME_ACCENTS = {
-    "Dark cyberpunk": "#76dfb1",
+    "Optical Bench": "#4fb8ac",
     "Light cyberpunk": "#087a52",
     "Amber Terminal": "#ffb02e",
     "Synthwave": "#ff2fb8",
@@ -50,7 +50,7 @@ THEME_ACCENTS = {
 theme = st.sidebar.selectbox(
     "THEME",
     [
-        "Dark cyberpunk", "Light cyberpunk", "Amber Terminal", "Synthwave", "Phosphor Green",
+        "Optical Bench", "Light cyberpunk", "Amber Terminal", "Synthwave", "Phosphor Green",
         "Brutalist", "Corporate Slate", "Midnight Enterprise",
     ],
     key="theme",
@@ -59,17 +59,17 @@ theme = st.sidebar.selectbox(
 st.markdown(
     """
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:wght@400;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:wght@400;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
 
     :root {
-        --base: #0b1217;
-        --surface: #121f26;
-        --surface-raised: #192a31;
-        --line: #2a4248;
-        --text: #e8f2ef;
-        --muted: #a3bdb9;
-        --accent: #76dfb1;
-        --alert: #ff8d83;
+        --base: #14181b;
+        --surface: #1b2124;
+        --surface-raised: #232a2e;
+        --line: #38434798;
+        --text: #eef2f0;
+        --muted: #8ea3a2;
+        --accent: #4fb8ac;
+        --alert: #e8a33d;
     }
 
     body:has(.light-theme) {
@@ -112,12 +112,15 @@ st.markdown(
             var(--base);
     }
     body:has(.synthwave-theme) .app-hero {
+        flex-direction: column;
+        align-items: center;
         text-align: center;
         border-left: none;
         border-bottom: 2px solid var(--accent);
         padding: 0 0 1.5rem;
         margin: 0 auto 2.5rem;
     }
+    body:has(.synthwave-theme) .app-hero-readout { text-align: center; }
     body:has(.synthwave-theme) .app-hero h1 {
         font-family: 'IBM Plex Mono', monospace;
         text-transform: uppercase;
@@ -366,23 +369,37 @@ st.markdown(
     }
     .stApp h1, .stApp h2, .stApp h3, .stApp h4 {
         color: var(--text);
-        font-family: 'DM Sans', sans-serif;
-        letter-spacing: -0.025em;
+        font-family: 'Space Grotesk', sans-serif;
+        letter-spacing: -0.01em;
     }
     .stApp p, .stApp label, .stApp span { color: var(--text); }
     .stApp [data-testid="stCaptionContainer"] p { color: var(--muted); }
     .app-hero {
-        border-left: 3px solid var(--accent);
-        padding: 0.2rem 0 0.25rem 1.5rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        gap: 2rem;
+        border-left: none;
+        border-bottom: 1px solid var(--line);
+        padding: 0 0 1.1rem;
         margin: 0 0 2.2rem;
     }
-    .app-hero h1 {
-        font-size: clamp(2.1rem, 4vw, 3.5rem);
-        line-height: 1.08;
-        margin: 0 0 0.65rem;
-        font-weight: 700;
+    .app-hero-heading h1 {
+        font-size: clamp(1.6rem, 2.4vw, 2.2rem);
+        line-height: 1.15;
+        margin: 0 0 0.35rem;
+        font-weight: 600;
     }
-    .app-hero p { color: var(--muted); margin: 0; font-size: 1.05rem; }
+    .app-hero-heading p { color: var(--muted); margin: 0; font-size: 0.95rem; max-width: 52ch; }
+    .app-hero-readout {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.78rem;
+        color: var(--muted);
+        text-align: right;
+        white-space: nowrap;
+        padding-bottom: 0.2rem;
+    }
+    .app-hero-readout strong { color: var(--accent); font-weight: 600; }
     section[data-testid="stSidebar"] {
         background: var(--surface);
         border-right: 1px solid var(--line);
@@ -445,17 +462,38 @@ st.markdown(
         border: 1px solid var(--line);
     }
     .target-card {
+        position: relative;
         border: 1px solid var(--line);
-        border-top: 2px solid var(--accent);
-        border-radius: 10px;
+        border-radius: 2px;
         background: var(--surface);
         padding: 1.1rem 1.25rem;
-        margin: 0.75rem 0 1.25rem;
+        margin: 0.9rem 0 1.35rem;
+    }
+    .target-card::before,
+    .target-card::after {
+        content: "";
+        position: absolute;
+        width: 14px;
+        height: 14px;
+        pointer-events: none;
+    }
+    .target-card::before {
+        top: -1px;
+        left: -1px;
+        border-top: 2px solid var(--accent);
+        border-left: 2px solid var(--accent);
+    }
+    .target-card::after {
+        bottom: -1px;
+        right: -1px;
+        border-bottom: 2px solid var(--accent);
+        border-right: 2px solid var(--accent);
     }
     .target-card-id {
         color: var(--accent);
         font-family: 'IBM Plex Mono', monospace;
-        font-size: 0.8rem;
+        font-size: 0.78rem;
+        letter-spacing: 0.04em;
         margin-bottom: 0.7rem;
     }
     .target-card-row {
@@ -491,7 +529,7 @@ st.markdown(
     .face-hover-target:focus-visible {
         z-index: 3;
         outline: 2px solid var(--accent);
-        background: rgba(118, 223, 177, 0.12);
+        background: color-mix(in srgb, var(--accent) 12%, transparent);
     }
     .face-hover-info {
         display: none;
@@ -531,7 +569,8 @@ st.markdown(
     }
     @media (max-width: 640px) {
         .block-container { padding: 1.25rem 1rem 3rem; }
-        .app-hero { padding-left: 1rem; margin-bottom: 1.5rem; }
+        .app-hero { flex-direction: column; align-items: flex-start; gap: 0.6rem; margin-bottom: 1.5rem; }
+        .app-hero-readout { text-align: left; }
         .target-card-row { display: block; }
         .target-card-row .v { display: block; text-align: left; margin-top: 0.15rem; }
     }
@@ -541,12 +580,6 @@ st.markdown(
     }
     </style>
     """,
-    unsafe_allow_html=True,
-)
-
-st.markdown(
-    '<div class="app-hero"><h1>Multimodal Face Analyzer</h1>'
-    '<p>Analyze faces and inspect each result.</p></div>',
     unsafe_allow_html=True,
 )
 
@@ -578,6 +611,17 @@ try:
 except Exception as e:
     st.error(f"[SYSTEM ERROR] Failed to load models: {e}")
     st.stop()
+
+st.markdown(
+    '<div class="app-hero">'
+    '<div class="app-hero-heading"><h1>Multimodal Face Analyzer</h1>'
+    '<p>Upload a photo or open your webcam, turn on the detectors you want, '
+    'then read each face\'s results below.</p></div>'
+    f'<div class="app-hero-readout">DETECTORS READY<br/>'
+    f'<strong>{models.loaded_feature_count} / {models.total_feature_count}</strong></div>'
+    '</div>',
+    unsafe_allow_html=True,
+)
 
 def _model_checkboxes(label: str, nets: dict, container=None, help: str | None = None) -> set:
     """Render one checkbox per loaded model for a feature; return the set of checked keys."""
