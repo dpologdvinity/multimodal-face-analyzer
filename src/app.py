@@ -386,6 +386,14 @@ st.markdown(
         color: var(--text);
     }
     .stApp [data-testid="stCaptionContainer"] p { color: var(--muted); }
+    header[data-testid="stHeader"],
+    header[data-testid="stHeader"] [data-testid="stToolbar"] {
+        background: var(--surface) !important;
+    }
+    header[data-testid="stHeader"] [data-testid="stToolbar"] button,
+    header[data-testid="stHeader"] [data-testid="stToolbar"] button span {
+        color: var(--text) !important;
+    }
     .app-hero {
         display: flex;
         justify-content: space-between;
@@ -448,6 +456,10 @@ st.markdown(
         background: var(--surface-raised);
         border-color: var(--line);
     }
+    div[data-testid="stFileUploader"] [data-testid="stFileUploaderDropzoneInstructions"],
+    div[data-testid="stFileUploader"] [data-testid="stFileUploaderDropzoneInstructions"] * {
+        color: var(--muted) !important;
+    }
     div[data-testid="stFileUploader"] button {
         background: var(--accent) !important;
         border-color: var(--accent) !important;
@@ -458,6 +470,13 @@ st.markdown(
         border: 1px solid var(--line);
         border-radius: 10px;
         background: var(--surface);
+    }
+    div[data-testid="stExpander"] summary,
+    div[data-testid="stExpander"] summary p,
+    div[data-testid="stExpander"] summary svg {
+        background: var(--surface) !important;
+        color: var(--text) !important;
+        fill: var(--text) !important;
     }
     div[data-testid="stButton"] > button,
     div[data-testid="stDownloadButton"] > button {

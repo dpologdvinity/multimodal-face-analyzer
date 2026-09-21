@@ -58,3 +58,9 @@ def test_live_controls_use_readable_status_labels():
     assert '"Classifier frame skip"' in APP_SOURCE
     assert 'live_fps.metric("Live FPS", f"{fps:.1f}")' in APP_SOURCE
     assert "Waiting for a detected face…" in APP_SOURCE
+
+
+def test_streamlit_chrome_and_upload_instructions_keep_theme_contrast():
+    assert '[data-testid="stToolbar"]' in APP_SOURCE
+    assert '[data-testid="stFileUploaderDropzoneInstructions"]' in APP_SOURCE
+    assert '[data-testid="stExpander"] summary' in APP_SOURCE
