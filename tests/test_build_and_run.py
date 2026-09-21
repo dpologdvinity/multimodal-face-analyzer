@@ -53,8 +53,7 @@ class BuildPromptFormattingTests(unittest.TestCase):
         self.assertIn("\033[1;33m  5) ssrnet\033[0m", output)
         self.assertIn("\033[1;32m  3) hsemotion\033[0m", output)
         self.assertIn("\033[1;33m  4) mini_xception\033[0m", output)
-        self.assertIn("\033[1;32m  3) body pose - mpi\033[0m", output)
-        self.assertIn("\033[1;33m  4) 3d reconstruction - deep3d\033[0m", output)
+        self.assertIn("\033[1;33m  3) 3d reconstruction - deep3d\033[0m", output)
         self.assertIn("\033[1;32m  6) hair color - colorimetric\033[0m", output)
 
         self.assertIn("  0) none", output)
@@ -63,7 +62,7 @@ class BuildPromptFormattingTests(unittest.TestCase):
         self.assertNotIn("\033[1;34m  9) all", output)
 
     def test_reordered_choices_still_forward_the_selected_build_models(self):
-        selections = ["2", "5", "4", "2", "5", "0", "0", "4"]
+        selections = ["2", "5", "4", "2", "5", "0", "0", "3"]
         output = self._run_build(selections)
 
         self.assertIn("SCRFD_FACE_MODEL=scrfd", output)

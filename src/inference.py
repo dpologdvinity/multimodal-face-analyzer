@@ -131,8 +131,6 @@ MASK_MODEL = MODEL_DIR / "mask_detector.h5"
 COLORIZATION_PROTO = MODEL_DIR / "colorization_deploy_v2.prototxt"
 COLORIZATION_MODEL = MODEL_DIR / "colorization_release_v2.caffemodel"
 COLORIZATION_PTS = MODEL_DIR / "pts_in_hull.npy"
-POSE_PROTO = MODEL_DIR / "pose_deploy_linevec_faster_4_stages.prototxt"
-POSE_MODEL = MODEL_DIR / "pose_iter_160000.caffemodel"
 HAND_LANDMARKER_MODEL = MODEL_DIR / "hand_landmarker.task"
 BFM_DIR = MODEL_DIR / "BFM"
 DEEP3D_RECON_MODEL = MODEL_DIR / "deep3d_recon_resnet50.pth"  # gated, not bundled -- see README
@@ -206,17 +204,6 @@ HAIR_COLOR_MODEL_OPTIONS = ["colorimetric"]
 EYE_COLOR_MODEL_OPTIONS = ["colorimetric"]
 COLORIZATION_MODEL_OPTIONS = ["eccv16"]
 GRAYSCALE_CHANNEL_DIFF_THRESHOLD = 3.0  # mean abs diff between B/G/R below this => treat as grayscale
-POSE_MODEL_OPTIONS = ["mpi"]
-POSE_INPUT_SIZE = 368  # square, per this model's own training resolution
-POSE_CONFIDENCE_THRESHOLD = 0.1  # this specific MPI checkpoint's own confidence maps run low
-MIN_POSE_POINTS = 3  # fewer confident keypoints than this => "no body in frame", skip silently
-# MPI 15-point skeleton (index 15 is a "Background" channel, unused): Head, Neck, R/L
-# Shoulder/Elbow/Wrist, R/L Hip/Knee/Ankle, Chest. Standard OpenCV MPI sample layout.
-MPI_POSE_PAIRS = [
-    (0, 1), (1, 2), (2, 3), (3, 4), (1, 5), (5, 6), (6, 7), (1, 14),
-    (14, 8), (8, 9), (9, 10), (14, 11), (11, 12), (12, 13),
-]
-MPI_POSE_NUM_POINTS = 15
 FACE_LANDMARKS_MODEL_OPTIONS = ["mediapipe"]
 HAND_MODEL_OPTIONS = ["mediapipe"]
 RECONSTRUCTION_3D_MODEL_OPTIONS = ["deep3d"]
@@ -308,7 +295,6 @@ class Models:
     hair_color_nets: dict = field(default_factory=dict)
     eye_color_nets: dict = field(default_factory=dict)
     colorization_nets: dict = field(default_factory=dict)
-    pose_nets: dict = field(default_factory=dict)
     face_landmarks_nets: dict = field(default_factory=dict)
     hand_nets: dict = field(default_factory=dict)
     reconstruction_3d_nets: dict = field(default_factory=dict)
@@ -331,7 +317,7 @@ class Models:
                 ("SKIN_TONE", self.skin_tone_nets), ("GLASSES", self.glasses_nets),
                 ("MASK", self.mask_nets), ("HAIR_COLOR", self.hair_color_nets),
                 ("EYE_COLOR", self.eye_color_nets), ("COLORIZATION", self.colorization_nets),
-                ("POSE", self.pose_nets), ("FACE_LANDMARKS", self.face_landmarks_nets),
+                ("FACE_LANDMARKS", self.face_landmarks_nets),
                 ("HANDS", self.hand_nets), ("RECONSTRUCTION_3D", self.reconstruction_3d_nets),
                 ("FACE_DETECTOR_YOLO", self.yolo_face_nets),
                 ("FACE_DETECTOR_SCRFD", self.scrfd_face_nets),
@@ -493,10 +479,6 @@ def load_models() -> Models:
         colorization_net.getLayer(conv8).blobs = [np.full([1, 313], 2.606, dtype="float32")]
         colorization_nets["eccv16"] = colorization_net
 
-    pose_nets = {}
-    if native_model_selected("POSE_MODEL", "mpi") and POSE_PROTO.exists() and POSE_MODEL.exists():
-        pose_nets["mpi"] = cv2.dnn.readNetFromCaffe(str(POSE_PROTO), str(POSE_MODEL))
-
     hand_nets = {}
     if native_model_selected("HAND_MODEL", "mediapipe") and MEDIAPIPE_SUPPORTED and HAND_LANDMARKER_MODEL.exists():
         hand_options = mp.tasks.vision.HandLandmarkerOptions(
@@ -532,7 +514,7 @@ def load_models() -> Models:
     return Models(
         face_net, age_nets, gender_nets, emotion_nets, drowsiness_nets, race_nets, liveness_nets, recognition_nets,
         facial_hair_nets, skin_tone_nets, glasses_nets, mask_nets, hair_color_nets, eye_color_nets, colorization_nets,
-        pose_nets, face_landmarks_nets, hand_nets, reconstruction_3d_nets, yolo_face_nets, scrfd_face_nets, retinaface_nets,
+        face_landmarks_nets, hand_nets, reconstruction_3d_nets, yolo_face_nets, scrfd_face_nets, retinaface_nets,
         gaze_nets, age_progression_nets,
     )
 
@@ -904,38 +886,6 @@ def maybe_colorize(models: "Models", frame_bgr: np.ndarray, active_colorization:
     if not is_grayscale_frame(frame_bgr):
         return frame_bgr, False
     return colorize_frame(net, frame_bgr), True
-
-
-def detect_pose_mpi(net, frame_bgr: np.ndarray) -> list[tuple[int, int] | None]:
-    """CMU OpenPose MPI 15-point body pose (see ideas/pose.md). Single-person, whole-frame --
-    returns one (x, y) per keypoint in frame_bgr's own coordinates, or None where confidence
-    doesn't clear POSE_CONFIDENCE_THRESHOLD."""
-    frame_h, frame_w = frame_bgr.shape[:2]
-    blob = cv2.dnn.blobFromImage(frame_bgr, 1.0 / 255, (POSE_INPUT_SIZE, POSE_INPUT_SIZE), (0, 0, 0), swapRB=False, crop=False)
-    with _lock_for(net):
-        net.setInput(blob)
-        output = net.forward()
-
-    out_h, out_w = output.shape[2], output.shape[3]
-    points: list[tuple[int, int] | None] = []
-    for i in range(MPI_POSE_NUM_POINTS):
-        prob_map = output[0, i, :, :]
-        _, prob, _, point = cv2.minMaxLoc(prob_map)
-        x = int((frame_w * point[0]) / out_w)
-        y = int((frame_h * point[1]) / out_h)
-        points.append((x, y) if prob > POSE_CONFIDENCE_THRESHOLD else None)
-    return points
-
-
-def draw_pose_skeleton(frame: np.ndarray, points: list[tuple[int, int] | None]) -> None:
-    """Draw the MPI skeleton (joints + connecting bones) directly onto frame, HUD-style
-    (matches the green/cyan palette used for face boxes elsewhere)."""
-    for point_a, point_b in MPI_POSE_PAIRS:
-        if points[point_a] is not None and points[point_b] is not None:
-            cv2.line(frame, points[point_a], points[point_b], (0, 255, 0), 2, cv2.LINE_AA)
-    for point in points:
-        if point is not None:
-            cv2.circle(frame, point, 5, (0, 255, 255), thickness=-1, lineType=cv2.FILLED)
 
 
 def _adjust_exposure(img: np.ndarray, stops: float) -> np.ndarray:
@@ -2354,7 +2304,6 @@ def analyze_frame(
     active_mask: set,
     active_hair_color: set,
     active_eye_color: set,
-    active_pose: set,
     active_face_landmarks: set,
     active_hands: set,
     active_gaze: set,
@@ -2413,14 +2362,6 @@ def analyze_frame(
     track_ids = tracker.update(face_boxes) if tracker is not None else [None] * len(face_boxes)
     cropped_faces = []
     any_drowsy = False
-
-    pose_detected = False
-    pose_net = models.pose_nets.get("mpi")
-    if pose_net is not None and "mpi" in active_pose:
-        pose_points = detect_pose_mpi(pose_net, frame)
-        if sum(p is not None for p in pose_points) >= MIN_POSE_POINTS:
-            pose_detected = True
-            draw_pose_skeleton(annotated_frame, pose_points)
 
     hands_detected = False
     hand_net = models.hand_nets.get("mediapipe")
@@ -2835,7 +2776,7 @@ def analyze_frame(
             "drowsy": face_drowsy if drowsy_pairs else None,
         })
 
-    return annotated_frame, cropped_faces, any_drowsy, bool(face_boxes), pose_detected, hands_detected
+    return annotated_frame, cropped_faces, any_drowsy, bool(face_boxes), hands_detected
 
 
 AGGREGATE_FEATURES = ("age", "gender", "race")  # demographic breakdown scope for crowd counting

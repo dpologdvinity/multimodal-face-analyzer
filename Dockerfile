@@ -16,7 +16,6 @@ FROM python:3.11-slim
 #   GLASSES_MODEL:     mobilenet                     (default: mobilenet)
 #   MASK_MODEL:        mobilenetv2                   (default: mobilenetv2)
 #   COLORIZATION_MODEL: eccv16                        (default: eccv16)
-#   POSE_MODEL:         mpi                            (default: mpi)
 #   HAND_MODEL:         mediapipe                       (default: mediapipe)
 #   RECONSTRUCTION_3D_MODEL: deep3d                      (default: deep3d)
 #   YOLO_FACE_MODEL:    yolo                             (default: yolo)
@@ -40,7 +39,6 @@ FROM python:3.11-slim
 # reinstall step below. Unlike vggface, it has no pretrained weights: it trains from scratch
 # on whatever's enrolled via the ENROLL button, same "trains fresh on demand" spirit as this
 # app's eigenfaces feature.
-# pose (CMU OpenPose MPI model) is ACADEMIC/NON-COMMERCIAL RESEARCH USE ONLY -- see README.
 # Face Landmarks and liveness use the same face_landmarker.task file, selected independently.
 # Liveness uses LIVENESS_MODEL=mediapipe with that same file and dependency.
 # RECONSTRUCTION_3D_MODEL wires the code path (torch/torchvision/scipy + the small bundled
@@ -78,7 +76,6 @@ ARG FACIAL_HAIR_MODEL=bisenet
 ARG GLASSES_MODEL=mobilenet
 ARG MASK_MODEL=mobilenetv2
 ARG COLORIZATION_MODEL=eccv16
-ARG POSE_MODEL=mpi
 ARG HAND_MODEL=mediapipe
 ARG RECONSTRUCTION_3D_MODEL=deep3d
 ARG YOLO_FACE_MODEL=yolo
@@ -185,7 +182,7 @@ RUN --mount=type=bind,source=models,target=/tmp/models \
     set -e; \
     age_csv=",$AGE_MODEL,"; gender_csv=",$GENDER_MODEL,"; emotion_csv=",$EMOTION_MODEL,"; \
     drowsiness_csv=",$DROWSINESS_MODEL,"; race_csv=",$RACE_MODEL,"; face_landmarks_csv=",$FACE_LANDMARKS_MODEL,"; liveness_csv=",$LIVENESS_MODEL,"; recognition_csv=",$RECOGNITION_MODEL,"; \
-    facial_hair_csv=",$FACIAL_HAIR_MODEL,"; glasses_csv=",$GLASSES_MODEL,"; mask_csv=",$MASK_MODEL,"; colorization_csv=",$COLORIZATION_MODEL,"; pose_csv=",$POSE_MODEL,"; hand_csv=",$HAND_MODEL,"; recon3d_csv=",$RECONSTRUCTION_3D_MODEL,"; yolo_face_csv=",$YOLO_FACE_MODEL,"; scrfd_face_csv=",$SCRFD_FACE_MODEL,"; retinaface_csv=",$RETINAFACE_MODEL,"; age_progression_csv=",$AGE_PROGRESSION_MODEL,"; \
+    facial_hair_csv=",$FACIAL_HAIR_MODEL,"; glasses_csv=",$GLASSES_MODEL,"; mask_csv=",$MASK_MODEL,"; colorization_csv=",$COLORIZATION_MODEL,"; hand_csv=",$HAND_MODEL,"; recon3d_csv=",$RECONSTRUCTION_3D_MODEL,"; yolo_face_csv=",$YOLO_FACE_MODEL,"; scrfd_face_csv=",$SCRFD_FACE_MODEL,"; retinaface_csv=",$RETINAFACE_MODEL,"; age_progression_csv=",$AGE_PROGRESSION_MODEL,"; \
     case "$age_csv" in *,caffe,*) cp /tmp/models/age_deploy.prototxt /tmp/models/age_net.caffemodel models/ ;; esac; \
     case "$age_csv" in *,ssrnet,*) cp /tmp/models/ssrnet_morph2.pth models/ ;; esac; \
     case "$gender_csv" in *,caffe,*) cp /tmp/models/gender_deploy.prototxt /tmp/models/gender_net.caffemodel models/ ;; esac; \
@@ -212,7 +209,6 @@ RUN --mount=type=bind,source=models,target=/tmp/models \
     case "$glasses_csv" in *,mobilenet,*) cp /tmp/models/glasses_detector.onnx models/ ;; esac; \
     case "$mask_csv" in *,mobilenetv2,*) cp /tmp/models/mask_detector.h5 models/ ;; esac; \
     case "$colorization_csv" in *,eccv16,*) cp /tmp/models/colorization_deploy_v2.prototxt /tmp/models/colorization_release_v2.caffemodel /tmp/models/pts_in_hull.npy models/ ;; esac; \
-    case "$pose_csv" in *,mpi,*) cp /tmp/models/pose_deploy_linevec_faster_4_stages.prototxt /tmp/models/pose_iter_160000.caffemodel models/ ;; esac; \
     case "$hand_csv" in *,mediapipe,*) cp /tmp/models/hand_landmarker.task models/ ;; esac; \
     case "$recon3d_csv" in *,deep3d,*) mkdir -p models/BFM && cp /tmp/models/BFM/similarity_Lm3D_all.mat models/BFM/ && cp /tmp/models/deep3d_recon_resnet50.pth models/ ;; esac; \
     case "$yolo_face_csv" in *,yolo,*) cp /tmp/models/yolov8n_face.onnx models/ ;; esac; \

@@ -194,7 +194,6 @@ set_additional_classification_models "$REPLY_MODEL"
 prompt_feature "ADDITIONAL FEATURES" 0 \
     "eccv16|colorization - eccv16|green" \
     "facemesh|face landmarks - mediapipe|orange" \
-    "mpi|body pose - mpi|green" \
     "deep3d|3d reconstruction - deep3d|orange" \
     "franunet|age progression - franunet|orange" \
     "mediapipe|hand landmarks - mediapipe|orange"
@@ -203,7 +202,6 @@ set_additional_feature_models() {
     RECONSTRUCTION_3D_MODEL=""
     AGE_PROGRESSION_MODEL=""
     HAND_MODEL=""
-    POSE_MODEL=""
     FACE_LANDMARKS_MODEL=""
     local model
     IFS=',' read -ra models <<< "$1"
@@ -213,7 +211,6 @@ set_additional_feature_models() {
             deep3d) RECONSTRUCTION_3D_MODEL="deep3d" ;;
             franunet) AGE_PROGRESSION_MODEL="franunet" ;;
             mediapipe) HAND_MODEL="mediapipe" ;;
-            mpi) POSE_MODEL="mpi" ;;
             facemesh) FACE_LANDMARKS_MODEL="mediapipe" ;;
         esac
     done
@@ -293,7 +290,6 @@ stage_model "$FACIAL_HAIR_MODEL" bisenet bisenet_face_parsing.onnx
 stage_model "$GLASSES_MODEL" mobilenet glasses_detector.onnx
 stage_model "$MASK_MODEL" mobilenetv2 mask_detector.h5
 stage_model "$COLORIZATION_MODEL" eccv16 colorization_deploy_v2.prototxt colorization_release_v2.caffemodel pts_in_hull.npy
-stage_model "$POSE_MODEL" mpi pose_deploy_linevec_faster_4_stages.prototxt pose_iter_160000.caffemodel
 stage_model "$HAND_MODEL" mediapipe hand_landmarker.task
 stage_model "$RECONSTRUCTION_3D_MODEL" deep3d BFM/similarity_Lm3D_all.mat deep3d_recon_resnet50.pth
 stage_model "$YOLO_FACE_MODEL" yolo yolov8n_face.onnx
@@ -316,7 +312,6 @@ echo "  GLASSES_MODEL=${GLASSES_MODEL}" >&2
 echo "  MASK_MODEL=${MASK_MODEL}" >&2
 echo "  HAIR_COLOR_MODEL=${HAIR_COLOR_MODEL}" >&2
 echo "  COLORIZATION_MODEL=${COLORIZATION_MODEL}" >&2
-echo "  POSE_MODEL=${POSE_MODEL}" >&2
 echo "  HAND_MODEL=${HAND_MODEL}" >&2
 echo "  RECONSTRUCTION_3D_MODEL=${RECONSTRUCTION_3D_MODEL}" >&2
 echo "  YOLO_FACE_MODEL=${YOLO_FACE_MODEL}" >&2
@@ -338,7 +333,6 @@ docker build \
     --build-arg GLASSES_MODEL="$GLASSES_MODEL" \
     --build-arg MASK_MODEL="$MASK_MODEL" \
     --build-arg COLORIZATION_MODEL="$COLORIZATION_MODEL" \
-    --build-arg POSE_MODEL="$POSE_MODEL" \
     --build-arg HAND_MODEL="$HAND_MODEL" \
     --build-arg RECONSTRUCTION_3D_MODEL="$RECONSTRUCTION_3D_MODEL" \
     --build-arg YOLO_FACE_MODEL="$YOLO_FACE_MODEL" \

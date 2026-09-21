@@ -12,7 +12,7 @@
 
 ## Key Features
 
-- **Multi-model face analysis:** face detection, age, gender, race, emotion, gaze, drowsiness, facial hair, glasses, face mask, colorimetric hair/eye color, face landmarks, plus whole-frame auto-colorization, body pose estimation, and hand landmarks -- most features have 2+ selectable model backends.
+- **Multi-model face analysis:** face detection, age, gender, race, emotion, gaze, drowsiness, facial hair, glasses, face mask, colorimetric hair/eye color, face landmarks, plus whole-frame auto-colorization and hand landmarks -- most features have 2+ selectable model backends.
 - **Image adjustments:** 11 Lightroom-style sliders (exposure, contrast, shadows/highlights, saturation/vibrance, sharpness, noise reduction, etc.) for the whole image, all face crops before classification, and each detected face's preview separately.
 - **Face details on hover:** Hover or focus a detected face box in the annotated image to see its analysis results; full face cards remain below the image.
 - **Identity search:** SEARCH button per detected face, matching against bundled reference photos (`known_people/`, a few famous people out of the box) plus an optional user-specified directory. Local matching only, no live internet search.
@@ -272,16 +272,6 @@ No model file. Reuses the same `haarcascade_eye.xml` already required for Drowsi
 | `eccv16`   | Caffe (cv2.dnn) | Colorized BGR frame, or unchanged   |
 
 Zhang et al.'s ECCV16 colorization model (`models/colorization_deploy_v2.prototxt` / `_release_v2.caffemodel` / `pts_in_hull.npy`, BSD-2-Clause, richzhang/colorization). Unlike every other feature above, this isn't a per-face attribute -- it's a whole-frame preprocessing step applied *before* face detection. If the uploaded/captured frame is auto-detected as grayscale (near-zero difference between its B/G/R channels), it's colorized in Lab space (predict `ab` from `L`, per `ideas/colorization.md`) before the rest of the pipeline runs, so downstream color-dependent attributes (skin tone, hair color, eye color) see the colorized version too. On by default; toggle off in the sidebar (`AUTO-COLORIZE B&W`) to leave grayscale images untouched. Already-color images are left alone regardless of the toggle (the grayscale check skips them).
-
-### Pose Estimation (web app only, not a face attribute)
-
-| Backend   | Framework       | Output                                  |
-| --------- | --------------- | ----------------------------------------- |
-| `mpi`     | Caffe (cv2.dnn) | 15-point body skeleton overlay, or nothing |
-
-CMU OpenPose's MPI single-person body pose model (`models/pose_deploy_linevec_faster_4_stages.prototxt` / `pose_iter_160000.caffemodel`, per `ideas/pose.md`). Like Colorization, this is a whole-frame feature, not a per-face attribute -- it runs once per frame regardless of how many faces are detected (or even if none are). If fewer than `MIN_POSE_POINTS` (3) keypoints clear the confidence threshold, nothing is drawn and nothing is reported -- this is how "only run if a body is visible" is implemented, there's no separate body detector. When a body is found, the skeleton (joints + bones) is drawn directly onto the annotated frame and a `[ POSE DETECTED ]` caption is shown. On by default; toggle off in the sidebar (`POSE ESTIMATION`).
-
-**ACADEMIC/NON-COMMERCIAL RESEARCH USE ONLY** (Carnegie Mellon University's OpenPose license) -- same treatment as the `dex` age and `insightface` age/gender backends: not for commercial deployments without independent licensing. The original CMU model-hosting server (`posefs1.perception.cs.cmu.edu`) referenced in `ideas/pose.md` is offline; the weight file was sourced from a Hugging Face mirror instead (same file, verified by size).
 
 ### Face Landmarks (web app only)
 

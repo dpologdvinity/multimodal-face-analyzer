@@ -97,7 +97,6 @@ class NativeInstallerVerbosityTests(unittest.TestCase):
             ("\033[1;32m  3) fairface\033[0m", "\033[1;33m  4) deepface\033[0m"),
             ("\033[1;32m  3) hsemotion\033[0m", "\033[1;33m  4) mini_xception\033[0m"),
             ("\033[1;32m  2) facial hair - bisenet\033[0m", "\033[1;33m  3) liveness - mediapipe\033[0m"),
-            ("\033[1;32m  3) body pose - mpi\033[0m", "\033[1;33m  4) 3d reconstruction - deep3d\033[0m"),
         ):
             self.assertLess(output.index(green), output.index(orange))
 

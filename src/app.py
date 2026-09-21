@@ -323,7 +323,6 @@ active_mask = _model_checkboxes("MASK", models.mask_nets)
 active_hair_color = _model_checkboxes("HAIR COLOR", models.hair_color_nets)
 active_eye_color = _model_checkboxes("EYE COLOR", models.eye_color_nets)
 active_colorization = _model_checkboxes("AUTO-COLORIZE B&W", models.colorization_nets)
-active_pose = _landmark_enable_button("BODY LANDMARKS", models.pose_nets, "body_landmarks_enabled")
 active_face_landmarks = _landmark_enable_button("FACE LANDMARKS", models.face_landmarks_nets, "face_landmarks_enabled")
 active_hands = _landmark_enable_button("HAND LANDMARKS", models.hand_nets, "hand_landmarks_enabled")
 active_gaze = _model_checkboxes("GAZE", models.gaze_nets)
@@ -506,11 +505,11 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
     frame = _render_photo_editor(frame, identifier, "global_adj", "SOURCE PHOTO")
     frame, was_colorized = inference.maybe_colorize(models, frame, active_colorization)
 
-    annotated_frame, cropped_faces, any_drowsy, has_faces, pose_detected, hands_detected = inference.analyze_frame(
+    annotated_frame, cropped_faces, any_drowsy, has_faces, hands_detected = inference.analyze_frame(
         models, frame, conf_threshold, active_age, active_gender, active_emotion, active_drowsiness, active_race,
         active_recognition, st.session_state.get("gallery", {}),
         active_facial_hair, active_skin_tone, active_glasses, active_mask, active_hair_color, active_eye_color,
-        active_pose, active_face_landmarks, active_hands, active_gaze,
+        active_face_landmarks, active_hands, active_gaze,
         {name: values[2] for name, values in inference.IMAGE_ADJUSTMENT_RANGES.items()}, face_adjustments,
         face_detector=active_face_detector,
         active_liveness=active_liveness,
@@ -518,8 +517,6 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
 
     if was_colorized:
         st.caption("[ AUTO-COLORIZED ] -- source detected as grayscale")
-    if pose_detected:
-        st.caption("[ POSE DETECTED ] -- skeleton overlay drawn")
     if hands_detected:
         st.caption("[ HANDS DETECTED ] -- landmark overlay drawn")
 
@@ -774,7 +771,7 @@ with tab_webcam:
         frame_skip = st.slider(
             "CLASSIFIER FRAME SKIP", 1, 10, 1,
             help="Run age/gender/emotion/race/recognition/etc. classifiers every Nth frame "
-            "instead of every frame. Face detection and the pose/hand/face-landmark overlays "
+            "instead of every frame. Face detection and the hand/face-landmark overlays "
             "still run every frame, so the video stays smooth. These classifiers' outputs "
             "aren't otherwise drawn onto the LIVE video (see target cards in Image upload / "
             "SNAPSHOT for that), so skipping them here only reduces CPU load, with no visible "
@@ -811,21 +808,21 @@ with tab_webcam:
                 img, _ = inference.maybe_colorize(models, img, active_colorization)
                 frame_counter["n"] += 1
                 run_classifiers = frame_counter["n"] % frame_skip == 0
-                annotated_frame, cropped_faces, _, _, _, _ = inference.analyze_frame(
+                annotated_frame, cropped_faces, _, _, _ = inference.analyze_frame(
                     models, img, conf_threshold,
                     active_age if run_classifiers else _NO_MODELS,
                     active_gender if run_classifiers else _NO_MODELS,
                     active_emotion if run_classifiers else _NO_MODELS,
                     active_drowsiness if run_classifiers else _NO_MODELS,
                     active_race if run_classifiers else _NO_MODELS,
-                active_recognition if run_classifiers else _NO_MODELS, gallery_snapshot,
+                    active_recognition if run_classifiers else _NO_MODELS, gallery_snapshot,
                     active_facial_hair if run_classifiers else _NO_MODELS,
                     active_skin_tone if run_classifiers else _NO_MODELS,
                     active_glasses if run_classifiers else _NO_MODELS,
                     active_mask if run_classifiers else _NO_MODELS,
                     active_hair_color if run_classifiers else _NO_MODELS,
                     active_eye_color if run_classifiers else _NO_MODELS,
-                    active_pose, active_face_landmarks, active_hands,
+                    active_face_landmarks, active_hands,
                     active_gaze if run_classifiers else _NO_MODELS,
                     global_adjustments, face_adjustments,
                     face_detector=active_face_detector, metrics=metrics, tracker=face_tracker,
