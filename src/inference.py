@@ -1586,7 +1586,7 @@ def predict_emotion_mini_xception(net, face_bgr: np.ndarray) -> str:
     face_norm = (face_gray / 255.0 - 0.5) * 2.0
     tensor = face_norm[np.newaxis, ..., np.newaxis]
     with _lock_for(net):
-        probs = net.predict(tensor, verbose=0).flatten()
+        probs = net(tensor, training=False).numpy().flatten()
     return EMOTION_LABELS_MINI_XCEPTION[int(np.argmax(probs))]
 
 
@@ -1672,7 +1672,7 @@ def predict_race_deepface(net, face_bgr: np.ndarray) -> str:
     """Predict race via deepface VGGFace backend (6 categories)."""
     face_resized = cv2.resize(face_bgr, (224, 224)).astype(np.float32)
     with _lock_for(net):
-        probs = net.predict(face_resized[np.newaxis, ...], verbose=0).flatten()
+        probs = net(face_resized[np.newaxis, ...], training=False).numpy().flatten()
     return _format_race_label(probs, RACE_LABELS_DEEPFACE)
 
 
@@ -1681,7 +1681,7 @@ def predict_gender_deepface(net, face_bgr: np.ndarray) -> str:
     # VGGFace input: 224x224 BGR, unnormalized [0,255].
     face_resized = cv2.resize(face_bgr, (224, 224)).astype(np.float32)
     with _lock_for(net):
-        probs = net.predict(face_resized[np.newaxis, ...], verbose=0).flatten()
+        probs = net(face_resized[np.newaxis, ...], training=False).numpy().flatten()
     return "Male" if np.argmax(probs) == 1 else "Female"
 
 
@@ -1690,7 +1690,7 @@ def compute_face_embedding(net, face_bgr: np.ndarray) -> np.ndarray:
     # VGGFace input: 224x224 BGR, unnormalized [0,255].
     face_resized = cv2.resize(face_bgr, (224, 224)).astype(np.float32)
     with _lock_for(net):
-        emb = net.predict(face_resized[np.newaxis, ...], verbose=0).flatten()
+        emb = net(face_resized[np.newaxis, ...], training=False).numpy().flatten()
     norm = np.linalg.norm(emb)
     return emb / norm if norm > 0 else emb
 
@@ -2119,7 +2119,7 @@ def predict_mask_mobilenetv2(net, face_bgr: np.ndarray) -> str:
     face_rgb = cv2.cvtColor(cv2.resize(face_bgr, (224, 224)), cv2.COLOR_BGR2RGB).astype(np.float32)
     face_norm = face_rgb / 127.5 - 1.0
     with _lock_for(net):
-        probs = net.predict(face_norm[np.newaxis, ...], verbose=0).flatten()
+        probs = net(face_norm[np.newaxis, ...], training=False).numpy().flatten()
     return MASK_LABELS[int(np.argmax(probs))]
 
 
