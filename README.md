@@ -63,6 +63,12 @@ SSD/ResNet-10 is the original detector and is always required as the fallback. `
 
 Checkbox per built model in the web app sidebar. Default: `caffe`.
 
+When at least two continuous age backends are active (`insightface`, `ssrnet`, `dex`, or
+`mivolo`) and their numeric outputs are within 10 years, the UI also shows a median consensus
+while retaining every individual model result. Bucketed ages, explicit DEX uncertainty, and
+disagreements remain individual-only. The 10-year gate is a conservative display heuristic,
+not a calibrated confidence interval or measured accuracy guarantee.
+
 FairFace age, gender, and race use the existing MediaPipe landmarks when available, mapped
 to the four eye corners and nose used by [dlib's five-point face chip](https://github.com/davisking/dlib/blob/master/dlib/image_transforms/interpolation.h).
 The similarity crop uses [FairFace's padding of 0.25](https://github.com/dchen236/FairFace/blob/master/predict.py).
