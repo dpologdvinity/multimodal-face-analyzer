@@ -36,6 +36,16 @@ THEME_MARKER_CLASSES = {
     "Corporate Slate": "corporate-theme",
     "Midnight Enterprise": "midnight-theme",
 }
+THEME_ACCENTS = {
+    "Dark cyberpunk": "#76dfb1",
+    "Light cyberpunk": "#087a52",
+    "Amber Terminal": "#ffb02e",
+    "Synthwave": "#ff2fb8",
+    "Phosphor Green": "#6bffa0",
+    "Brutalist": "#0a0a0a",
+    "Corporate Slate": "#2f5aa8",
+    "Midnight Enterprise": "#4f8ff0",
+}
 
 theme = st.sidebar.selectbox(
     "THEME",
@@ -345,7 +355,7 @@ st.markdown(
     }
 
     .stApp {
-        background: radial-gradient(circle at 85% 0%, #17332f 0, var(--base) 34rem);
+        background: radial-gradient(circle at 85% 0%, color-mix(in srgb, var(--accent) 18%, transparent) 0, var(--base) 34rem);
         color: var(--text);
         font-family: 'DM Sans', sans-serif;
     }
@@ -374,7 +384,7 @@ st.markdown(
     }
     .app-hero p { color: var(--muted); margin: 0; font-size: 1.05rem; }
     section[data-testid="stSidebar"] {
-        background: #101c22;
+        background: var(--surface);
         border-right: 1px solid var(--line);
     }
     section[data-testid="stSidebar"] h3 {
@@ -400,7 +410,7 @@ st.markdown(
         color: var(--accent);
     }
     div[data-testid="stFileUploader"] {
-        border: 1px dashed #4e8174;
+        border: 1px dashed var(--line);
         border-radius: 12px;
         background: var(--surface);
         padding: 1rem;
@@ -412,7 +422,7 @@ st.markdown(
     }
     div[data-testid="stButton"] > button,
     div[data-testid="stDownloadButton"] > button {
-        border: 1px solid #467a6c;
+        border: 1px solid var(--line);
         border-radius: 8px;
         background: var(--surface-raised);
         color: var(--text);
@@ -421,9 +431,9 @@ st.markdown(
     }
     div[data-testid="stButton"] > button:hover,
     div[data-testid="stDownloadButton"] > button:hover {
-        background: #244339;
+        background: var(--surface);
         border-color: var(--accent);
-        color: #fff;
+        color: var(--accent);
     }
     div[data-testid="stButton"] > button:focus-visible,
     div[data-testid="stDownloadButton"] > button:focus-visible {
@@ -815,7 +825,7 @@ def _render_photo_editor(frame_bgr: np.ndarray, identifier: str, adjustment_key:
         if editing:
             source = Image.fromarray(cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB))
             cropped = st_cropper(
-                source, realtime_update=True, box_color="#76dfb1", aspect_ratio=None,
+                source, realtime_update=True, box_color=THEME_ACCENTS.get(theme, "#76dfb1"), aspect_ratio=None,
                 return_type="image", key=f"cropper_{identifier}",
             )
             edited_bgr = cv2.cvtColor(np.asarray(cropped), cv2.COLOR_RGB2BGR)
