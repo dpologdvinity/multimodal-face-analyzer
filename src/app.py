@@ -31,6 +31,7 @@ st.set_page_config(
     page_title="Multimodal Face Analyzer",
     page_icon=":material/face:",
     layout="wide",
+    initial_sidebar_state="collapsed",
 )
 
 THEME_MARKER_CLASSES = {
@@ -54,7 +55,7 @@ THEME_ACCENTS = {
 }
 
 theme = st.sidebar.selectbox(
-    "THEME",
+    "Theme",
     [
         "Optical Bench", "Light cyberpunk", "Amber Terminal", "Synthwave", "Phosphor Green",
         "Brutalist", "Corporate Slate", "Midnight Enterprise",
@@ -595,6 +596,18 @@ st.markdown(
         .target-card-row { display: block; }
         .target-card-row .v { display: block; text-align: left; margin-top: 0.15rem; }
     }
+    @media (max-width: 760px) {
+        section[data-testid="stSidebar"],
+        section[data-testid="stSidebar"] > div:first-child {
+            width: min(86vw, 300px) !important;
+            min-width: 0 !important;
+        }
+        div[data-testid="stTabs"] [data-baseweb="tab-list"] { gap: 0.2rem; }
+        div[data-testid="stTabs"] button[role="tab"] { flex: 1; padding: 0.7rem 0.5rem; }
+        div[data-testid="stFileUploader"] [data-testid="stFileUploaderDropzone"] {
+            min-height: 9rem;
+        }
+    }
     @media (prefers-reduced-motion: reduce) {
         div[data-testid="stButton"] > button,
         div[data-testid="stDownloadButton"] > button { transition: none; }
@@ -661,11 +674,11 @@ def _model_checkboxes(label: str, nets: dict, container=None, help: str | None =
     if not nets:
         return active
     container = container if container is not None else st.sidebar
-    container.markdown(f"**{label}**")
+    container.markdown(f"**{label.title()}**")
     if help:
         container.caption(help)
     for key in nets:
-        if container.checkbox(key.upper(), value=True, key=f"chk_{label}_{key}"):
+        if container.checkbox(key.replace("_", " ").title(), value=True, key=f"chk_{label}_{key}"):
             active.add(key)
     return active
 
@@ -679,8 +692,9 @@ def _landmark_enable_button(label: str, nets: dict, state_key: str, container=No
         return set()
     container = container if container is not None else st.sidebar
     enabled = st.session_state.setdefault(state_key, True)
-    button_label = f"DISABLE {label}" if enabled else f"ENABLE {label}"
-    container.markdown(f"**{label}**")
+    display_label = label.title()
+    button_label = f"Disable {display_label}" if enabled else f"Enable {display_label}"
+    container.markdown(f"**{display_label}**")
     if help:
         container.caption(help)
     if container.button(button_label, key=f"enable_{state_key}", width="stretch"):
@@ -690,11 +704,11 @@ def _landmark_enable_button(label: str, nets: dict, state_key: str, container=No
     return set(nets) if enabled else set()
 
 
-st.sidebar.markdown("### MODEL SELECTION")
+st.sidebar.markdown("### Model selection")
 if models.offline_features:
-    st.sidebar.caption(f"[ OFFLINE: {', '.join(models.offline_features)} ] -- no model file/dependency present")
+    st.sidebar.caption(f"Unavailable: {', '.join(models.offline_features)}. Model file or dependency missing.")
 
-with st.sidebar.expander("DETECTION", expanded=True):
+with st.sidebar.expander("Detection", expanded=True):
     active_face_detector = "yolo" if models.yolo_face_nets else "ssd"
     _face_detector_options = (
         (["yolo"] if models.yolo_face_nets else [])
@@ -704,11 +718,11 @@ with st.sidebar.expander("DETECTION", expanded=True):
     )
     if len(_face_detector_options) > 1:
         active_face_detector = st.selectbox(
-            "FACE DETECTOR", _face_detector_options, index=_face_detector_options.index(active_face_detector),
+            "Face detector", _face_detector_options, index=_face_detector_options.index(active_face_detector),
             help="Exactly one detector runs per frame -- yolo is the default YOLOv8-Face detector when loaded; ssd is the always-available TensorFlow SSD/ResNet-10 fallback; scrfd and retinaface are alternatives.",
         )
 
-with st.sidebar.expander("CLASSIFICATION", expanded=True):
+with st.sidebar.expander("Classification", expanded=True):
     active_age = _model_checkboxes("AGE", models.age_nets, st, help="Estimated age per detected face.")
     active_gender = _model_checkboxes("GENDER", models.gender_nets, st, help="Predicted gender per detected face.")
     active_race = _model_checkboxes("RACE", models.race_nets, st, help="Predicted race/ethnicity; close top-2 predictions are shown together.")
@@ -718,14 +732,14 @@ with st.sidebar.expander("CLASSIFICATION", expanded=True):
     active_hair_color = _model_checkboxes("HAIR COLOR", models.hair_color_nets, st, help="Estimated dominant hair color.")
     active_eye_color = _model_checkboxes("EYE COLOR", models.eye_color_nets, st, help="Estimated dominant eye color.")
 
-with st.sidebar.expander("IDENTITY & BIOMETRICS", expanded=False):
+with st.sidebar.expander("Identity and biometrics", expanded=False):
     active_recognition = _model_checkboxes("RECOGNITION", models.recognition_nets, st, help="Matches faces against the saved gallery/identity search directories.")
     active_liveness = _model_checkboxes("LIVENESS", models.liveness_nets, st, help="Blink-based liveness check to flag still-photo spoofing.")
     if models.liveness_nets:
-        st.caption("Liveness only runs in Webcam / LIVE -- a single image has no blinks to check.")
+        st.caption("Liveness runs in live webcam mode. A single image has no blink history.")
     active_gaze = _model_checkboxes("GAZE", models.gaze_nets, st, help="Estimated gaze direction per detected face.")
 
-with st.sidebar.expander("LANDMARKS & EXPERIMENTAL", expanded=False):
+with st.sidebar.expander("Landmarks and experimental", expanded=False):
     active_colorization = _model_checkboxes(
         "AUTO-COLORIZE B&W", models.colorization_nets, st,
         help="Converts detected grayscale source images to color before face detection runs.",
@@ -770,10 +784,10 @@ st.session_state.setdefault("gallery", inference.load_gallery())
 
 search_gallery = {}
 if models.recognition_nets:
-    st.sidebar.markdown("### GALLERY")
+    st.sidebar.markdown("### Gallery")
     gallery = st.session_state["gallery"]
     if not gallery:
-        st.sidebar.caption("[ EMPTY ] -- no enrolled identities")
+        st.sidebar.caption("No enrolled identities yet.")
     for name in list(gallery):
         col_name, col_del = st.sidebar.columns([3, 1])
         col_name.text(name)
@@ -782,10 +796,10 @@ if models.recognition_nets:
             inference.save_gallery(st.session_state["gallery"])
             st.rerun()
 
-    st.sidebar.markdown("### IDENTITY SEARCH")
+    st.sidebar.markdown("### Identity search")
     st.sidebar.caption("Local directory matching only -- no live internet search.")
     custom_search_dir = st.sidebar.text_input(
-        "SEARCH DIRECTORY (optional)", value="", placeholder="/path/to/reference/photos",
+        "Search directory (optional)", value="", placeholder="/path/to/reference/photos",
         help="Extra directory of named reference photos to search, in addition to the bundled known_people/.",
     )
 
@@ -800,16 +814,16 @@ if models.recognition_nets:
         if net is not None:
             search_gallery.update(inference.build_gallery_from_directory(models.face_net, net, custom_search_dir))
 
-# Sidebar Interface Controls
-st.sidebar.markdown("### CONTROL PANEL")
-conf_threshold = st.sidebar.slider("CONFIDENCE THRESHOLD", 0.1, 1.0, 0.7)
+# Sidebar interface controls
+st.sidebar.markdown("### Control panel")
+conf_threshold = st.sidebar.slider("Confidence threshold", 0.1, 1.0, 0.7)
 
-enable_crowd_count = st.sidebar.checkbox("CROWD COUNT / DEMOGRAPHICS", value=False, key="crowd_count_enabled")
+enable_crowd_count = st.sidebar.checkbox("Aggregate demographic summary", value=False, key="crowd_count_enabled")
 if enable_crowd_count:
     st.sidebar.caption(
         "Aggregates age/gender/race across every face detected in an image into a total count "
-        "plus a breakdown per active model. Off by default -- confirm this complies with local "
-        "policy before using it on images of people who haven't consented to aggregate analysis."
+        "plus a breakdown per active model. Confirm local policy and consent before using this "
+        "on images of people."
     )
 
 if theme in THEME_MARKER_CLASSES:

@@ -39,7 +39,7 @@ class LandmarkControlTests(unittest.TestCase):
                 self.assertFalse(streamlit.session_state["landmarks"])
                 container.button.return_value = False
                 self.assertEqual(render("FACE LANDMARKS", {"mediapipe": object()}, "landmarks", **options), set())
-                self.assertEqual(container.button.call_args.args[0], "ENABLE FACE LANDMARKS")
+                self.assertEqual(container.button.call_args.args[0], "Enable Face Landmarks")
                 if use_expander:
                     sidebar.button.assert_not_called()
 
