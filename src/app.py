@@ -214,6 +214,23 @@ st.markdown(
         overflow: auto;
         box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
     }
+    .face-hover-label {
+        position: absolute;
+        top: 0;
+        left: 0;
+        transform: translateY(-100%);
+        background: rgba(0, 0, 0, 0.72);
+        color: var(--accent);
+        font-size: 0.65rem;
+        padding: 2px 6px;
+        border-radius: 4px 4px 0 0;
+        white-space: nowrap;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        pointer-events: none;
+        z-index: 2;
+    }
     @media (max-width: 640px) {
         .block-container { padding: 1.25rem 1rem 3rem; }
         .app-hero { padding-left: 1rem; margin-bottom: 1.5rem; }
@@ -421,6 +438,17 @@ def _target_card_html(face: dict) -> str:
     return f'<div class="target-card"><div class="target-card-id">FACE {face["idx"]:02d}</div>{rows}</div>'
 
 
+def _one_line_summary(face: dict) -> str:
+    """Compact always-visible label for a face box -- feature: output pairs, no model names."""
+    seen = {}
+    for result in sorted(face.get("model_results", []), key=lambda row: (row["Feature"], row["Model"])):
+        seen.setdefault(result["Feature"], result["Output"])
+    if not seen:
+        return f"F{face['idx']:02d}"
+    parts = "  ".join(f"{feature}: {output}" for feature, output in seen.items())
+    return f"F{face['idx']:02d}  {parts}"
+
+
 def _hoverable_face_image(frame_bgr: np.ndarray, faces: list[dict]) -> str:
     """Render the annotated frame with focusable hover regions over detected boxes."""
     height, width = frame_bgr.shape[:2]
@@ -438,6 +466,7 @@ def _hoverable_face_image(frame_bgr: np.ndarray, faces: list[dict]) -> str:
         targets.append(
             f'<div class="face-hover-target{placement}" style="{style}" tabindex="0" '
             f'aria-label="Face {face["idx"]}: hover or focus for details">'
+            f'<div class="face-hover-label">{escape(_one_line_summary(face))}</div>'
             f'<div class="face-hover-info">{_target_card_html(face)}</div></div>'
         )
     return (
