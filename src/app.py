@@ -483,6 +483,20 @@ body:has(.brutalist-theme) *,
         color: var(--text) !important;
         fill: var(--text) !important;
     }
+    [data-testid="stCameraInputWebcamComponent"] > div:first-child {
+        background: var(--surface-raised) !important;
+    }
+    [data-testid="stCameraInputWebcamComponent"] p {
+        color: var(--text) !important;
+    }
+    [data-testid="stCameraInputWebcamComponent"] a {
+        color: var(--accent) !important;
+    }
+    [data-testid="stCameraInputButton"] {
+        background: var(--surface) !important;
+        border-top: 1px solid var(--line) !important;
+        color: var(--text) !important;
+    }
     div[data-testid="stButton"] > button,
     div[data-testid="stDownloadButton"] > button {
         border: 1px solid var(--line);
