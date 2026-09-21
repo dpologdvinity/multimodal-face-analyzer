@@ -153,7 +153,6 @@ GENDER_MODEL = MODEL_DIR / "gender_net.caffemodel"
 EYE_CASCADE_FILE = MODEL_DIR / "haarcascade_eye.xml"
 EMOTION_MODEL = MODEL_DIR / "dan_affecnet7.pth"
 SSRNET_MODEL = MODEL_DIR / "ssrnet_morph2.pth"
-INSIGHTFACE_MODEL = MODEL_DIR / "insightface_genderage.onnx"
 EFFICIENTNET_EMOTION_MODEL = MODEL_DIR / "efficientnet_b0_fer.onnx"
 MINI_XCEPTION_MODEL = MODEL_DIR / "mini_xception_fer.h5"
 FERPLUS_MODEL = MODEL_DIR / "emotion_ferplus.onnx"
@@ -210,8 +209,8 @@ EIGENFACE_DISTANCE_THRESHOLD = 3000.0  # untuned heuristic (see match_face_eigen
 
 # Model keys per feature, in quickest-to-build order (first = default).
 # Must match the numbered options in build-and-run.sh and the Dockerfile ARGs.
-AGE_MODEL_OPTIONS = ["caffe", "insightface", "ssrnet", "fairface", "dex", "mivolo"]
-GENDER_MODEL_OPTIONS = ["caffe", "insightface", "deepface", "fairface", "mivolo"]
+AGE_MODEL_OPTIONS = ["caffe", "ssrnet", "fairface", "dex", "mivolo"]
+GENDER_MODEL_OPTIONS = ["caffe", "deepface", "fairface", "mivolo"]
 FAIRFACE_AGE_LABELS = ["0-2", "3-9", "10-19", "20-29", "30-39", "40-49", "50-59", "60-69", "70+"]
 EMOTION_MODEL_OPTIONS = ["efficientnet", "ferplus", "mini_xception", "dan", "hsemotion"]
 RACE_MODEL_OPTIONS = ["fairface", "deepface"]
@@ -398,15 +397,6 @@ def load_models() -> Models:
     gender_nets = {}
     if native_model_selected("GENDER_MODEL", "caffe") and GENDER_PROTO.exists() and GENDER_MODEL.exists():
         gender_nets["caffe"] = cv2.dnn.readNet(str(GENDER_MODEL), str(GENDER_PROTO))
-
-    if INSIGHTFACE_MODEL.exists():
-        insightface_net = cv2.dnn.readNetFromONNX(str(INSIGHTFACE_MODEL))
-        # Reuse the same ONNX net instance for both age and gender (single inference call can compute both).
-        # The predict_*_insightface functions each re-invoke the net for simplicity, not efficiency.
-        if native_model_selected("AGE_MODEL", "insightface"):
-            age_nets["insightface"] = insightface_net
-        if native_model_selected("GENDER_MODEL", "insightface"):
-            gender_nets["insightface"] = insightface_net
 
     if native_model_selected("GENDER_MODEL", "deepface") and TF_SUPPORTED and DEEPFACE_GENDER_MODEL.exists():
         gender_nets["deepface"] = build_gender_model(str(DEEPFACE_GENDER_MODEL))
@@ -646,8 +636,7 @@ def _scrfd_distance2bbox(points: np.ndarray, distance: np.ndarray) -> np.ndarray
 
 def detect_faces_scrfd(session, frame: np.ndarray, conf_threshold: float = 0.5) -> list[list[int]]:
     """SCRFD (deepinsight/insightface's detection/scrfd, 2.5GF bnkps checkpoint, weights
-    non-commercial research-only -- same license posture as this repo's insightface age/gender
-    backend, see README) via onnxruntime. Resizes preserving aspect ratio into a top-left-padded
+    non-commercial research-only, see README) via onnxruntime. Resizes preserving aspect ratio into a top-left-padded
     square (matching upstream's own tools/scrfd.py, unlike YOLO's centered letterbox), then
     decodes the raw 3-feature-map anchor output (strides 8/16/32, 2 anchors/location) into boxes
     via distance-to-bbox regression -- no DFL softmax needed, this checkpoint regresses distances
@@ -1455,12 +1444,6 @@ def predict_age_dex(net, face_bgr: np.ndarray) -> str:
     return f"{age:.0f}"
 
 
-# Insightface's combined gender/age ONNX export uses a different input size than its recognition models.
-# Must match the export's own expectations (96x96 for genderage.onnx) -- feeding 112x112 causes a shape
-# mismatch error. The graph embeds Sub/Mul normalization nodes, so any additional normalization corrupts the input.
-INSIGHTFACE_INPUT_SIZE = 96
-
-
 def _margin_align(frame_bgr: np.ndarray, box: tuple[int, int, int, int], output_size: int, margin: float) -> np.ndarray:
     """Crop and center a face box with proportional context, then resize to output_size.
 
@@ -1566,29 +1549,6 @@ def _rotate_region(frame_bgr: np.ndarray, box: tuple[int, int, int, int], angle_
     return rotated, local_box
 
 
-def _insightface_forward(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int]) -> np.ndarray:
-    """Prepare a face crop for insightface's combined age/gender ONNX model and run inference."""
-    # Insightface alignment uses 1.5x margin around the detection box.
-    aligned = _margin_align(frame_bgr, box, INSIGHTFACE_INPUT_SIZE, margin=1.5)
-    # This ONNX export embeds Sub/Mul normalization, so feed raw pixels.
-    blob = cv2.dnn.blobFromImage(aligned, 1.0, (INSIGHTFACE_INPUT_SIZE, INSIGHTFACE_INPUT_SIZE), (0, 0, 0), swapRB=True)
-    with _lock_for(net):
-        net.setInput(blob)
-        return net.forward().flatten()
-
-
-def predict_gender_insightface(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int]) -> str:
-    """Predict gender via insightface's combined gender/age ONNX model."""
-    out = _insightface_forward(net, frame_bgr, box)
-    return "Female" if np.argmax(out[:2]) == 0 else "Male"
-
-
-def predict_age_insightface(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int]) -> str:
-    """Predict continuous age via insightface's combined gender/age ONNX model (range 0-100)."""
-    out = _insightface_forward(net, frame_bgr, box)
-    return f"{round(out[2] * 100):.0f}"
-
-
 def predict_age_mivolo(
     net: MiVOLOInference, face_bgr: np.ndarray, body_bgr: np.ndarray | None = None,
 ) -> str:
@@ -1673,7 +1633,7 @@ def _format_results(pairs: list[tuple[str, str]]) -> list[str]:
     return [value for _, value in pairs]
 
 
-CONTINUOUS_AGE_MODELS = frozenset(("insightface", "ssrnet", "dex", "mivolo"))
+CONTINUOUS_AGE_MODELS = frozenset(("ssrnet", "dex", "mivolo"))
 AGE_CONSENSUS_MAX_RANGE = 10.0  # Agreement gate in years; not a calibrated accuracy bound.
 
 
@@ -1734,8 +1694,7 @@ def _fairface_forward(
     landmarks: np.ndarray | None = None,
 ) -> np.ndarray:
     # Same alignment as predict_race_fairface -- one ONNX graph, three named outputs
-    # (race_output, gender_output, age_output); re-run per feature for simplicity, matching
-    # the insightface age/gender split.
+    # (race_output, gender_output, age_output); re-run per feature for simplicity.
     aligned = align_face_with_landmarks(frame_bgr, landmarks, 224) if landmarks is not None else None
     if aligned is None:
         aligned = _margin_align(frame_bgr, box, 224, margin=1.5)
@@ -1954,7 +1913,7 @@ def _cached_face_predict(feature: str, model_key: str, face_bgr: np.ndarray, pre
     """Memoize a predict_*(net, face, ...) call on (feature, model_key, hash(image bytes)).
     Despite the name, `face_bgr` may be a per-face crop OR a whole frame (face detection,
     hand landmarks) -- the cache key only depends on that array's bytes, not what it depicts.
-    Not used for predictors that take the full frame + box (fairface, insightface) or hash a
+    Not used for predictors that take the full frame + box (fairface) or hash a
     much larger, more adjustment-sensitive buffer for comparatively little benefit.
 
     NOTE: only `feature`/`model_key`/`face_bgr` are part of the cache key -- predict_fn's other
@@ -2665,7 +2624,7 @@ def analyze_frame(
         # other -- _cached_face_predict's cache and _record_model_latency's metrics dict are
         # both documented/verified safe for this, see their own docstrings/comments), so they
         # run concurrently on _INFERENCE_EXECUTOR instead of one after another. Shared model
-        # instances (e.g. one fairface/insightface net backing both age and gender, or one
+        # instances (e.g. one fairface net backing age, gender, and race, or one
         # MediaPipe landmarker backing gaze/face_landmarks is made safe for this
         # by _lock_for(), applied at each net's actual setInput/forward/predict/detect call
         # site (see the top of this file) -- concurrent calls onto the SAME net serialize
@@ -2690,9 +2649,6 @@ def analyze_frame(
                     value = _cached_face_predict("age", key, dex_face, predict_age_dex, net, dex_face)
                 elif key == "mivolo":
                     value = predict_age_mivolo(net, face, body)
-                else:
-                    # Attribute.get uses the original detector box with rotation=0.
-                    value = predict_age_insightface(net, frame, (x1, y1, x2, y2))
                 pairs.append((key, value))
                 _record_model_latency(metrics, "age", key, started)
             return pairs
@@ -2712,8 +2668,6 @@ def analyze_frame(
                     value = predict_gender_fairface(net, crop_frame, (cx1, cy1, cx2, cy2), fairface_landmarks)
                 elif key == "mivolo":
                     value = predict_gender_mivolo(net, face, body)
-                else:
-                    value = predict_gender_insightface(net, frame, (x1, y1, x2, y2))
                 pairs.append((key, value))
                 _record_model_latency(metrics, "gender", key, started)
             return pairs

@@ -292,7 +292,6 @@ set_face_detector_models "$REPLY_MODEL"
 
 prompt_feature "AGE" 1 \
     "caffe|caffe|$BASE_PACKAGES" \
-    "insightface|insightface|$BASE_PACKAGES" \
     "fairface|fairface|$BASE_PACKAGES" \
     "dex|dex|$BASE_PACKAGES" \
     "ssrnet|ssrnet|$BASE_PACKAGES,+torch,+torchvision" \
@@ -301,7 +300,6 @@ AGE_MODEL="$REPLY_MODEL"
 
 prompt_feature "GENDER" 1 \
     "caffe|caffe|$BASE_PACKAGES" \
-    "insightface|insightface|$BASE_PACKAGES" \
     "fairface|fairface|$BASE_PACKAGES" \
     "deepface|deepface|$BASE_PACKAGES,+tensorflow-cpu,+tf-keras" \
     "mivolo|mivolo|$BASE_PACKAGES,+torch,+torchvision,+ultralytics,+timm,+safetensors,+huggingface_hub"

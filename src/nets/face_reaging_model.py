@@ -5,7 +5,7 @@
 # https://huggingface.co/timroelofs123/face_re-aging) loads and runs the same way it would in
 # the original repo.
 #
-# LICENSE CAVEAT (same treatment as insightface's gender/age model already in this repo):
+# LICENSE CAVEAT:
 #
 #   1. BlurPool (below, used inside DownLayer/UpLayer) is vendored from Adobe's
 #      antialiased-cnns (github.com/adobe/antialiased-cnns), which is licensed under

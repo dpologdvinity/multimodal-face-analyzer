@@ -59,7 +59,7 @@ class NativeInstallerVerbosityTests(unittest.TestCase):
         output = self._run_installer()
 
         self.assertIn("\033[1;32m* 1) caffe\033[0m", output)
-        self.assertIn("\033[1;33m  5) ssrnet\033[0m", output)
+        self.assertIn("\033[1;33m  4) ssrnet\033[0m", output)
         self.assertIn("  0) none", output)
         self.assertIn("  9) all", output)
         self.assertNotIn("\033[1;32m0) none\033[0m", output)
@@ -100,8 +100,8 @@ class NativeInstallerVerbosityTests(unittest.TestCase):
         # These pairs check that models requiring no extra dependencies (green/bold)
         # appear before models requiring new packages (orange/bold)
         for green, orange in (
-            ("\033[1;32m  4) dex\033[0m", "\033[1;33m  5) ssrnet\033[0m"),
-            ("\033[1;32m  3) fairface\033[0m", "\033[1;33m  4) deepface\033[0m"),
+            ("\033[1;32m  3) dex\033[0m", "\033[1;33m  4) ssrnet\033[0m"),
+            ("\033[1;32m  2) fairface\033[0m", "\033[1;33m  3) deepface\033[0m"),
             ("\033[1;32m  3) hsemotion\033[0m", "\033[1;33m  4) mini_xception\033[0m"),
         ):
             self.assertLess(output.index(green), output.index(orange))
@@ -114,7 +114,7 @@ class NativeInstallerVerbosityTests(unittest.TestCase):
 
                 self.assertNotIn("\n      packages:", output)
                 self.assertIn("\033[1;32m* 1) caffe\033[0m", output)
-                self.assertIn("\033[1;33m  5) ssrnet\033[0m", output)
+                self.assertIn("\033[1;33m  4) ssrnet\033[0m", output)
                 self.assertIn("\033[1;32m* 0) ssd\033[0m", output)
                 self.assertIn("\033[32mopencv-python-headless, numpy\033[0m", output)
                 self.assertIn("\033[33mtorch, torchvision\033[0m", output)
@@ -164,8 +164,8 @@ class NativeInstallerVerbosityTests(unittest.TestCase):
         """Ensure --hidden mode 'all' includes only base-package models, no extra deps."""
         output = self._run_installer("--hidden", input_data="9\n" * 8)
 
-        self.assertIn("AGE_MODEL=caffe,insightface,fairface,dex", output)
-        self.assertIn("GENDER_MODEL=caffe,insightface,fairface", output)
+        self.assertIn("AGE_MODEL=caffe,fairface,dex", output)
+        self.assertIn("GENDER_MODEL=caffe,fairface", output)
         self.assertIn("EMOTION_MODEL=efficientnet,ferplus,hsemotion", output)
         self.assertIn("RECOGNITION_MODEL=", output)
         self.assertNotIn("Installing: torch", output)
