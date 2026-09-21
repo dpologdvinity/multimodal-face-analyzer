@@ -76,3 +76,9 @@ def test_model_labels_preserve_canonical_product_names():
 def test_brutalist_theme_keeps_accent_actions_and_readouts_legible():
     assert 'body:has(.brutalist-theme) .app-hero-readout strong' in APP_SOURCE
     assert 'body:has(.brutalist-theme) div[data-testid="stFileUploader"] button *' in APP_SOURCE
+
+
+def test_camera_permission_panel_uses_active_theme_tokens():
+    assert '[data-testid="stCameraInputWebcamComponent"] > div:first-child' in APP_SOURCE
+    assert '[data-testid="stCameraInputWebcamComponent"] p' in APP_SOURCE
+    assert '[data-testid="stCameraInputButton"]' in APP_SOURCE
