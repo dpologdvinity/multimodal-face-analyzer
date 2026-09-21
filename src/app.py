@@ -655,22 +655,6 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
                                        file_name=f"face_{face['idx']}_processed.png", mime="image/png",
                                        key=f"image_op_dl_{identifier}_{face['idx']}")
             st.markdown(_target_card_html(face), unsafe_allow_html=True)
-            lbph_available = models.recognition_nets.get("lbph") is not None
-            if face["embedding"] is not None or lbph_available:
-                enroll_name = st.text_input("ENROLL AS", key=f"enroll_name_{identifier}_{face['idx']}", label_visibility="collapsed", placeholder="ENROLL AS...")
-                if st.button("ENROLL", key=f"enroll_btn_{identifier}_{face['idx']}") and enroll_name:
-                    try:
-                        safe_name = inference.validate_lbph_name(enroll_name) if lbph_available else enroll_name.strip()
-                        if not safe_name:
-                            raise ValueError("Enrollment name cannot be empty.")
-                        if face["embedding"] is not None:
-                            st.session_state["gallery"][safe_name] = np.array(face["embedding"], dtype=np.float32)
-                            inference.save_gallery(st.session_state["gallery"])
-                        if lbph_available:
-                            inference.enroll_lbph_face(safe_name, cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR))
-                        st.rerun()
-                    except ValueError as exc:
-                        st.error(f"[INVALID ENROLLMENT] {exc}")
 
             col_search, col_save = st.columns(2)
             if col_search.button("SEARCH", key=f"search_btn_{identifier}_{face['idx']}"):
@@ -693,46 +677,69 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
                 saved_id = inference.save_face(face_bgr, face["raw_columns"])
                 st.info(f"[ SAVED ] ID {saved_id}")
 
-            if models.reconstruction_3d_nets:
-                if st.button("3D RECON", key=f"recon3d_btn_{identifier}_{face['idx']}"):
-                    face_bgr = cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR)
-                    result = inference.run_3d_reconstruction(models, face_bgr)
-                    if result is None:
-                        st.warning("[ NO RECONSTRUCTION ] -- no face landmarks found in this crop")
-                    else:
-                        vertices, faces, colors = result
-                        obj_text = inference.mesh_to_obj_str(vertices, faces, colors)
-                        st.download_button(
-                            "DOWNLOAD .OBJ", data=obj_text, file_name=f"face_{identifier}_{face['idx']}.obj",
-                            mime="text/plain", key=f"recon3d_dl_{identifier}_{face['idx']}",
-                        )
+            lbph_available = models.recognition_nets.get("lbph") is not None
+            has_more_actions = (
+                face["embedding"] is not None or lbph_available
+                or models.reconstruction_3d_nets or models.age_progression_nets
+            )
+            if has_more_actions:
+                with st.expander("MORE ACTIONS", expanded=False):
+                    if face["embedding"] is not None or lbph_available:
+                        enroll_name = st.text_input("ENROLL AS", key=f"enroll_name_{identifier}_{face['idx']}", label_visibility="collapsed", placeholder="ENROLL AS...")
+                        if st.button("ENROLL", key=f"enroll_btn_{identifier}_{face['idx']}") and enroll_name:
+                            try:
+                                safe_name = inference.validate_lbph_name(enroll_name) if lbph_available else enroll_name.strip()
+                                if not safe_name:
+                                    raise ValueError("Enrollment name cannot be empty.")
+                                if face["embedding"] is not None:
+                                    st.session_state["gallery"][safe_name] = np.array(face["embedding"], dtype=np.float32)
+                                    inference.save_gallery(st.session_state["gallery"])
+                                if lbph_available:
+                                    inference.enroll_lbph_face(safe_name, cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR))
+                                st.rerun()
+                            except ValueError as exc:
+                                st.error(f"[INVALID ENROLLMENT] {exc}")
 
-            if models.age_progression_nets:
-                st.caption("AGE PROGRESSION (non-commercial use only -- see README)")
-                col_src_age, col_tgt_age = st.columns(2)
-                source_age = col_src_age.number_input(
-                    "Source age", min_value=0, max_value=100, value=30,
-                    key=f"reage_src_{identifier}_{face['idx']}",
-                )
-                target_age = col_tgt_age.number_input(
-                    "Target age", min_value=0, max_value=100, value=60,
-                    key=f"reage_tgt_{identifier}_{face['idx']}",
-                )
-                if st.button("AGE PROGRESSION", key=f"reage_btn_{identifier}_{face['idx']}"):
-                    face_bgr = cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR)
-                    aged_bgr = inference.run_age_progression(models, face_bgr, source_age, target_age)
-                    st.session_state[f"reage_result_{identifier}_{face['idx']}"] = aged_bgr
-                result_key = f"reage_result_{identifier}_{face['idx']}"
-                if result_key in st.session_state:
-                    aged_bgr = st.session_state[result_key]
-                    col_before, col_after = st.columns(2)
-                    col_before.image(face["image"], caption="Before")
-                    col_after.image(cv2.cvtColor(aged_bgr, cv2.COLOR_BGR2RGB), caption="After")
-                    st.download_button(
-                        "DOWNLOAD AGED PNG", cv2.imencode(".png", aged_bgr)[1].tobytes(),
-                        file_name=f"face_{identifier}_{face['idx']}_aged.png", mime="image/png",
-                        key=f"reage_dl_{identifier}_{face['idx']}",
-                    )
+                    if models.reconstruction_3d_nets:
+                        if st.button("3D RECON", key=f"recon3d_btn_{identifier}_{face['idx']}"):
+                            face_bgr = cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR)
+                            result = inference.run_3d_reconstruction(models, face_bgr)
+                            if result is None:
+                                st.warning("[ NO RECONSTRUCTION ] -- no face landmarks found in this crop")
+                            else:
+                                vertices, faces, colors = result
+                                obj_text = inference.mesh_to_obj_str(vertices, faces, colors)
+                                st.download_button(
+                                    "DOWNLOAD .OBJ", data=obj_text, file_name=f"face_{identifier}_{face['idx']}.obj",
+                                    mime="text/plain", key=f"recon3d_dl_{identifier}_{face['idx']}",
+                                )
+
+                    if models.age_progression_nets:
+                        st.caption("AGE PROGRESSION (non-commercial use only -- see README)")
+                        col_src_age, col_tgt_age = st.columns(2)
+                        source_age = col_src_age.number_input(
+                            "Source age", min_value=0, max_value=100, value=30,
+                            key=f"reage_src_{identifier}_{face['idx']}",
+                        )
+                        target_age = col_tgt_age.number_input(
+                            "Target age", min_value=0, max_value=100, value=60,
+                            key=f"reage_tgt_{identifier}_{face['idx']}",
+                        )
+                        if st.button("AGE PROGRESSION", key=f"reage_btn_{identifier}_{face['idx']}"):
+                            face_bgr = cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR)
+                            aged_bgr = inference.run_age_progression(models, face_bgr, source_age, target_age)
+                            st.session_state[f"reage_result_{identifier}_{face['idx']}"] = aged_bgr
+                        result_key = f"reage_result_{identifier}_{face['idx']}"
+                        if result_key in st.session_state:
+                            aged_bgr = st.session_state[result_key]
+                            col_before, col_after = st.columns(2)
+                            col_before.image(face["image"], caption="Before")
+                            col_after.image(cv2.cvtColor(aged_bgr, cv2.COLOR_BGR2RGB), caption="After")
+                            st.download_button(
+                                "DOWNLOAD AGED PNG", cv2.imencode(".png", aged_bgr)[1].tobytes(),
+                                file_name=f"face_{identifier}_{face['idx']}_aged.png", mime="image/png",
+                                key=f"reage_dl_{identifier}_{face['idx']}",
+                            )
 
 
 global_adjustments = {
