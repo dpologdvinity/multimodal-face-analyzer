@@ -58,7 +58,6 @@ try:
     from nets.deepface_recognition import build_recognition_model
     from nets.mini_xception_model import build_mini_xception
     from nets.mask_model import build_mask_model
-    from nets.skin_tone_model import build_skin_tone_model
     TF_SUPPORTED = True
 except ImportError:
     TF_SUPPORTED = False
@@ -124,7 +123,6 @@ DEX_PROTO = MODEL_DIR / "dex_age.prototxt"
 DEX_MODEL = MODEL_DIR / "dex_age.caffemodel"
 MIVOLO_MODEL = MODEL_DIR / "mivolo_v2.safetensors"
 FACE_LANDMARKER_MODEL = MODEL_DIR / "face_landmarker.task"
-SKIN_TONE_MODEL = MODEL_DIR / "skin_tone_mobilenetv2.h5"
 GLASSES_MODEL = MODEL_DIR / "glasses_detector.onnx"
 MASK_MODEL = MODEL_DIR / "mask_detector.h5"
 COLORIZATION_PROTO = MODEL_DIR / "colorization_deploy_v2.prototxt"
@@ -149,7 +147,6 @@ EMOTION_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 EMOTION_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 SSRNET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 SSRNET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
-MIN_EYES_OPEN = 2
 RACE_LABELS_FAIRFACE = ['White', 'Black', 'Latino_Hispanic', 'East Asian', 'Southeast Asian', 'Indian', 'Middle Eastern']
 RACE_LABELS_DEEPFACE = ['asian', 'indian', 'black', 'white', 'middle eastern', 'latino hispanic']
 RACE_CLOSE_MARGIN = 0.10  # show top-2 race classes together if within this probability margin
@@ -173,7 +170,6 @@ AGE_MODEL_OPTIONS = ["caffe", "insightface", "ssrnet", "fairface", "dex", "mivol
 GENDER_MODEL_OPTIONS = ["caffe", "insightface", "deepface", "fairface", "mivolo"]
 FAIRFACE_AGE_LABELS = ["0-2", "3-9", "10-19", "20-29", "30-39", "40-49", "50-59", "60-69", "70+"]
 EMOTION_MODEL_OPTIONS = ["efficientnet", "ferplus", "mini_xception", "dan", "hsemotion"]
-DROWSINESS_MODEL_OPTIONS = ["haarcascade"]
 RACE_MODEL_OPTIONS = ["fairface", "deepface"]
 LIVENESS_MODEL_OPTIONS = ["mediapipe"]
 RECOGNITION_MODEL_OPTIONS = ["vggface", "lbph"]
@@ -195,7 +191,6 @@ RETINAFACE_MIN_SIZES = ((16, 32), (64, 128), (256, 512))
 RETINAFACE_VARIANCE = (0.1, 0.2)
 RETINAFACE_MEAN = (104, 117, 123)  # BGR, biubug6/Pytorch_Retinaface's own training-time mean
 RETINAFACE_NMS_THRESHOLD = 0.4
-SKIN_TONE_MODEL_OPTIONS = ["mobilenetv2"]
 GLASSES_MODEL_OPTIONS = ["mobilenet"]
 MASK_MODEL_OPTIONS = ["mobilenetv2"]
 HAIR_COLOR_MODEL_OPTIONS = ["colorimetric"]
@@ -232,8 +227,6 @@ IMAGE_ADJUSTMENT_RANGES = {
     "noise_reduction": (0.0, 100.0, 0.0),
 }
 
-SKIN_TONE_LABELS = ["black", "brown", "white"]  # index order per the source model's own class map
-SKIN_TONE_INPUT_SIZE = (120, 90)  # (width, height) -- this model's own idiosyncratic input shape, not 224x224
 MASK_LABELS = ["with_mask", "without_mask"]  # sklearn LabelBinarizer's alphabetical class order
 HAIR_COLOR_LABELS = ["black", "brown", "blonde", "red", "grey", "white"]
 EYE_COLOR_LABELS = ["brown", "blue", "green", "hazel", "grey", "amber"]
@@ -281,11 +274,9 @@ class Models:
     age_nets: dict = field(default_factory=dict)
     gender_nets: dict = field(default_factory=dict)
     emotion_nets: dict = field(default_factory=dict)
-    drowsiness_nets: dict = field(default_factory=dict)
     race_nets: dict = field(default_factory=dict)
     liveness_nets: dict = field(default_factory=dict)
     recognition_nets: dict = field(default_factory=dict)
-    skin_tone_nets: dict = field(default_factory=dict)
     glasses_nets: dict = field(default_factory=dict)
     mask_nets: dict = field(default_factory=dict)
     hair_color_nets: dict = field(default_factory=dict)
@@ -305,12 +296,12 @@ class Models:
         return [
             name for name, nets in [
                 ("AGE", self.age_nets), ("GENDER", self.gender_nets),
-                ("EMOTION", self.emotion_nets), ("DROWSINESS", self.drowsiness_nets),
+                ("EMOTION", self.emotion_nets),
                 ("RACE", self.race_nets),
                 ("LIVENESS", self.liveness_nets),
                 ("GAZE", self.gaze_nets),
                 ("RECOGNITION", self.recognition_nets),
-                ("SKIN_TONE", self.skin_tone_nets), ("GLASSES", self.glasses_nets),
+                ("GLASSES", self.glasses_nets),
                 ("MASK", self.mask_nets), ("HAIR_COLOR", self.hair_color_nets),
                 ("EYE_COLOR", self.eye_color_nets), ("COLORIZATION", self.colorization_nets),
                 ("FACE_LANDMARKS", self.face_landmarks_nets),
@@ -325,7 +316,7 @@ class Models:
 
 def load_models() -> Models:
     """Load every model whose file(s)/dependencies are present. Face detection is required;
-    age, gender, emotion, and drowsiness are each optional per-model-key -- a model is only
+    age, gender, and emotion are each optional per-model-key -- a model is only
     present in its feature's dict if it loaded successfully, so the app degrades gracefully
     to whichever models were built in. Which of the loaded models are actually used per frame
     is chosen at runtime by the caller (see analyze_frame's active_* arguments)."""
@@ -398,10 +389,6 @@ def load_models() -> Models:
     if native_model_selected("EMOTION_MODEL", "hsemotion") and HSEMOTION_MODEL.exists():
         emotion_nets["hsemotion"] = cv2.dnn.readNetFromONNX(str(HSEMOTION_MODEL))
 
-    drowsiness_nets = {}
-    if native_model_selected("DROWSINESS_MODEL", "haarcascade") and EYE_CASCADE_FILE.exists():
-        drowsiness_nets["haarcascade"] = cv2.CascadeClassifier(str(EYE_CASCADE_FILE))
-
     fairface_net = None
     if FAIRFACE_MODEL.exists():
         fairface_net = cv2.dnn.readNetFromONNX(str(FAIRFACE_MODEL))
@@ -417,8 +404,7 @@ def load_models() -> Models:
         race_nets["deepface"] = build_race_model(str(DEEPFACE_RACE_MODEL))
 
     # Colorimetric heuristics need no model file, no dependency beyond OpenCV -- always
-    # available. hair_color has no further precondition; eye_color reuses the same
-    # haarcascade_eye.xml as drowsiness, so it's gated on that file existing.
+    # available. hair_color has no further precondition; eye_color uses haarcascade_eye.xml.
     hair_color_nets = (
         {"colorimetric": True}
         if native_model_selected("HAIR_COLOR_MODEL", "colorimetric")
@@ -426,7 +412,7 @@ def load_models() -> Models:
     )
     eye_color_nets = {}
     if EYE_CASCADE_FILE.exists():
-        eye_color_nets["colorimetric"] = drowsiness_nets["haarcascade"] if "haarcascade" in drowsiness_nets else cv2.CascadeClassifier(str(EYE_CASCADE_FILE))
+        eye_color_nets["colorimetric"] = cv2.CascadeClassifier(str(EYE_CASCADE_FILE))
 
     liveness_nets = {}
     face_landmarks_nets = {}
@@ -447,10 +433,6 @@ def load_models() -> Models:
         if native_model_selected("FACE_LANDMARKS_MODEL", "mediapipe"):
             face_landmarks_nets["mediapipe"] = landmarker
         gaze_nets["mediapipe"] = landmarker
-
-    skin_tone_nets = {}
-    if TF_SUPPORTED and SKIN_TONE_MODEL.exists():
-        skin_tone_nets["mobilenetv2"] = build_skin_tone_model(str(SKIN_TONE_MODEL))
 
     glasses_nets = {}
     if native_model_selected("GLASSES_MODEL", "mobilenet") and ONNXRUNTIME_SUPPORTED and GLASSES_MODEL.exists():
@@ -504,8 +486,8 @@ def load_models() -> Models:
         age_progression_nets["franunet"] = build_face_reaging_model(str(FACE_REAGING_MODEL))
 
     return Models(
-        face_net, age_nets, gender_nets, emotion_nets, drowsiness_nets, race_nets, liveness_nets, recognition_nets,
-        skin_tone_nets, glasses_nets, mask_nets, hair_color_nets, eye_color_nets, colorization_nets,
+        face_net, age_nets, gender_nets, emotion_nets, race_nets, liveness_nets, recognition_nets,
+        glasses_nets, mask_nets, hair_color_nets, eye_color_nets, colorization_nets,
         face_landmarks_nets, hand_nets, reconstruction_3d_nets, yolo_face_nets, scrfd_face_nets, retinaface_nets,
         gaze_nets, age_progression_nets,
     )
@@ -1288,7 +1270,7 @@ def apply_denoise(face_bgr: np.ndarray, method: str = "nlm") -> np.ndarray:
     preservation), or Non-Local Means (searches the whole image for similar patches, best
     texture preservation, slowest). CNN/GAN-based methods from the same doc are skipped --
     they need trained weights this repo doesn't have a source for (same category of gap as
-    skin_tone/deep3d elsewhere in this app)."""
+    deep3d elsewhere in this app)."""
     if method == "gaussian":
         return cv2.GaussianBlur(face_bgr, (5, 5), 1.5)
     if method == "median":
@@ -1568,14 +1550,6 @@ def predict_emotion_hsemotion(net, face_bgr: np.ndarray) -> str:
         net.setInput(blob.astype(np.float32))
         logits = net.forward().flatten()
     return EMOTION_LABELS_HSEMOTION[int(np.argmax(logits))]
-
-
-def detect_drowsiness_haarcascade(eye_cascade, face_bgr: np.ndarray) -> bool:
-    """Return True if fewer than MIN_EYES_OPEN eyes are visible (eyes likely closed)."""
-    face_gray = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2GRAY)
-    with _lock_for(eye_cascade):
-        eyes = eye_cascade.detectMultiScale(face_gray, scaleFactor=1.1, minNeighbors=6, minSize=(20, 20))
-    return len(eyes) < MIN_EYES_OPEN
 
 
 def _format_results(pairs: list[tuple[str, str]]) -> list[str]:
@@ -2051,17 +2025,6 @@ def predict_texture_artifact_score(face_bgr: np.ndarray) -> float:
     return texture_artifact_score(sample.tolist())
 
 
-def predict_skin_tone_vgg16(net, face_bgr: np.ndarray) -> str:
-    """behra527/Skin-Tone-Classification-model: MobileNetV2 backbone (despite the repo's
-    README describing VGG16), RGB, its own idiosyncratic 90x120 (h,w) input,
-    keras.applications.mobilenet_v2.preprocess_input scaling."""
-    face_rgb = cv2.cvtColor(cv2.resize(face_bgr, SKIN_TONE_INPUT_SIZE), cv2.COLOR_BGR2RGB).astype(np.float32)
-    face_norm = face_rgb / 127.5 - 1.0
-    with _lock_for(net):
-        probs = net.predict(face_norm[np.newaxis, ...], verbose=0).flatten()
-    return SKIN_TONE_LABELS[int(np.argmax(probs))]
-
-
 def predict_glasses_mobilenet(net, face_bgr: np.ndarray) -> str:
     """Sorour190/Glasses-Detector's glasses_face224.onnx: MobileNetV3-Large, 224x224 RGB,
     uint8 NHWC input (normalization baked into the ONNX graph itself), outputs a named
@@ -2127,7 +2090,7 @@ def predict_hair_color_colorimetric(frame_bgr: np.ndarray, box: tuple[int, int, 
 
 
 def predict_eye_color_colorimetric(eye_cascade, face_bgr: np.ndarray) -> str:
-    """Heuristic (not ML): locate the largest detected eye via the drowsiness Haar
+    """Heuristic (not ML): locate the largest detected eye via the Haar
     cascade, sample the center 40% of its box (avoiding sclera/eyelid), and bucket
     the median HSV into EYE_COLOR_LABELS. Rough by nature -- lighting/pose-sensitive."""
     face_gray = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2GRAY)
@@ -2350,11 +2313,9 @@ def analyze_frame(
     active_age: set,
     active_gender: set,
     active_emotion: set,
-    active_drowsiness: set,
     active_race: set,
     active_recognition: set,
     gallery: dict,
-    active_skin_tone: set,
     active_glasses: set,
     active_mask: set,
     active_hair_color: set,
@@ -2416,8 +2377,6 @@ def analyze_frame(
         face_boxes = detect_faces(models.face_net, frame, conf_threshold)
     track_ids = tracker.update(face_boxes) if tracker is not None else [None] * len(face_boxes)
     cropped_faces = []
-    any_drowsy = False
-
     hands_detected = False
     hand_net = models.hand_nets.get("mediapipe")
     if hand_net is not None and "mediapipe" in active_hands:
@@ -2429,7 +2388,7 @@ def analyze_frame(
     need_blob227 = ("caffe" in active_age and "caffe" in models.age_nets) or \
                    ("caffe" in active_gender and "caffe" in models.gender_nets)
 
-    eye_cascade = models.drowsiness_nets.get("haarcascade")
+    eye_cascade = models.eye_color_nets.get("colorimetric")
 
     # Trained once per frame, not once per face -- LBPH has no persisted model, retraining per
     # face would multiply an already-nontrivial cost by the face count for no benefit.
@@ -2437,7 +2396,7 @@ def analyze_frame(
 
     for idx, ((x1, y1, x2, y2), track_id) in enumerate(zip(face_boxes, track_ids), 1):
         # Correct in-plane roll (tilted head) before cropping/classifying, using the same
-        # eye cascade as drowsiness detection -- no new model/dependency. crop_frame/cx*/cy*
+        # eye cascade for roll alignment -- no new model/dependency. crop_frame/cx*/cy*
         # are the rotation-corrected region+box; x1..y2 stay untouched for the box overlay
         # drawn on annotated_frame further below.
         crop_frame, (cx1, cy1, cx2, cy2) = frame, (x1, y1, x2, y2)
@@ -2632,18 +2591,6 @@ def analyze_frame(
                 _record_model_latency(metrics, "recognition", key, started)
             return pairs, embedding
 
-        def _skin_tone_task():
-            pairs = []
-            for key in active_skin_tone:
-                net = models.skin_tone_nets.get(key)
-                if net is None:
-                    continue
-                started = time.perf_counter()
-                value = _cached_face_predict("skin_tone", key, face, predict_skin_tone_vgg16, net, face)
-                pairs.append((key, value))
-                _record_model_latency(metrics, "skin_tone", key, started)
-            return pairs
-
         def _glasses_task():
             pairs = []
             for key in active_glasses:
@@ -2691,18 +2638,6 @@ def analyze_frame(
                 _record_model_latency(metrics, "eye_color", key, started)
             return pairs
 
-        def _drowsiness_task():
-            pairs = []
-            for key in active_drowsiness:
-                net = models.drowsiness_nets.get(key)
-                if net is None:
-                    continue
-                started = time.perf_counter()
-                drowsy = _cached_face_predict("drowsiness", key, face, detect_drowsiness_haarcascade, net, face)
-                pairs.append((key, "DROWSY" if drowsy else "ALERT"))
-                _record_model_latency(metrics, "drowsiness", key, started)
-            return pairs
-
         def _liveness_task():
             if not run_liveness:
                 return [], None
@@ -2722,12 +2657,10 @@ def analyze_frame(
             "gaze": _INFERENCE_EXECUTOR.submit(_gaze_task),
             "head_pose": _INFERENCE_EXECUTOR.submit(_head_pose_task),
             "recognition": _INFERENCE_EXECUTOR.submit(_recognition_task),
-            "skin_tone": _INFERENCE_EXECUTOR.submit(_skin_tone_task),
             "glasses": _INFERENCE_EXECUTOR.submit(_glasses_task),
             "mask": _INFERENCE_EXECUTOR.submit(_mask_task),
             "hair_color": _INFERENCE_EXECUTOR.submit(_hair_color_task),
             "eye_color": _INFERENCE_EXECUTOR.submit(_eye_color_task),
-            "drowsiness": _INFERENCE_EXECUTOR.submit(_drowsiness_task),
             "liveness": _INFERENCE_EXECUTOR.submit(_liveness_task),
         }
 
@@ -2738,21 +2671,16 @@ def analyze_frame(
         gaze_pairs = futures["gaze"].result()
         head_pose_pairs = futures["head_pose"].result()
         recognition_pairs, face_embedding = futures["recognition"].result()
-        skin_tone_pairs = futures["skin_tone"].result()
         glasses_pairs = futures["glasses"].result()
         mask_pairs = futures["mask"].result()
         hair_color_pairs = futures["hair_color"].result()
         eye_color_pairs = futures["eye_color"].result()
-        drowsy_pairs = futures["drowsiness"].result()
         liveness_pairs, liveness_result = futures["liveness"].result()
 
         if metrics is not None and emotion_pairs:
             metrics.setdefault("emotion_samples", []).extend(
                 {"model": key, "emotion": value} for key, value in emotion_pairs
             )
-
-        face_drowsy = any(value == "DROWSY" for _, value in drowsy_pairs)
-        any_drowsy = any_drowsy or face_drowsy
 
         # Attribute text is intentionally NOT drawn on the shared image -- with several faces
         # close together, per-face text overlaps illegibly. The box + a small index number is
@@ -2769,16 +2697,14 @@ def analyze_frame(
             if landmark_points is not None:
                 draw_face_landmarks(annotated_frame, landmark_points, (x1, y1, x2, y2))
 
-        drowsy_parts = _format_results(drowsy_pairs)
-        status = drowsy_parts[0] if len(drowsy_parts) == 1 else (", ".join(drowsy_parts) if drowsy_parts else None)
         eye_contact = [f"{key}=yes" if value.startswith("center/") else f"{key}=no" for key, value in gaze_pairs]
 
         raw_columns = _gather_face_results({
             "age": age_pairs, "gender": gender_pairs, "race": race_pairs, "emotion": emotion_pairs,
             "gaze": gaze_pairs, "identity": recognition_pairs,
             "eye_contact": [("derived", value) for value in eye_contact], "head_pose": head_pose_pairs,
-            "skin_tone": skin_tone_pairs, "glasses": glasses_pairs, "mask": mask_pairs,
-            "hair_color": hair_color_pairs, "eye_color": eye_color_pairs, "drowsiness": drowsy_pairs,
+            "glasses": glasses_pairs, "mask": mask_pairs,
+            "hair_color": hair_color_pairs, "eye_color": eye_color_pairs,
             "liveness": liveness_pairs,
         })
         model_results = [
@@ -2788,9 +2714,9 @@ def analyze_frame(
                 "gaze": gaze_pairs, "identity": recognition_pairs,
                 "eye contact": [("derived", value) for value in eye_contact],
                 "head pose": head_pose_pairs,
-                "skin tone": skin_tone_pairs, "glasses": glasses_pairs,
+                "glasses": glasses_pairs,
                 "mask": mask_pairs, "hair color": hair_color_pairs, "eye color": eye_color_pairs,
-                "drowsiness": drowsy_pairs, "liveness": liveness_pairs,
+                "liveness": liveness_pairs,
             }.items()
             for model, value in pairs
         ]
@@ -2808,7 +2734,6 @@ def analyze_frame(
             "eye_contact": eye_contact,
             "head_pose": _format_results(head_pose_pairs),
             "identity": _format_results(recognition_pairs),
-            "skin_tone": _format_results(skin_tone_pairs),
             "glasses": _format_results(glasses_pairs),
             "mask": _format_results(mask_pairs),
             "hair_color": _format_results(hair_color_pairs),
@@ -2822,11 +2747,9 @@ def analyze_frame(
             "embedding": face_embedding.tolist() if face_embedding is not None else None,
             "raw_columns": raw_columns,
             "model_results": model_results,
-            "status": status,
-            "drowsy": face_drowsy if drowsy_pairs else None,
         })
 
-    return annotated_frame, cropped_faces, any_drowsy, bool(face_boxes), hands_detected
+    return annotated_frame, cropped_faces, bool(face_boxes), hands_detected
 
 
 AGGREGATE_FEATURES = ("age", "gender", "race")  # demographic breakdown scope for crowd counting

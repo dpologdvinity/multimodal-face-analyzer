@@ -85,8 +85,8 @@ class NativeInstallerVerbosityTests(unittest.TestCase):
         self.assertIn("  0) none", output)
         self.assertIn("== ADDITIONAL CLASSIFICATIONS ==", output)
         self.assertNotIn("expressions - blendshapes", output)
-        self.assertIn("\033[1;33m  2) liveness - mediapipe\033[0m", output)
-        self.assertIn("\033[1;32m  5) hair color - colorimetric\033[0m", output)
+        self.assertIn("\033[1;33m  1) liveness - mediapipe\033[0m", output)
+        self.assertIn("\033[1;32m  4) hair color - colorimetric\033[0m", output)
         self.assertIn("\033[1;33m  2) face landmarks - mediapipe\033[0m", output)
 
     def test_requirement_only_models_precede_additional_install_models(self):
@@ -96,7 +96,6 @@ class NativeInstallerVerbosityTests(unittest.TestCase):
             ("\033[1;32m  4) dex\033[0m", "\033[1;33m  5) ssrnet\033[0m"),
             ("\033[1;32m  3) fairface\033[0m", "\033[1;33m  4) deepface\033[0m"),
             ("\033[1;32m  3) hsemotion\033[0m", "\033[1;33m  4) mini_xception\033[0m"),
-            ("\033[1;32m  1) drowsiness - haarcascade\033[0m", "\033[1;33m  2) liveness - mediapipe\033[0m"),
         ):
             self.assertLess(output.index(green), output.index(orange))
 
@@ -185,7 +184,7 @@ class NativeInstallerVerbosityTests(unittest.TestCase):
         self.assertIn("AGE_PROGRESSION_MODEL=", output)
 
     def test_hair_color_selection_reaches_native_runtime(self):
-        selections = "\n".join(["0", "0", "0", "0", "0", "0", "5", "0"]) + "\n"
+        selections = "\n".join(["0", "0", "0", "0", "0", "0", "4", "0"]) + "\n"
         output = self._run_installer(input_data=selections, capture_env=True)
 
         self.assertIn("HAIR_COLOR_MODEL=colorimetric", output)

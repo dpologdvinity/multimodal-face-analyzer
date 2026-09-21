@@ -54,7 +54,7 @@ class BuildPromptFormattingTests(unittest.TestCase):
         self.assertIn("\033[1;32m  3) hsemotion\033[0m", output)
         self.assertIn("\033[1;33m  4) mini_xception\033[0m", output)
         self.assertIn("\033[1;33m  3) 3d reconstruction - deep3d\033[0m", output)
-        self.assertIn("\033[1;32m  5) hair color - colorimetric\033[0m", output)
+        self.assertIn("\033[1;32m  4) hair color - colorimetric\033[0m", output)
 
         self.assertIn("  0) none", output)
         self.assertIn("  9) all", output)
@@ -113,7 +113,7 @@ class BuildPromptFormattingTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(
                 manifest.read_text().splitlines(),
-                ["opencv_face_detector.pbtxt", "opencv_face_detector_uint8.pb"],
+                ["haarcascade_eye.xml", "opencv_face_detector.pbtxt", "opencv_face_detector_uint8.pb"],
             )
 
     def test_shared_model_is_staged_once_for_multiple_features(self):
@@ -149,7 +149,7 @@ class BuildPromptFormattingTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(
                 manifest.read_text().splitlines(),
-                ["insightface_genderage.onnx", "opencv_face_detector.pbtxt", "opencv_face_detector_uint8.pb"],
+                ["haarcascade_eye.xml", "insightface_genderage.onnx", "opencv_face_detector.pbtxt", "opencv_face_detector_uint8.pb"],
             )
 
 
