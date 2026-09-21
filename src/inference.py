@@ -1404,6 +1404,38 @@ def _margin_align(frame_bgr: np.ndarray, box: tuple[int, int, int, int], output_
     return cv2.warpAffine(frame_bgr, m, (output_size, output_size), borderValue=0.0)
 
 
+FAIRFACE_LANDMARK_INDICES = (33, 263, 1, 61, 291)  # left eye, right eye, nose, mouth corners
+FAIRFACE_REFERENCE_LANDMARKS = np.array([
+    [38.2946, 51.6963], [73.5318, 51.5014], [56.0252, 71.7366],
+    [41.5493, 92.3655], [70.7299, 92.2041],
+], dtype=np.float32)
+
+
+def fairface_landmarks_from_mediapipe(
+    points: list[tuple[float, float]], width: int, height: int,
+) -> np.ndarray | None:
+    """Convert normalized MediaPipe landmarks to FairFace's five-point pixel order."""
+    if len(points) <= max(FAIRFACE_LANDMARK_INDICES) or width <= 0 or height <= 0:
+        return None
+    selected = np.asarray([points[index] for index in FAIRFACE_LANDMARK_INDICES], dtype=np.float32)
+    selected *= np.array([width, height], dtype=np.float32)
+    return selected if np.isfinite(selected).all() else None
+
+
+def align_face_with_landmarks(
+    frame_bgr: np.ndarray, landmarks: np.ndarray, output_size: int,
+) -> np.ndarray | None:
+    """Align a face to FairFace's five-point reference, or return None for invalid input."""
+    source = np.asarray(landmarks, dtype=np.float32)
+    if source.shape != (5, 2) or not np.isfinite(source).all():
+        return None
+    target = FAIRFACE_REFERENCE_LANDMARKS * (output_size / 112.0)
+    matrix, inliers = cv2.estimateAffinePartial2D(source, target, method=cv2.LMEDS)
+    if matrix is None or inliers is None or int(inliers.sum()) < 3:
+        return None
+    return cv2.warpAffine(frame_bgr, matrix, (output_size, output_size), borderValue=0.0)
+
+
 def _estimate_roll_angle(face_bgr: np.ndarray, eye_cascade) -> float | None:
     """Detect two eyes via Haar cascade and return the roll angle (degrees) needed to
     level them, or None if fewer than 2 eyes found or the angle looks like noise."""
@@ -1565,11 +1597,16 @@ def _format_race_label(probs: np.ndarray, labels: list[str]) -> str:
     return labels[top1]
 
 
-def _fairface_forward(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int], output_name: str) -> np.ndarray:
+def _fairface_forward(
+    net, frame_bgr: np.ndarray, box: tuple[int, int, int, int], output_name: str,
+    landmarks: np.ndarray | None = None,
+) -> np.ndarray:
     # Same alignment as predict_race_fairface -- one ONNX graph, three named outputs
     # (race_output, gender_output, age_output); re-run per feature for simplicity, matching
     # the insightface age/gender split.
-    aligned = _margin_align(frame_bgr, box, 224, margin=1.5)
+    aligned = align_face_with_landmarks(frame_bgr, landmarks, 224) if landmarks is not None else None
+    if aligned is None:
+        aligned = _margin_align(frame_bgr, box, 224, margin=1.5)
     face_rgb = cv2.cvtColor(aligned, cv2.COLOR_BGR2RGB)
     face_norm = (face_rgb.astype(np.float32) / 255.0 - SSRNET_MEAN) / SSRNET_STD
     blob = face_norm.transpose(2, 0, 1)[np.newaxis, ...].astype(np.float32)
@@ -1578,21 +1615,21 @@ def _fairface_forward(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int]
         return net.forward(output_name).flatten()
 
 
-def predict_race_fairface(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int]) -> str:
+def predict_race_fairface(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int], landmarks=None) -> str:
     # FairFace's own pipeline aligns on 5-point landmarks (dlib, padding=0.25); we have no
     # landmark model, so approximate with the same margin via a bbox-centered crop (padding=0.25
     # each side ~= a 1.5x margin), instead of an arbitrary fixed-pixel-padding crop+resize.
-    logits = _fairface_forward(net, frame_bgr, box, "race_output")
+    logits = _fairface_forward(net, frame_bgr, box, "race_output", landmarks)
     return _format_race_label(_softmax(logits), RACE_LABELS_FAIRFACE)
 
 
-def predict_gender_fairface(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int]) -> str:
-    out = _fairface_forward(net, frame_bgr, box, "gender_output")
+def predict_gender_fairface(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int], landmarks=None) -> str:
+    out = _fairface_forward(net, frame_bgr, box, "gender_output", landmarks)
     return "Male" if np.argmax(out) == 0 else "Female"
 
 
-def predict_age_fairface(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int]) -> str:
-    out = _fairface_forward(net, frame_bgr, box, "age_output")
+def predict_age_fairface(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int], landmarks=None) -> str:
+    out = _fairface_forward(net, frame_bgr, box, "age_output", landmarks)
     return FAIRFACE_AGE_LABELS[int(np.argmax(out))]
 
 
@@ -2447,6 +2484,14 @@ def analyze_frame(
             if face_landmarker is not None and needs_face_landmarks
             else None
         )
+        fairface_landmarks = None
+        if landmarker_result is not None and face_landmarker is not None:
+            points = predict_face_landmarks_mediapipe(face_landmarker, face, landmarker_result)
+            if points is not None:
+                local_landmarks = fairface_landmarks_from_mediapipe(points, face.shape[1], face.shape[0])
+                if local_landmarks is not None:
+                    local_landmarks += np.array([x1_crop, y1_crop], dtype=np.float32)
+                    fairface_landmarks = local_landmarks
         texture_score = predict_texture_artifact_score(face) if run_liveness else 0.0
         blink_score = blink_score_from_landmarker(landmarker_result) if run_liveness else None
 
@@ -2476,7 +2521,7 @@ def analyze_frame(
                 elif key == "ssrnet":
                     value = _cached_face_predict("age", key, face, predict_age_ssrnet, net, face)
                 elif key == "fairface":
-                    value = predict_age_fairface(net, crop_frame, (cx1, cy1, cx2, cy2))
+                    value = predict_age_fairface(net, crop_frame, (cx1, cy1, cx2, cy2), fairface_landmarks)
                 elif key == "dex":
                     value = _cached_face_predict("age", key, face, predict_age_dex, net, face)
                 elif key == "mivolo":
@@ -2499,7 +2544,7 @@ def analyze_frame(
                 elif key == "deepface":
                     value = _cached_face_predict("gender", key, face, predict_gender_deepface, net, face)
                 elif key == "fairface":
-                    value = predict_gender_fairface(net, crop_frame, (cx1, cy1, cx2, cy2))
+                    value = predict_gender_fairface(net, crop_frame, (cx1, cy1, cx2, cy2), fairface_landmarks)
                 elif key == "mivolo":
                     value = predict_gender_mivolo(net, face, body)
                 else:
@@ -2536,7 +2581,7 @@ def analyze_frame(
                 if net is None:
                     continue
                 started = time.perf_counter()
-                value = predict_race_fairface(net, crop_frame, (cx1, cy1, cx2, cy2)) if key == "fairface" else _cached_face_predict("race", key, face, predict_race_deepface, net, face)
+                value = predict_race_fairface(net, crop_frame, (cx1, cy1, cx2, cy2), fairface_landmarks) if key == "fairface" else _cached_face_predict("race", key, face, predict_race_deepface, net, face)
                 pairs.append((key, value))
                 _record_model_latency(metrics, "race", key, started)
             return pairs
