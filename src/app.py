@@ -293,6 +293,8 @@ def _landmark_enable_button(label: str, nets: dict, state_key: str, container=No
 
 
 st.sidebar.markdown("### MODEL SELECTION")
+if models.offline_features:
+    st.sidebar.caption(f"[ OFFLINE: {', '.join(models.offline_features)} ] -- no model file/dependency present")
 
 with st.sidebar.expander("DETECTION", expanded=True):
     active_face_detector = "yolo" if models.yolo_face_nets else "ssd"
