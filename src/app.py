@@ -592,42 +592,56 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
         with cols[i % len(cols)]:
             face_preview_col, face_editor_col = st.columns([3, 2])
             face_bgr = cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR)
+            face_editor_open_key = f"face_editor_open_{identifier}_{face['idx']}"
+            st.session_state.setdefault(face_editor_open_key, False)
+            op_key = f"image_op_result_{identifier}_{face['idx']}"
             with face_editor_col:
-                individual_adjustments = _adjustment_sliders(
-                    "Edit this crop only. Analysis labels use the detected crop.",
-                    f"individual_adj_{identifier}_{face['idx']}",
-                    column_count=1,
-                )
+                if st.button(
+                    "CLOSE EDITOR" if st.session_state[face_editor_open_key] else "EDIT FACE",
+                    key=f"edit_face_toggle_{identifier}_{face['idx']}",
+                ):
+                    st.session_state[face_editor_open_key] = not st.session_state[face_editor_open_key]
+                    st.rerun()
+                if st.session_state[face_editor_open_key]:
+                    individual_adjustments = _adjustment_sliders(
+                        "Edit this crop only. Analysis labels use the detected crop.",
+                        f"individual_adj_{identifier}_{face['idx']}",
+                        column_count=1,
+                    )
+                else:
+                    individual_adjustments = {
+                        name: values[2] for name, values in inference.IMAGE_ADJUSTMENT_RANGES.items()
+                    }
                 edited_face_bgr = (
                     inference.apply_image_adjustments(face_bgr, individual_adjustments)
                     if any(individual_adjustments.values()) else face_bgr
                 )
-                st.download_button(
-                    "DOWNLOAD EDITED FACE PNG", cv2.imencode(".png", edited_face_bgr)[1].tobytes(),
-                    file_name=f"face_{face['idx']}_edited.png", mime="image/png",
-                    key=f"face_edit_dl_{identifier}_{face['idx']}",
-                )
+                if st.session_state[face_editor_open_key]:
+                    st.download_button(
+                        "DOWNLOAD EDITED FACE PNG", cv2.imencode(".png", edited_face_bgr)[1].tobytes(),
+                        file_name=f"face_{face['idx']}_edited.png", mime="image/png",
+                        key=f"face_edit_dl_{identifier}_{face['idx']}",
+                    )
 
-                op_key = f"image_op_result_{identifier}_{face['idx']}"
-                op = st.selectbox("IMAGE OP", inference.IMAGE_OP_OPTIONS, key=f"image_op_{identifier}_{face['idx']}")
-                op_params = {}
-                if op == "intensity":
-                    op_params["method"] = st.selectbox("INTENSITY METHOD", inference.INTENSITY_METHODS,
-                                                        key=f"intensity_method_{identifier}_{face['idx']}")
-                elif op == "sharpen":
-                    op_params["method"] = st.selectbox("SHARPEN METHOD", inference.SHARPEN_METHODS,
-                                                        key=f"sharpen_method_{identifier}_{face['idx']}")
-                elif op == "denoise":
-                    op_params["method"] = st.selectbox("DENOISE METHOD", inference.DENOISE_METHODS,
-                                                        key=f"denoise_method_{identifier}_{face['idx']}")
-                if st.button("APPLY IMAGE OP", key=f"image_op_btn_{identifier}_{face['idx']}"):
-                    st.session_state[op_key] = inference.apply_image_op(edited_face_bgr, op, **op_params)
+                    op = st.selectbox("IMAGE OP", inference.IMAGE_OP_OPTIONS, key=f"image_op_{identifier}_{face['idx']}")
+                    op_params = {}
+                    if op == "intensity":
+                        op_params["method"] = st.selectbox("INTENSITY METHOD", inference.INTENSITY_METHODS,
+                                                            key=f"intensity_method_{identifier}_{face['idx']}")
+                    elif op == "sharpen":
+                        op_params["method"] = st.selectbox("SHARPEN METHOD", inference.SHARPEN_METHODS,
+                                                            key=f"sharpen_method_{identifier}_{face['idx']}")
+                    elif op == "denoise":
+                        op_params["method"] = st.selectbox("DENOISE METHOD", inference.DENOISE_METHODS,
+                                                            key=f"denoise_method_{identifier}_{face['idx']}")
+                    if st.button("APPLY IMAGE OP", key=f"image_op_btn_{identifier}_{face['idx']}"):
+                        st.session_state[op_key] = inference.apply_image_op(edited_face_bgr, op, **op_params)
             with face_preview_col:
                 _render_bounded_image(
                     cv2.cvtColor(edited_face_bgr, cv2.COLOR_BGR2RGB), f"Face {face['idx']:02d}",
                     f"face_{identifier}_{face['idx']}", width=360,
                 )
-                if op_key in st.session_state:
+                if st.session_state[face_editor_open_key] and op_key in st.session_state:
                     result = st.session_state[op_key]
                     _render_bounded_image(
                         cv2.cvtColor(result, cv2.COLOR_BGR2RGB), "Processed face",
