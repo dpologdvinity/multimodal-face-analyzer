@@ -18,6 +18,8 @@ from streamlit_webrtc import webrtc_streamer
 
 import inference
 
+# Module-scope shared state for live webcam stream, guarded by locks for thread-safe access
+# from streamlit-webrtc callbacks running in separate threads.
 LIVE_METRICS = deque(maxlen=120)
 LIVE_METRICS_LOCK = threading.Lock()
 LIVE_STATE = {"faces": [], "error": None, "updated": 0.0}
@@ -550,6 +552,8 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# Cache load_models so models persist across Streamlit reruns (avoids reloading expensive
+# neural network weights for each interaction with sliders, buttons, tabs, etc.).
 load_models = st.cache_resource(inference.load_models)
 
 
@@ -580,7 +584,10 @@ except Exception as e:
     st.stop()
 
 def _model_checkboxes(label: str, nets: dict, container=None, help: str | None = None) -> set:
-    """Render one checkbox per loaded model for a feature; return the set of checked keys."""
+    """Render one checkbox per loaded model for a feature.
+
+    Returns the set of model keys selected by the user.
+    """
     active = set()
     if not nets:
         return active
@@ -595,7 +602,10 @@ def _model_checkboxes(label: str, nets: dict, container=None, help: str | None =
 
 
 def _landmark_enable_button(label: str, nets: dict, state_key: str, container=None, help: str | None = None) -> set:
-    """Expose one clear on/off control for each landmark family."""
+    """Render a single ENABLE/DISABLE toggle button for a landmark family.
+
+    Returns the set of loaded model keys if enabled, else empty set.
+    """
     if not nets:
         return set()
     container = container if container is not None else st.sidebar
@@ -662,6 +672,7 @@ with st.sidebar.expander("LANDMARKS & EXPERIMENTAL", expanded=False):
 
 
 def _reset_adjustments(prefixes: tuple[str, ...]) -> None:
+    """Reset image adjustment sliders to their default values."""
     for state_key in list(st.session_state):
         if not any(state_key.startswith(f"{prefix}_") for prefix in prefixes):
             continue
@@ -672,6 +683,7 @@ def _reset_adjustments(prefixes: tuple[str, ...]) -> None:
 
 
 def _adjustment_sliders(caption: str, key_prefix: str, column_count: int = 2) -> dict:
+    """Render brightness/contrast/saturation sliders and return their current values."""
     st.caption(caption)
     if st.button("Reset these sliders", key=f"{key_prefix}_reset"):
         _reset_adjustments((key_prefix,))
@@ -836,6 +848,7 @@ def _render_photo_editor(frame_bgr: np.ndarray, identifier: str, adjustment_key:
         else:
             edited_bgr = frame_bgr
             _render_bounded_image(cv2.cvtColor(edited_bgr, cv2.COLOR_BGR2RGB), caption, f"source_{identifier}")
+    # Only run the expensive image adjustment if at least one slider is non-zero (non-default).
     if any(adjustments.values()):
         edited_bgr = inference.apply_image_adjustments(edited_bgr, adjustments)
     return edited_bgr
@@ -1132,6 +1145,8 @@ with tab_webcam:
             "SNAPSHOT for that), so skipping them here only reduces CPU load, with no visible "
             "staleness to interpolate around.",
         )
+        # Counter for frame-skip logic: run slow classifiers every Nth frame to reduce
+        # CPU load while keeping face detection (fast) and landmarks (smooth) at full rate.
         frame_counter = {"n": 0}
         _NO_MODELS: set = set()
         face_tracker = _get_face_tracker()
@@ -1156,6 +1171,7 @@ with tab_webcam:
         gallery_snapshot = dict(st.session_state.get("gallery", {}))
 
         def _video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
+            """Process each video frame: run detection/inference, update LIVE state, handle voice fusion."""
             try:
                 frame_started = time.perf_counter()
                 metrics = {}
@@ -1163,6 +1179,8 @@ with tab_webcam:
                 img, _ = inference.maybe_colorize(models, img, active_colorization)
                 frame_counter["n"] += 1
                 run_classifiers = frame_counter["n"] % frame_skip == 0
+                # Pass empty model sets if classifiers are skipped this frame; face detection
+                # still runs (always fast), so video remains smooth while expensive classifiers run sparse.
                 annotated_frame, cropped_faces, _, _ = inference.analyze_frame(
                     models, img, conf_threshold,
                     active_age if run_classifiers else _NO_MODELS,
@@ -1203,13 +1221,15 @@ with tab_webcam:
                     })
                 return av.VideoFrame.from_ndarray(annotated_frame, format="bgr24")
             except Exception as exc:
-                # A classifier failure must not tear down the WebRTC track. Return the raw
-                # frame so the camera remains usable while the main thread reports the error.
+                # Inference failure must not crash the WebRTC video stream. Log the error to
+                # LIVE_STATE so the UI thread can display it, but always return a frame
+                # (raw passthrough) to keep the stream alive and the camera usable.
                 with LIVE_STATE_LOCK:
                     LIVE_STATE["error"] = f"{type(exc).__name__}: {exc}"
                 return frame
 
         def _audio_frame_callback(frame: av.AudioFrame) -> av.AudioFrame:
+            """Ingest audio samples into voice fusion tracker if enabled."""
             if voice_fusion is not None:
                 samples = inference.audio_frame_to_mono_float(frame.to_ndarray())
                 voice_fusion.ingest_audio(samples, frame.sample_rate)
