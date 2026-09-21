@@ -64,3 +64,10 @@ def test_streamlit_chrome_and_upload_instructions_keep_theme_contrast():
     assert '[data-testid="stToolbar"]' in APP_SOURCE
     assert '[data-testid="stFileUploaderDropzoneInstructions"]' in APP_SOURCE
     assert '[data-testid="stExpander"] summary' in APP_SOURCE
+
+
+def test_model_labels_preserve_canonical_product_names():
+    assert "MODEL_DISPLAY_NAMES" in APP_SOURCE
+    for label in ("SSR-Net", "MiVOLO", "FairFace", "DeepFace", "HSEmotion", "MediaPipe"):
+        assert f'"{label}"' in APP_SOURCE
+    assert "format_func=_display_model_name" in APP_SOURCE

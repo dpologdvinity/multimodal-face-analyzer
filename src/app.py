@@ -684,6 +684,37 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+MODEL_DISPLAY_NAMES = {
+    "caffe": "Caffe",
+    "ssrnet": "SSR-Net",
+    "dex": "DEX",
+    "mivolo": "MiVOLO",
+    "fairface": "FairFace",
+    "deepface": "DeepFace",
+    "dan": "DAN",
+    "efficientnet": "EfficientNet",
+    "mini_xception": "Mini Xception",
+    "ferplus": "FERPlus",
+    "hsemotion": "HSEmotion",
+    "mobilenet": "MobileNet",
+    "mobilenetv2": "MobileNetV2",
+    "colorimetric": "Colorimetric",
+    "mediapipe": "MediaPipe",
+    "eccv16": "ECCV16",
+    "vggface": "VGG-Face",
+    "lbph": "LBPH",
+    "yolo": "YOLO",
+    "ssd": "SSD",
+    "scrfd": "SCRFD",
+    "retinaface": "RetinaFace",
+}
+
+
+def _display_model_name(model_key: str) -> str:
+    """Return a readable product label while preserving the runtime model key."""
+    return MODEL_DISPLAY_NAMES.get(model_key, model_key.replace("_", " ").title())
+
+
 def _model_checkboxes(label: str, nets: dict, container=None, help: str | None = None) -> set:
     """Render one checkbox per loaded model for a feature.
 
@@ -697,7 +728,7 @@ def _model_checkboxes(label: str, nets: dict, container=None, help: str | None =
     if help:
         container.caption(help)
     for key in nets:
-        if container.checkbox(key.replace("_", " ").title(), value=True, key=f"chk_{label}_{key}"):
+        if container.checkbox(_display_model_name(key), value=True, key=f"chk_{label}_{key}"):
             active.add(key)
     return active
 
@@ -738,6 +769,7 @@ with st.sidebar.expander("Detection", expanded=True):
     if len(_face_detector_options) > 1:
         active_face_detector = st.selectbox(
             "Face detector", _face_detector_options, index=_face_detector_options.index(active_face_detector),
+            format_func=_display_model_name,
             help="One detector runs per frame. YOLO is preferred when loaded; SSD is the always-available fallback.",
         )
 
