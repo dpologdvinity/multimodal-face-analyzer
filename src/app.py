@@ -31,10 +31,11 @@ THEME_MARKER_CLASSES = {
     "Light cyberpunk": "light-theme",
     "Amber Terminal": "amber-theme",
     "Synthwave": "synthwave-theme",
+    "Phosphor Green": "phosphor-theme",
 }
 
 theme = st.sidebar.selectbox(
-    "THEME", ["Dark cyberpunk", "Light cyberpunk", "Amber Terminal", "Synthwave"], key="theme"
+    "THEME", ["Dark cyberpunk", "Light cyberpunk", "Amber Terminal", "Synthwave", "Phosphor Green"], key="theme"
 )
 
 st.markdown(
@@ -117,6 +118,51 @@ st.markdown(
         border-radius: 999px !important;
         border: 1px solid var(--accent) !important;
         box-shadow: 0 0 10px rgba(255, 47, 184, 0.45);
+    }
+
+    body:has(.phosphor-theme) {
+        --base: #010401;
+        --surface: #061006;
+        --surface-raised: #0a1a0a;
+        --line: #1f6b1f;
+        --text: #33ff66;
+        --muted: #1f9c3f;
+        --accent: #6bffa0;
+        --alert: #ffcf33;
+    }
+    body:has(.phosphor-theme) .stApp,
+    body:has(.phosphor-theme) .stApp * {
+        font-family: 'IBM Plex Mono', monospace !important;
+        letter-spacing: 0.01em;
+    }
+    body:has(.phosphor-theme) .stApp {
+        background:
+            repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.35) 0 1px, transparent 1px 3px),
+            var(--base);
+    }
+    body:has(.phosphor-theme) *,
+    body:has(.phosphor-theme) .stButton button,
+    body:has(.phosphor-theme) .stDownloadButton button,
+    body:has(.phosphor-theme) input,
+    body:has(.phosphor-theme) [data-baseweb] {
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        text-shadow: none;
+    }
+    body:has(.phosphor-theme) .app-hero {
+        border-left: none;
+        border: 1px solid var(--line);
+        padding: 0.9rem 1.2rem;
+        margin: 0 0 1.5rem;
+    }
+    body:has(.phosphor-theme) .app-hero h1 {
+        font-size: 1.6rem;
+        text-transform: uppercase;
+    }
+    body:has(.phosphor-theme) .app-hero h1::before { content: "> "; }
+    body:has(.phosphor-theme) .app-hero p::before { content: "# "; }
+    body:has(.phosphor-theme) .block-container {
+        padding-top: 1.2rem;
     }
 
     .stApp {
