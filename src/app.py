@@ -18,6 +18,8 @@ from streamlit_webrtc import webrtc_streamer
 
 import inference
 
+# Module-scope shared state for live webcam stream, guarded by locks for thread-safe access
+# from streamlit-webrtc callbacks running in separate threads.
 LIVE_METRICS = deque(maxlen=120)
 LIVE_METRICS_LOCK = threading.Lock()
 LIVE_STATE = {"faces": [], "error": None, "updated": 0.0}
@@ -27,22 +29,49 @@ IMAGE_DISPLAY_WIDTH = 900
 # Page setup and visual system
 st.set_page_config(page_title="MULTIMODAL_FACE_ANALYZER", layout="wide")
 
-theme = st.sidebar.selectbox("THEME", ["Dark cyberpunk", "Light cyberpunk"], key="theme")
+THEME_MARKER_CLASSES = {
+    "Light cyberpunk": "light-theme",
+    "Amber Terminal": "amber-theme",
+    "Synthwave": "synthwave-theme",
+    "Phosphor Green": "phosphor-theme",
+    "Brutalist": "brutalist-theme",
+    "Corporate Slate": "corporate-theme",
+    "Midnight Enterprise": "midnight-theme",
+}
+THEME_ACCENTS = {
+    "Optical Bench": "#4fb8ac",
+    "Light cyberpunk": "#087a52",
+    "Amber Terminal": "#ffb02e",
+    "Synthwave": "#ff2fb8",
+    "Phosphor Green": "#6bffa0",
+    "Brutalist": "#0a0a0a",
+    "Corporate Slate": "#2f5aa8",
+    "Midnight Enterprise": "#4f8ff0",
+}
+
+theme = st.sidebar.selectbox(
+    "THEME",
+    [
+        "Optical Bench", "Light cyberpunk", "Amber Terminal", "Synthwave", "Phosphor Green",
+        "Brutalist", "Corporate Slate", "Midnight Enterprise",
+    ],
+    key="theme",
+)
 
 st.markdown(
     """
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:wght@400;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
 
     :root {
-        --base: #0b1217;
-        --surface: #121f26;
-        --surface-raised: #192a31;
-        --line: #2a4248;
-        --text: #e8f2ef;
-        --muted: #a3bdb9;
-        --accent: #76dfb1;
-        --alert: #ff8d83;
+        --base: #14181b;
+        --surface: #1b2124;
+        --surface-raised: #232a2e;
+        --line: #38434798;
+        --text: #eef2f0;
+        --muted: #8ea3a2;
+        --accent: #4fb8ac;
+        --alert: #e8a33d;
     }
 
     body:has(.light-theme) {
@@ -56,8 +85,282 @@ st.markdown(
         --alert: #b42318;
     }
 
+    body:has(.amber-theme) {
+        --base: #120d05;
+        --surface: #1d1409;
+        --surface-raised: #2b1e0c;
+        --line: #5a3f16;
+        --text: #ffcf7a;
+        --muted: #b8873f;
+        --accent: #ffb02e;
+        --alert: #ff5f4d;
+    }
+
+    body:has(.synthwave-theme) {
+        --base: #170826;
+        --surface: #23103a;
+        --surface-raised: #2e1650;
+        --line: #6b2e8f;
+        --text: #f4e3ff;
+        --muted: #c68fe6;
+        --accent: #ff2fb8;
+        --alert: #ffe45e;
+    }
+    body:has(.synthwave-theme) .stApp {
+        background:
+            linear-gradient(180deg, rgba(255, 47, 184, 0.08) 0%, transparent 40%),
+            repeating-linear-gradient(0deg, rgba(198, 143, 230, 0.06) 0 1px, transparent 1px 32px),
+            repeating-linear-gradient(90deg, rgba(198, 143, 230, 0.06) 0 1px, transparent 1px 32px),
+            var(--base);
+    }
+    body:has(.synthwave-theme) .app-hero {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        border-left: none;
+        border-bottom: 2px solid var(--accent);
+        padding: 0 0 1.5rem;
+        margin: 0 auto 2.5rem;
+    }
+    body:has(.synthwave-theme) .app-hero-readout { text-align: center; }
+    body:has(.synthwave-theme) .app-hero h1 {
+        font-family: 'IBM Plex Mono', monospace;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        text-shadow: 0 0 12px var(--accent), 0 0 28px rgba(255, 47, 184, 0.6);
+    }
+    body:has(.synthwave-theme) div[data-testid="stTabs"] [data-baseweb="tab-list"] {
+        justify-content: center;
+        border-bottom: 2px solid var(--line);
+    }
+    body:has(.synthwave-theme) button[role="tab"][aria-selected="true"] {
+        text-shadow: 0 0 8px var(--accent);
+    }
+    body:has(.synthwave-theme) .stButton button,
+    body:has(.synthwave-theme) .stDownloadButton button {
+        border-radius: 999px !important;
+        border: 1px solid var(--accent) !important;
+        box-shadow: 0 0 10px rgba(255, 47, 184, 0.45);
+    }
+
+    body:has(.phosphor-theme) {
+        --base: #010401;
+        --surface: #061006;
+        --surface-raised: #0a1a0a;
+        --line: #1f6b1f;
+        --text: #33ff66;
+        --muted: #1f9c3f;
+        --accent: #6bffa0;
+        --alert: #ffcf33;
+    }
+    body:has(.phosphor-theme) .stApp,
+    body:has(.phosphor-theme) .stApp * {
+        font-family: 'IBM Plex Mono', monospace !important;
+        letter-spacing: 0.01em;
+    }
+    body:has(.phosphor-theme) .stApp {
+        background:
+            repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.35) 0 1px, transparent 1px 3px),
+            var(--base);
+    }
+    body:has(.phosphor-theme) *,
+    body:has(.phosphor-theme) .stButton button,
+    body:has(.phosphor-theme) .stDownloadButton button,
+    body:has(.phosphor-theme) input,
+    body:has(.phosphor-theme) [data-baseweb] {
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        text-shadow: none;
+    }
+    body:has(.phosphor-theme) .app-hero {
+        border-left: none;
+        border: 1px solid var(--line);
+        padding: 0.9rem 1.2rem;
+        margin: 0 0 1.5rem;
+    }
+    body:has(.phosphor-theme) .app-hero h1 {
+        font-size: 1.6rem;
+        text-transform: uppercase;
+    }
+    body:has(.phosphor-theme) .app-hero h1::before { content: "> "; }
+    body:has(.phosphor-theme) .app-hero p::before { content: "# "; }
+    body:has(.phosphor-theme) .block-container {
+        padding-top: 1.2rem;
+    }
+
+    body:has(.brutalist-theme) {
+        --base: #f5f3ee;
+        --surface: #ffffff;
+        --surface-raised: #ffffff;
+        --line: #0a0a0a;
+        --text: #0a0a0a;
+        --muted: #3a3a3a;
+        --accent: #ffe500;
+        --alert: #ff3b30;
+    }
+    body:has(.brutalist-theme) .stApp {
+        background: var(--base);
+        font-family: 'IBM Plex Mono', monospace !important;
+    }
+    body:has(.brutalist-theme) .app-hero {
+        border: 4px solid var(--line);
+        border-left: 4px solid var(--line);
+        background: var(--accent);
+        box-shadow: 8px 8px 0 var(--line);
+        padding: 1.2rem 1.5rem;
+        margin: 0 0 2.5rem;
+    }
+    body:has(.brutalist-theme) .app-hero h1 {
+        text-transform: uppercase;
+        font-weight: 700;
+        letter-spacing: 0;
+        color: var(--line);
+    }
+    body:has(.brutalist-theme) .app-hero p { color: var(--line); }
+    body:has(.brutalist-theme) *,
+    body:has(.brutalist-theme) .stButton button,
+    body:has(.brutalist-theme) .stDownloadButton button,
+    body:has(.brutalist-theme) [data-baseweb] {
+        border-radius: 0 !important;
+    }
+    body:has(.brutalist-theme) .stButton button,
+    body:has(.brutalist-theme) .stDownloadButton button {
+        border: 3px solid var(--line) !important;
+        box-shadow: 4px 4px 0 var(--line) !important;
+        font-weight: 700;
+        text-transform: uppercase;
+    }
+    body:has(.brutalist-theme) section[data-testid="stSidebar"] {
+        background: var(--base) !important;
+        border-right: 4px solid var(--line) !important;
+    }
+    body:has(.brutalist-theme) div[data-testid="stTabs"] [data-baseweb="tab-list"] {
+        border-bottom: 4px solid var(--line);
+        gap: 0;
+    }
+    body:has(.brutalist-theme) button[role="tab"] {
+        border: 3px solid var(--line) !important;
+        border-bottom: none !important;
+        text-transform: uppercase;
+        font-weight: 700;
+    }
+
+    body:has(.corporate-theme) {
+        --base: #f4f6f9;
+        --surface: #ffffff;
+        --surface-raised: #eef1f6;
+        --line: #d7dce4;
+        --text: #1c2733;
+        --muted: #5b6b7c;
+        --accent: #2f5aa8;
+        --alert: #c0392b;
+    }
+    body:has(.corporate-theme) .stApp {
+        background: var(--base);
+    }
+    body:has(.corporate-theme) .app-hero {
+        border-left: none;
+        border-bottom: 1px solid var(--line);
+        padding: 0 0 1.4rem;
+        margin: 0 0 2rem;
+    }
+    body:has(.corporate-theme) .app-hero h1 {
+        font-family: 'Source Serif 4', serif;
+        font-weight: 600;
+        letter-spacing: 0;
+        color: var(--text);
+    }
+    body:has(.corporate-theme) .stApp h2,
+    body:has(.corporate-theme) .stApp h3 {
+        font-family: 'Source Serif 4', serif;
+        font-weight: 600;
+    }
+    body:has(.corporate-theme) section[data-testid="stSidebar"] {
+        background: var(--surface) !important;
+        border-right: 1px solid var(--line) !important;
+    }
+    body:has(.corporate-theme) section[data-testid="stSidebar"] h3 {
+        color: var(--muted);
+        font-family: 'DM Sans', sans-serif;
+        text-transform: none;
+        letter-spacing: 0.02em;
+        font-weight: 600;
+    }
+    body:has(.corporate-theme) .stButton button,
+    body:has(.corporate-theme) .stDownloadButton button {
+        border-radius: 6px !important;
+        border: 1px solid var(--line) !important;
+        box-shadow: 0 1px 2px rgba(28, 39, 51, 0.08) !important;
+    }
+    body:has(.corporate-theme) [data-testid="stExpander"] {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        box-shadow: 0 1px 3px rgba(28, 39, 51, 0.06);
+    }
+    body:has(.corporate-theme) div[data-testid="stTabs"] [data-baseweb="tab-list"] {
+        border-bottom: 1px solid var(--line);
+    }
+    body:has(.corporate-theme) button[role="tab"][aria-selected="true"] {
+        color: var(--accent);
+        border-bottom: 2px solid var(--accent);
+    }
+
+    body:has(.midnight-theme) {
+        --base: #0d1117;
+        --surface: #161b22;
+        --surface-raised: #1c2229;
+        --line: #2d333b;
+        --text: #e6edf3;
+        --muted: #8b949e;
+        --accent: #4f8ff0;
+        --alert: #f85149;
+    }
+    body:has(.midnight-theme) .stApp {
+        background: var(--base);
+        font-family: 'DM Sans', sans-serif;
+    }
+    body:has(.midnight-theme) .app-hero {
+        border-left: none;
+        border-bottom: 1px solid var(--line);
+        padding: 0 0 1.4rem;
+        margin: 0 0 2rem;
+    }
+    body:has(.midnight-theme) .app-hero h1 {
+        font-weight: 600;
+        letter-spacing: 0;
+    }
+    body:has(.midnight-theme) section[data-testid="stSidebar"] {
+        background: var(--surface) !important;
+        border-right: 1px solid var(--line) !important;
+    }
+    body:has(.midnight-theme) section[data-testid="stSidebar"] h3 {
+        color: var(--muted);
+        text-transform: none;
+        font-family: 'DM Sans', sans-serif;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+    }
+    body:has(.midnight-theme) .stButton button,
+    body:has(.midnight-theme) .stDownloadButton button {
+        border-radius: 6px !important;
+        border: 1px solid var(--line) !important;
+        background: var(--surface-raised) !important;
+    }
+    body:has(.midnight-theme) [data-testid="stExpander"] {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface);
+    }
+    body:has(.midnight-theme) div[data-testid="stTabs"] [data-baseweb="tab-list"] {
+        border-bottom: 1px solid var(--line);
+    }
+    body:has(.midnight-theme) button[role="tab"][aria-selected="true"] {
+        color: var(--accent);
+        border-bottom: 2px solid var(--accent);
+    }
+
     .stApp {
-        background: radial-gradient(circle at 85% 0%, #17332f 0, var(--base) 34rem);
+        background: radial-gradient(circle at 85% 0%, color-mix(in srgb, var(--accent) 18%, transparent) 0, var(--base) 34rem);
         color: var(--text);
         font-family: 'DM Sans', sans-serif;
     }
@@ -68,25 +371,39 @@ st.markdown(
     }
     .stApp h1, .stApp h2, .stApp h3, .stApp h4 {
         color: var(--text);
-        font-family: 'DM Sans', sans-serif;
-        letter-spacing: -0.025em;
+        font-family: 'Space Grotesk', sans-serif;
+        letter-spacing: -0.01em;
     }
     .stApp p, .stApp label, .stApp span { color: var(--text); }
     .stApp [data-testid="stCaptionContainer"] p { color: var(--muted); }
     .app-hero {
-        border-left: 3px solid var(--accent);
-        padding: 0.2rem 0 0.25rem 1.5rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        gap: 2rem;
+        border-left: none;
+        border-bottom: 1px solid var(--line);
+        padding: 0 0 1.1rem;
         margin: 0 0 2.2rem;
     }
-    .app-hero h1 {
-        font-size: clamp(2.1rem, 4vw, 3.5rem);
-        line-height: 1.08;
-        margin: 0 0 0.65rem;
-        font-weight: 700;
+    .app-hero-heading h1 {
+        font-size: clamp(1.6rem, 2.4vw, 2.2rem);
+        line-height: 1.15;
+        margin: 0 0 0.35rem;
+        font-weight: 600;
     }
-    .app-hero p { color: var(--muted); margin: 0; font-size: 1.05rem; }
+    .app-hero-heading p { color: var(--muted); margin: 0; font-size: 0.95rem; max-width: 52ch; }
+    .app-hero-readout {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.78rem;
+        color: var(--muted);
+        text-align: right;
+        white-space: nowrap;
+        padding-bottom: 0.2rem;
+    }
+    .app-hero-readout strong { color: var(--accent); font-weight: 600; }
     section[data-testid="stSidebar"] {
-        background: #101c22;
+        background: var(--surface);
         border-right: 1px solid var(--line);
     }
     section[data-testid="stSidebar"] h3 {
@@ -112,7 +429,7 @@ st.markdown(
         color: var(--accent);
     }
     div[data-testid="stFileUploader"] {
-        border: 1px dashed #4e8174;
+        border: 1px dashed var(--line);
         border-radius: 12px;
         background: var(--surface);
         padding: 1rem;
@@ -124,7 +441,7 @@ st.markdown(
     }
     div[data-testid="stButton"] > button,
     div[data-testid="stDownloadButton"] > button {
-        border: 1px solid #467a6c;
+        border: 1px solid var(--line);
         border-radius: 8px;
         background: var(--surface-raised);
         color: var(--text);
@@ -133,9 +450,9 @@ st.markdown(
     }
     div[data-testid="stButton"] > button:hover,
     div[data-testid="stDownloadButton"] > button:hover {
-        background: #244339;
+        background: var(--surface);
         border-color: var(--accent);
-        color: #fff;
+        color: var(--accent);
     }
     div[data-testid="stButton"] > button:focus-visible,
     div[data-testid="stDownloadButton"] > button:focus-visible {
@@ -147,17 +464,38 @@ st.markdown(
         border: 1px solid var(--line);
     }
     .target-card {
+        position: relative;
         border: 1px solid var(--line);
-        border-top: 2px solid var(--accent);
-        border-radius: 10px;
+        border-radius: 2px;
         background: var(--surface);
         padding: 1.1rem 1.25rem;
-        margin: 0.75rem 0 1.25rem;
+        margin: 0.9rem 0 1.35rem;
+    }
+    .target-card::before,
+    .target-card::after {
+        content: "";
+        position: absolute;
+        width: 14px;
+        height: 14px;
+        pointer-events: none;
+    }
+    .target-card::before {
+        top: -1px;
+        left: -1px;
+        border-top: 2px solid var(--accent);
+        border-left: 2px solid var(--accent);
+    }
+    .target-card::after {
+        bottom: -1px;
+        right: -1px;
+        border-bottom: 2px solid var(--accent);
+        border-right: 2px solid var(--accent);
     }
     .target-card-id {
         color: var(--accent);
         font-family: 'IBM Plex Mono', monospace;
-        font-size: 0.8rem;
+        font-size: 0.78rem;
+        letter-spacing: 0.04em;
         margin-bottom: 0.7rem;
     }
     .target-card-row {
@@ -193,7 +531,7 @@ st.markdown(
     .face-hover-target:focus-visible {
         z-index: 3;
         outline: 2px solid var(--accent);
-        background: rgba(118, 223, 177, 0.12);
+        background: color-mix(in srgb, var(--accent) 12%, transparent);
     }
     .face-hover-info {
         display: none;
@@ -233,7 +571,8 @@ st.markdown(
     }
     @media (max-width: 640px) {
         .block-container { padding: 1.25rem 1rem 3rem; }
-        .app-hero { padding-left: 1rem; margin-bottom: 1.5rem; }
+        .app-hero { flex-direction: column; align-items: flex-start; gap: 0.6rem; margin-bottom: 1.5rem; }
+        .app-hero-readout { text-align: left; }
         .target-card-row { display: block; }
         .target-card-row .v { display: block; text-align: left; margin-top: 0.15rem; }
     }
@@ -246,13 +585,15 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.markdown(
-    '<div class="app-hero"><h1>Multimodal Face Analyzer</h1>'
-    '<p>Analyze faces and inspect each result.</p></div>',
-    unsafe_allow_html=True,
-)
-
+# Cache load_models so models persist across Streamlit reruns (avoids reloading expensive
+# neural network weights for each interaction with sliders, buttons, tabs, etc.).
 load_models = st.cache_resource(inference.load_models)
+
+# Same "avoid redoing pure work on an unrelated rerun" reasoning as load_models above: any
+# widget interaction (a model checkbox, an export button) reruns this whole script, which
+# would otherwise re-decode (and re-downscale) the same uploaded/captured image bytes every
+# time. max_entries bounds memory since each cached entry holds a full decoded frame.
+decode_image_bytes = st.cache_data(max_entries=16)(inference.decode_image_bytes)
 
 
 @st.cache_resource
@@ -281,8 +622,22 @@ except Exception as e:
     st.error(f"[SYSTEM ERROR] Failed to load models: {e}")
     st.stop()
 
+st.markdown(
+    '<div class="app-hero">'
+    '<div class="app-hero-heading"><h1>Multimodal Face Analyzer</h1>'
+    '<p>Upload a photo or open your webcam, turn on the detectors you want, '
+    'then read each face\'s results below.</p></div>'
+    f'<div class="app-hero-readout">DETECTORS READY<br/>'
+    f'<strong>{models.loaded_feature_count} / {models.total_feature_count}</strong></div>'
+    '</div>',
+    unsafe_allow_html=True,
+)
+
 def _model_checkboxes(label: str, nets: dict, container=None, help: str | None = None) -> set:
-    """Render one checkbox per loaded model for a feature; return the set of checked keys."""
+    """Render one checkbox per loaded model for a feature.
+
+    Returns the set of model keys selected by the user.
+    """
     active = set()
     if not nets:
         return active
@@ -297,7 +652,10 @@ def _model_checkboxes(label: str, nets: dict, container=None, help: str | None =
 
 
 def _landmark_enable_button(label: str, nets: dict, state_key: str, container=None, help: str | None = None) -> set:
-    """Expose one clear on/off control for each landmark family."""
+    """Render a single ENABLE/DISABLE toggle button for a landmark family.
+
+    Returns the set of loaded model keys if enabled, else empty set.
+    """
     if not nets:
         return set()
     container = container if container is not None else st.sidebar
@@ -364,6 +722,7 @@ with st.sidebar.expander("LANDMARKS & EXPERIMENTAL", expanded=False):
 
 
 def _reset_adjustments(prefixes: tuple[str, ...]) -> None:
+    """Reset image adjustment sliders to their default values."""
     for state_key in list(st.session_state):
         if not any(state_key.startswith(f"{prefix}_") for prefix in prefixes):
             continue
@@ -374,6 +733,7 @@ def _reset_adjustments(prefixes: tuple[str, ...]) -> None:
 
 
 def _adjustment_sliders(caption: str, key_prefix: str, column_count: int = 2) -> dict:
+    """Render brightness/contrast/saturation sliders and return their current values."""
     st.caption(caption)
     if st.button("Reset these sliders", key=f"{key_prefix}_reset"):
         _reset_adjustments((key_prefix,))
@@ -433,8 +793,8 @@ if enable_crowd_count:
         "policy before using it on images of people who haven't consented to aggregate analysis."
     )
 
-if theme == "Light cyberpunk":
-    st.markdown('<div class="light-theme"></div>', unsafe_allow_html=True)
+if theme in THEME_MARKER_CLASSES:
+    st.markdown(f'<div class="{THEME_MARKER_CLASSES[theme]}"></div>', unsafe_allow_html=True)
 
 
 def _target_card_html(face: dict) -> str:
@@ -527,7 +887,7 @@ def _render_photo_editor(frame_bgr: np.ndarray, identifier: str, adjustment_key:
         if editing:
             source = Image.fromarray(cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB))
             cropped = st_cropper(
-                source, realtime_update=True, box_color="#76dfb1", aspect_ratio=None,
+                source, realtime_update=True, box_color=THEME_ACCENTS.get(theme, "#76dfb1"), aspect_ratio=None,
                 return_type="image", key=f"cropper_{identifier}",
             )
             edited_bgr = cv2.cvtColor(np.asarray(cropped), cv2.COLOR_RGB2BGR)
@@ -538,6 +898,7 @@ def _render_photo_editor(frame_bgr: np.ndarray, identifier: str, adjustment_key:
         else:
             edited_bgr = frame_bgr
             _render_bounded_image(cv2.cvtColor(edited_bgr, cv2.COLOR_BGR2RGB), caption, f"source_{identifier}")
+    # Only run the expensive image adjustment if at least one slider is non-zero (non-default).
     if any(adjustments.values()):
         edited_bgr = inference.apply_image_adjustments(edited_bgr, adjustments)
     return edited_bgr
@@ -803,7 +1164,7 @@ with tab_upload:
     if uploaded_files:
         for uploaded_file in uploaded_files:
             try:
-                frame = inference.decode_image_bytes(uploaded_file.read())
+                frame = decode_image_bytes(uploaded_file.read())
             except ValueError as exc:
                 st.error(f"[INVALID IMAGE] {uploaded_file.name}: {exc}")
                 continue
@@ -817,7 +1178,7 @@ with tab_webcam:
 
         if webcam_image:
             try:
-                frame = inference.decode_image_bytes(webcam_image.read())
+                frame = decode_image_bytes(webcam_image.read())
             except ValueError as exc:
                 st.error(f"[INVALID IMAGE] WEBCAM_CAPTURE: {exc}")
                 frame = None
@@ -834,6 +1195,8 @@ with tab_webcam:
             "SNAPSHOT for that), so skipping them here only reduces CPU load, with no visible "
             "staleness to interpolate around.",
         )
+        # Counter for frame-skip logic: run slow classifiers every Nth frame to reduce
+        # CPU load while keeping face detection (fast) and landmarks (smooth) at full rate.
         frame_counter = {"n": 0}
         _NO_MODELS: set = set()
         face_tracker = _get_face_tracker()
@@ -858,6 +1221,7 @@ with tab_webcam:
         gallery_snapshot = dict(st.session_state.get("gallery", {}))
 
         def _video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
+            """Process each video frame: run detection/inference, update LIVE state, handle voice fusion."""
             try:
                 frame_started = time.perf_counter()
                 metrics = {}
@@ -865,6 +1229,8 @@ with tab_webcam:
                 img, _ = inference.maybe_colorize(models, img, active_colorization)
                 frame_counter["n"] += 1
                 run_classifiers = frame_counter["n"] % frame_skip == 0
+                # Pass empty model sets if classifiers are skipped this frame; face detection
+                # still runs (always fast), so video remains smooth while expensive classifiers run sparse.
                 annotated_frame, cropped_faces, _, _ = inference.analyze_frame(
                     models, img, conf_threshold,
                     active_age if run_classifiers else _NO_MODELS,
@@ -905,13 +1271,15 @@ with tab_webcam:
                     })
                 return av.VideoFrame.from_ndarray(annotated_frame, format="bgr24")
             except Exception as exc:
-                # A classifier failure must not tear down the WebRTC track. Return the raw
-                # frame so the camera remains usable while the main thread reports the error.
+                # Inference failure must not crash the WebRTC video stream. Log the error to
+                # LIVE_STATE so the UI thread can display it, but always return a frame
+                # (raw passthrough) to keep the stream alive and the camera usable.
                 with LIVE_STATE_LOCK:
                     LIVE_STATE["error"] = f"{type(exc).__name__}: {exc}"
                 return frame
 
         def _audio_frame_callback(frame: av.AudioFrame) -> av.AudioFrame:
+            """Ingest audio samples into voice fusion tracker if enabled."""
             if voice_fusion is not None:
                 samples = inference.audio_frame_to_mono_float(frame.to_ndarray())
                 voice_fusion.ingest_audio(samples, frame.sample_rate)

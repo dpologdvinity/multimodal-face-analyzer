@@ -6,7 +6,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class RemoteAccessBoundaryTests(unittest.TestCase):
+    """Verify container defaults to loopback binding and XSRF protection."""
+
     def test_container_enables_xsrf_and_run_scripts_bind_loopback_by_default(self):
+        """Ensure Dockerfile enables XSRF and default docker run binds only to 127.0.0.1."""
         dockerfile = (ROOT / "Dockerfile").read_text()
         run_script = (ROOT / "build-and-run.sh").read_text()
         readme = (ROOT / "README.md").read_text()

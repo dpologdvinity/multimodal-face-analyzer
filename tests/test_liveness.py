@@ -11,7 +11,10 @@ from src.liveness import (
 
 
 class LivenessTests(unittest.TestCase):
+    """Verify liveness detection integrates texture analysis and blink tracking."""
+
     def test_liveness_backend_contract_is_wired(self):
+        """Ensure inference.py defines liveness_nets dict and wires mediapipe backend."""
         root = Path(__file__).resolve().parents[1]
         inference_source = (root / "src" / "inference.py").read_text()
 
@@ -20,6 +23,7 @@ class LivenessTests(unittest.TestCase):
         self.assertIn("def _liveness_task", inference_source)
 
     def test_liveness_build_arg_is_documented_and_forwarded(self):
+        """Confirm LIVENESS_MODEL build arg appears in Dockerfile, build script, and README."""
         root = Path(__file__).resolve().parents[1]
         dockerfile = (root / "Dockerfile").read_text()
         build_script = (root / "build-and-run.sh").read_text()
@@ -29,6 +33,7 @@ class LivenessTests(unittest.TestCase):
             self.assertIn("LIVENESS_MODEL", text)
 
     def test_texture_score_flags_regular_high_frequency_pattern(self):
+        """Verify texture scorer distinguishes smooth from checkerboard patterns."""
         smooth = [[128] * 32 for _ in range(32)]
         checkerboard = [
             [0 if (x + y) % 2 else 255 for x in range(32)]
@@ -39,18 +44,20 @@ class LivenessTests(unittest.TestCase):
         self.assertGreater(texture_artifact_score(checkerboard), 0.7)
 
     def test_tracker_counts_blink_transitions_and_reports_rate(self):
+        """Ensure tracker counts state transitions (closed->open and vice versa) as blinks."""
         tracker = LivenessTracker()
 
         tracker.update(4, 0.1, 0.1, now=0.0)
         tracker.update(4, 0.9, 0.1, now=1.0)
         tracker.update(4, 0.1, 0.1, now=2.0)
         result = tracker.update(4, 0.9, 0.1, now=60.0)
-
+        # Two transitions: closed->open at 1s, open->closed at 2s
         self.assertEqual(result.status, "LIVE")
         self.assertEqual(result.blink_count, 2)
         self.assertAlmostEqual(result.blink_rate, 2.0)
 
     def test_texture_cue_overrides_blink_result_as_spoof(self):
+        """Verify high texture artifact score marks result as SUSPECTED SPOOF regardless of blinks."""
         tracker = LivenessTracker()
 
         tracker.update(4, 0.1, 0.1, now=0.0)
@@ -60,6 +67,7 @@ class LivenessTests(unittest.TestCase):
         self.assertTrue(result.texture_artifact)
 
     def test_tracker_does_not_count_initially_closed_eyes_as_blink(self):
+        """Ensure first update does not count as blink if eyes are already closed."""
         tracker = LivenessTracker()
 
         result = tracker.update(4, 0.9, 0.1, now=0.0)
@@ -68,6 +76,7 @@ class LivenessTests(unittest.TestCase):
         self.assertEqual(result.blink_count, 0)
 
     def test_blink_score_averages_both_eye_blendshapes(self):
+        """Confirm blink score is mean of left and right eye blendshape scores."""
         result = SimpleNamespace(face_blendshapes=[[
             SimpleNamespace(category_name="eyeBlinkLeft", score=0.8),
             SimpleNamespace(category_name="eyeBlinkRight", score=0.6),
@@ -76,6 +85,7 @@ class LivenessTests(unittest.TestCase):
         self.assertAlmostEqual(blink_score_from_landmarker(result), 0.7)
 
     def test_static_liveness_without_texture_evidence_is_inconclusive(self):
+        """Verify single-frame assessment with no texture artifacts yields INCONCLUSIVE."""
         result = assess_static_liveness(0.1)
 
         self.assertEqual(result.status, "INCONCLUSIVE")

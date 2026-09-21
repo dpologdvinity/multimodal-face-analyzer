@@ -9,9 +9,12 @@ SCRIPT = Path(__file__).parents[1] / "install-and-run.sh"
 
 
 class NativeInstallerVerbosityTests(unittest.TestCase):
+    """Verify install-and-run.sh produces correct prompts and environment variables."""
+
     def _run_installer(
         self, *args: str, input_data: str | None = None, capture_env: bool = False
     ) -> str:
+        """Run installer script in isolated sandbox with fake binaries."""
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
             fake_bin = temp / "bin"
@@ -52,6 +55,7 @@ class NativeInstallerVerbosityTests(unittest.TestCase):
             return output
 
     def test_default_prompts_hide_dependency_details(self):
+        """Verify default mode hides package dependencies and marks defaults with green asterisk."""
         output = self._run_installer()
 
         self.assertIn("\033[1;32m* 1) caffe\033[0m", output)
@@ -90,8 +94,11 @@ class NativeInstallerVerbosityTests(unittest.TestCase):
         self.assertIn("\033[1;33m  2) face landmarks - mediapipe\033[0m", output)
 
     def test_requirement_only_models_precede_additional_install_models(self):
+        """Ensure base-package models appear before optional-dependency models."""
         output = self._run_installer()
 
+        # These pairs check that models requiring no extra dependencies (green/bold)
+        # appear before models requiring new packages (orange/bold)
         for green, orange in (
             ("\033[1;32m  4) dex\033[0m", "\033[1;33m  5) ssrnet\033[0m"),
             ("\033[1;32m  3) fairface\033[0m", "\033[1;33m  4) deepface\033[0m"),
@@ -100,6 +107,7 @@ class NativeInstallerVerbosityTests(unittest.TestCase):
             self.assertLess(output.index(green), output.index(orange))
 
     def test_verbose_prompts_show_colored_dependency_details(self):
+        """Verify -v/--verbose flag displays package dependencies with tree layout."""
         for flag in ("-v", "--verbose"):
             with self.subTest(flag=flag):
                 output = self._run_installer(flag)
@@ -114,6 +122,7 @@ class NativeInstallerVerbosityTests(unittest.TestCase):
                 self.assertIn("      └──", output)
 
     def test_face_detector_selection_maps_to_its_original_build_variable(self):
+        """Ensure face detector choice 2 (SCRFD) maps to SCRFD_FACE_MODEL=scrfd."""
         selections = "\n".join(["2"] + ["0"] * 7) + "\n"
         output = self._run_installer("--verbose", input_data=selections)
 
@@ -122,6 +131,7 @@ class NativeInstallerVerbosityTests(unittest.TestCase):
         self.assertIn("RETINAFACE_MODEL=", output)
 
     def test_face_detector_selection_accepts_all_multi_option_separators(self):
+        """Verify multi-select accepts space/comma/no-separator formats."""
         for selection in ("123", "1 2 3", "1,2,3"):
             with self.subTest(selection=selection):
                 selections = "\n".join([selection] + ["0"] * 7) + "\n"
@@ -132,6 +142,7 @@ class NativeInstallerVerbosityTests(unittest.TestCase):
                 self.assertIn("RETINAFACE_MODEL=retinaface", output)
 
     def test_reused_optional_packages_turn_later_options_green(self):
+        """Confirm model that reuses same packages as prior selection turns green."""
         selections = "\n".join(["0", "5", "0", "0", "5"] + ["0"] * 3) + "\n"
         output = self._run_installer("--verbose", input_data=selections)
 
@@ -139,6 +150,7 @@ class NativeInstallerVerbosityTests(unittest.TestCase):
         self.assertIn("\033[32mopencv-python-headless, numpy, torch, torchvision\033[0m", output)
 
     def test_hidden_mode_omits_choices_with_new_optional_packages(self):
+        """Verify --hidden mode excludes models requiring additional dependencies."""
         output = self._run_installer("--hidden")
 
         self.assertIn("== AGE ==", output)
@@ -149,6 +161,7 @@ class NativeInstallerVerbosityTests(unittest.TestCase):
         self.assertNotIn("vggface", output)
 
     def test_hidden_mode_all_selects_only_base_package_models(self):
+        """Ensure --hidden mode 'all' includes only base-package models, no extra deps."""
         output = self._run_installer("--hidden", input_data="9\n" * 8)
 
         self.assertIn("AGE_MODEL=caffe,insightface,fairface,dex", output)
@@ -160,11 +173,13 @@ class NativeInstallerVerbosityTests(unittest.TestCase):
         self.assertNotIn("Installing: onnxruntime", output)
 
     def test_package_marks_a_dependency_as_already_available(self):
+        """Verify -p/--package flag marks package as installed, unlocking dependent models."""
         output = self._run_installer("-p", "onxruntime", input_data="0\n" * 8)
 
         self.assertIn("\033[1;32m  1) yolo\033[0m", output)
 
     def test_package_works_with_hidden_mode_and_comma_separated_packages(self):
+        """Ensure --package works with --hidden and comma-separated list."""
         output = self._run_installer(
             "--hidden", "--package", "onxruntime,numpy", input_data="0\n" * 8
         )
@@ -174,6 +189,7 @@ class NativeInstallerVerbosityTests(unittest.TestCase):
         self.assertNotIn("deepface", output)
 
     def test_native_runtime_receives_selected_models(self):
+        """Confirm build arg environment variables match user selections."""
         selections = "\n".join(["0", "1", "0", "0", "0", "0", "0", "1"]) + "\n"
         output = self._run_installer(input_data=selections, capture_env=True)
 
@@ -184,6 +200,7 @@ class NativeInstallerVerbosityTests(unittest.TestCase):
         self.assertIn("AGE_PROGRESSION_MODEL=", output)
 
     def test_hair_color_selection_reaches_native_runtime(self):
+        """Verify hair color model selection is passed to runtime environment."""
         selections = "\n".join(["0", "0", "0", "0", "0", "0", "4", "0"]) + "\n"
         output = self._run_installer(input_data=selections, capture_env=True)
 

@@ -5,6 +5,7 @@ more model backends are added.
 """
 from __future__ import annotations
 
+import contextlib
 import functools
 import itertools
 import json
@@ -12,6 +13,7 @@ import os
 import hashlib
 import random
 import sqlite3
+import sys
 import threading
 import time
 from collections import OrderedDict
@@ -20,6 +22,41 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
+
+os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")  # silence TF INFO/WARNING banners (oneDNN, cpu_feature_guard) before TF import
+os.environ.setdefault("TF_ENABLE_ONEDNN_OPTS", "0")
+os.environ.setdefault("CUDA_VISIBLE_DEVICES", "-1")  # no GPU in this environment; skip cuInit probe entirely rather than logging its failure
+os.environ.setdefault("GLOG_minloglevel", "2")  # silence glog/absl banners emitted by mediapipe's C++ backend
+
+
+@contextlib.contextmanager
+def _silence_native_logs():
+    """Redirect the process's real stderr fd during noisy native-lib calls.
+
+    TF/absl/glog emit some startup banners (oneDNN, cudart_stub, mediapipe
+    graph setup) straight to the OS-level stderr fd before Python-side log
+    level env vars (TF_CPP_MIN_LOG_LEVEL, GLOG_minloglevel) take effect, so
+    those env vars alone don't silence them -- only an fd-level redirect does.
+    """
+    fd = sys.stderr.fileno()
+    saved_fd = os.dup(fd)
+    devnull_fd = os.open(os.devnull, os.O_WRONLY)
+    try:
+        os.dup2(devnull_fd, fd)
+        yield
+    finally:
+        os.dup2(saved_fd, fd)
+        os.close(devnull_fd)
+        os.close(saved_fd)
+
+import warnings
+
+# Vendored net code (src/nets/) uses APIs (torch.jit.script, torchvision positional
+# `weights`, Keras `input_shape` on non-Input layers) that only emit deprecation noise --
+# not actionable here since that code isn't ours to change. Silence before those modules import.
+warnings.filterwarnings("ignore", category=FutureWarning, module="torch.jit")
+warnings.filterwarnings("ignore", category=UserWarning, module="torchvision")
+warnings.filterwarnings("ignore", category=UserWarning, message=r".*input_shape.*")
 
 import cv2
 import numpy as np
@@ -45,31 +82,35 @@ except ImportError:  # app.py runs with src/ on sys.path in the container
     from model_selection import native_model_selected
 
 try:
-    import torch
-    from nets.dan_model import DAN
-    from nets.ssrnet_model import SSRNet
+    with _silence_native_logs():
+        import torch
+        from nets.dan_model import DAN
+        from nets.ssrnet_model import SSRNet
     TORCH_SUPPORTED = True
 except ImportError:
     TORCH_SUPPORTED = False
 
 try:
-    from nets.deepface_race import build_race_model
-    from nets.deepface_gender import build_gender_model
-    from nets.deepface_recognition import build_recognition_model
-    from nets.mini_xception_model import build_mini_xception
-    from nets.mask_model import build_mask_model
+    with _silence_native_logs():
+        from nets.deepface_race import build_race_model
+        from nets.deepface_gender import build_gender_model
+        from nets.deepface_recognition import build_recognition_model
+        from nets.mini_xception_model import build_mini_xception
+        from nets.mask_model import build_mask_model
     TF_SUPPORTED = True
 except ImportError:
     TF_SUPPORTED = False
 
 try:
-    from nets.mivolo.inference_wrapper import MiVOLOInference
+    with _silence_native_logs():
+        from nets.mivolo.inference_wrapper import MiVOLOInference
     MIVOLO_SUPPORTED = True
 except ImportError:
     MIVOLO_SUPPORTED = False
 
 try:
-    import mediapipe as mp
+    with _silence_native_logs():
+        import mediapipe as mp
     MEDIAPIPE_SUPPORTED = True
 except ImportError:
     MEDIAPIPE_SUPPORTED = False
@@ -81,16 +122,18 @@ except ImportError:
     ONNXRUNTIME_SUPPORTED = False
 
 try:
-    from nets.deep3d_recon import (
-        build_deep3d_recon_model, ParametricFaceModel, load_lm3d_template,
-        landmarks_5pt_from_mediapipe, reconstruct_face_3d, mesh_to_obj_str,
-    )
+    with _silence_native_logs():
+        from nets.deep3d_recon import (
+            build_deep3d_recon_model, ParametricFaceModel, load_lm3d_template,
+            landmarks_5pt_from_mediapipe, reconstruct_face_3d, mesh_to_obj_str,
+        )
     TORCHVISION_SUPPORTED = True
 except ImportError:
     TORCHVISION_SUPPORTED = False
 
 try:
-    from nets.face_reaging_model import build_face_reaging_model, age_progress_face
+    with _silence_native_logs():
+        from nets.face_reaging_model import build_face_reaging_model, age_progress_face
     FACE_REAGING_SUPPORTED = True
 except ImportError:
     FACE_REAGING_SUPPORTED = False
@@ -293,25 +336,40 @@ class Models:
     age_progression_nets: dict = field(default_factory=dict)
 
     @property
+    def _feature_slots(self) -> list[tuple[str, dict]]:
+        """List every named feature slot alongside its loaded-model dict, shared by the count and offline-list properties below."""
+        return [
+            ("AGE", self.age_nets), ("GENDER", self.gender_nets),
+            ("EMOTION", self.emotion_nets),
+            ("RACE", self.race_nets),
+            ("LIVENESS", self.liveness_nets),
+            ("GAZE", self.gaze_nets),
+            ("RECOGNITION", self.recognition_nets),
+            ("GLASSES", self.glasses_nets),
+            ("MASK", self.mask_nets), ("HAIR_COLOR", self.hair_color_nets),
+            ("EYE_COLOR", self.eye_color_nets), ("COLORIZATION", self.colorization_nets),
+            ("FACE_LANDMARKS", self.face_landmarks_nets),
+            ("HANDS", self.hand_nets), ("RECONSTRUCTION_3D", self.reconstruction_3d_nets),
+            ("FACE_DETECTOR_YOLO", self.yolo_face_nets),
+            ("FACE_DETECTOR_SCRFD", self.scrfd_face_nets),
+            ("FACE_DETECTOR_RETINAFACE", self.retinaface_nets),
+            ("AGE_PROGRESSION", self.age_progression_nets),
+        ]
+
+    @property
+    def loaded_feature_count(self) -> int:
+        """Count feature slots with at least one model loaded."""
+        return sum(1 for _, nets in self._feature_slots if nets)
+
+    @property
+    def total_feature_count(self) -> int:
+        """Count all known feature slots, loaded or not."""
+        return len(self._feature_slots)
+
+    @property
     def offline_features(self) -> list[str]:
         return [
-            name for name, nets in [
-                ("AGE", self.age_nets), ("GENDER", self.gender_nets),
-                ("EMOTION", self.emotion_nets),
-                ("RACE", self.race_nets),
-                ("LIVENESS", self.liveness_nets),
-                ("GAZE", self.gaze_nets),
-                ("RECOGNITION", self.recognition_nets),
-                ("GLASSES", self.glasses_nets),
-                ("MASK", self.mask_nets), ("HAIR_COLOR", self.hair_color_nets),
-                ("EYE_COLOR", self.eye_color_nets), ("COLORIZATION", self.colorization_nets),
-                ("FACE_LANDMARKS", self.face_landmarks_nets),
-                ("HANDS", self.hand_nets), ("RECONSTRUCTION_3D", self.reconstruction_3d_nets),
-                ("FACE_DETECTOR_YOLO", self.yolo_face_nets),
-                ("FACE_DETECTOR_SCRFD", self.scrfd_face_nets),
-                ("FACE_DETECTOR_RETINAFACE", self.retinaface_nets),
-                ("AGE_PROGRESSION", self.age_progression_nets),
-            ] if not nets
+            name for name, nets in self._feature_slots if not nets
         ]
 
 
@@ -343,6 +401,8 @@ def load_models() -> Models:
 
     if INSIGHTFACE_MODEL.exists():
         insightface_net = cv2.dnn.readNetFromONNX(str(INSIGHTFACE_MODEL))
+        # Reuse the same ONNX net instance for both age and gender (single inference call can compute both).
+        # The predict_*_insightface functions each re-invoke the net for simplicity, not efficiency.
         if native_model_selected("AGE_MODEL", "insightface"):
             age_nets["insightface"] = insightface_net
         if native_model_selected("GENDER_MODEL", "insightface"):
@@ -428,7 +488,8 @@ def load_models() -> Models:
             output_face_blendshapes=native_model_selected("LIVENESS_MODEL", "mediapipe"),
             running_mode=mp.tasks.vision.RunningMode.IMAGE,
         )
-        landmarker = mp.tasks.vision.FaceLandmarker.create_from_options(options)
+        with _silence_native_logs():
+            landmarker = mp.tasks.vision.FaceLandmarker.create_from_options(options)
         if native_model_selected("LIVENESS_MODEL", "mediapipe"):
             liveness_nets["mediapipe"] = landmarker
         if native_model_selected("FACE_LANDMARKS_MODEL", "mediapipe"):
@@ -461,7 +522,8 @@ def load_models() -> Models:
             num_hands=2,
             running_mode=mp.tasks.vision.RunningMode.IMAGE,
         )
-        hand_nets["mediapipe"] = mp.tasks.vision.HandLandmarker.create_from_options(hand_options)
+        with _silence_native_logs():
+            hand_nets["mediapipe"] = mp.tasks.vision.HandLandmarker.create_from_options(hand_options)
 
     reconstruction_3d_nets = {}
     if native_model_selected("RECONSTRUCTION_3D_MODEL", "deep3d") and TORCHVISION_SUPPORTED and DEEP3D_RECON_MODEL.exists() and BFM_MODEL_PATH.exists() and BFM_LM3D_PATH.exists():
@@ -509,6 +571,7 @@ def _yolo_letterbox(image: np.ndarray, target_size: int = YOLO_FACE_INPUT_SIZE) 
 
 
 def _yolo_softmax(x: np.ndarray, axis: int = -1) -> np.ndarray:
+    """Numerically stable softmax (shift by max to prevent overflow)."""
     exp_x = np.exp(x - np.max(x, axis=axis, keepdims=True))
     return exp_x / np.sum(exp_x, axis=axis, keepdims=True)
 
@@ -573,6 +636,7 @@ def detect_faces_yolo(session, frame: np.ndarray, conf_threshold: float = 0.5) -
 
 
 def _scrfd_distance2bbox(points: np.ndarray, distance: np.ndarray) -> np.ndarray:
+    """Decode SCRFD's distance regression into [x1, y1, x2, y2] boxes."""
     x1 = points[:, 0] - distance[:, 0]
     y1 = points[:, 1] - distance[:, 1]
     x2 = points[:, 0] + distance[:, 2]
@@ -650,6 +714,7 @@ def _retinaface_priors() -> np.ndarray:
 
 
 def _retinaface_decode(loc: np.ndarray, priors: np.ndarray) -> np.ndarray:
+    """Decode RetinaFace's localization predictions against anchor priors."""
     boxes = np.concatenate([
         priors[:, :2] + loc[:, :2] * RETINAFACE_VARIANCE[0] * priors[:, 2:],
         priors[:, 2:] * np.exp(loc[:, 2:] * RETINAFACE_VARIANCE[1]),
@@ -742,25 +807,20 @@ class _Track:
 
 
 class FaceTracker:
-    """#2: greedy IoU-based multi-face tracker. Assigns a stable integer ID to each detected
-    face box across consecutive analyze_frame() calls on the SAME video stream, so a face
-    keeps its identity as it moves instead of every frame renumbering faces 1..N by detection
-    order (which is what analyze_frame() does on its own, per-frame, with no tracker passed).
+    """Multi-face tracker that assigns stable IDs across video frames via greedy IoU matching.
 
-    Matching is frame-to-frame only, no motion prediction: each track's last known box is
-    compared by IoU against this frame's detections, and the highest-IoU pairs at or above
-    IOU_TRACKING_THRESHOLD are greedily accepted one-to-one (highest IoU first, each track and
-    each detection used at most once). A track that matches no detection this frame is kept,
-    not dropped immediately -- only after TRACKING_MAX_MISSED_FRAMES consecutive unmatched
-    frames is it deleted and its ID freed. This is what "survives brief occlusion" means here:
-    a face that's blocked (or missed by the detector) for a few frames keeps its ID as long as
-    it reappears close to where it was last seen within that window.
+    Without a tracker, each frame renumbers faces 1..N by detection order, causing IDs to
+    flicker as a face moves. A tracker instead keeps IDs stable: once a face is detected,
+    its ID persists across frames as long as a high-IoU match exists within the tracking
+    threshold and missed-frame window.
 
-    One instance tracks one video stream. Safe to call update()/reset() from a different
-    thread than the one that created it (e.g. streamlit-webrtc's own callback thread) via an
-    internal lock -- this is the ONLY per-frame state analyze_frame() has ever needed, so the
-    lock is scoped tightly to this class rather than adding any shared mutable state to
-    analyze_frame() itself, which stays otherwise stateless."""
+    Matching strategy: greedy one-to-one assignment (highest IoU first) between tracks and
+    detections. Tracks can survive brief occlusion (up to TRACKING_MAX_MISSED_FRAMES frames
+    without a matching detection before the ID is freed).
+
+    Thread-safe: one instance per video stream. Safe to call update()/reset() from different
+    threads (e.g., streamlit-webrtc callback vs. main thread) via an internal lock.
+    """
 
     def __init__(self, iou_threshold: float = IOU_TRACKING_THRESHOLD, max_missed_frames: int = TRACKING_MAX_MISSED_FRAMES):
         self._lock = threading.Lock()
@@ -864,14 +924,17 @@ def maybe_colorize(models: "Models", frame_bgr: np.ndarray, active_colorization:
 
 
 def _adjust_exposure(img: np.ndarray, stops: float) -> np.ndarray:
+    """Apply exposure correction in f-stops (base 2 scaling)."""
     return img * (2.0 ** stops)
 
 
 def _adjust_brightness(img: np.ndarray, amount: float) -> np.ndarray:
+    """Apply additive brightness shift."""
     return img + amount
 
 
 def _adjust_contrast(img: np.ndarray, amount: float) -> np.ndarray:
+    """Apply contrast correction via the classic parametric formula."""
     c = amount * 2.55  # slider -100..100 -> classic contrast-correction-factor's -255..255
     factor = (259.0 * (c + 255.0)) / (255.0 * (259.0 - c))
     return factor * (img - 128.0) + 128.0
@@ -891,6 +954,7 @@ def _adjust_tone_region(img_bgr: np.ndarray, amount: float, region: str) -> np.n
 
 
 def _adjust_black_point(img: np.ndarray, amount: float) -> np.ndarray:
+    """Shift and stretch the shadow point (rescales to compensate)."""
     bp = np.clip((amount / 100.0) * 60.0, -60.0, 250.0)
     return (img - bp) * (255.0 / max(255.0 - bp, 1.0))
 
@@ -1332,12 +1396,14 @@ def apply_image_op(face_bgr: np.ndarray, op: str, **params) -> np.ndarray:
 
 
 def predict_gender_caffe(net, blob: np.ndarray) -> str:
+    """Predict gender from a Caffe blob via argmax."""
     with _lock_for(net):
         net.setInput(blob)
         return GENDER_LIST[net.forward()[0].argmax()]
 
 
 def predict_age_caffe(net, blob: np.ndarray) -> str:
+    """Predict age bucket from a Caffe blob via argmax."""
     with _lock_for(net):
         net.setInput(blob)
         return AGE_LIST[net.forward()[0].argmax()]
@@ -1389,18 +1455,20 @@ def predict_age_dex(net, face_bgr: np.ndarray) -> str:
     return f"{age:.0f}"
 
 
-INSIGHTFACE_INPUT_SIZE = 96  # this genderage.onnx's actual input size (per its ONNX graph) --
-# NOT the 112x112 insightface uses for its face-recognition/embedding models; verified via
-# onnxruntime, which rejects 112x112 with a shape-mismatch error. The graph also embeds
-# Sub/Mul normalization, so normalizing again produces near-constant garbage output.
+# Insightface's combined gender/age ONNX export uses a different input size than its recognition models.
+# Must match the export's own expectations (96x96 for genderage.onnx) -- feeding 112x112 causes a shape
+# mismatch error. The graph embeds Sub/Mul normalization nodes, so any additional normalization corrupts the input.
+INSIGHTFACE_INPUT_SIZE = 96
 
 
 def _margin_align(frame_bgr: np.ndarray, box: tuple[int, int, int, int], output_size: int, margin: float) -> np.ndarray:
-    """Crop centered on the raw detection box, scaled so the box fits into output_size with the
-    given margin factor (e.g. margin=1.5 means the box occupies 1/1.5 of the output). No rotation.
-    Must operate on the ORIGINAL frame and the UNPADDED detection box -- several of these models
-    were trained on a specific bbox-relative or landmark-based framing, not an arbitrarily-padded
-    pixel crop+resize (feeding a mismatched framing gives wrong/biased predictions, not a crash)."""
+    """Crop and center a face box with proportional context, then resize to output_size.
+
+    Margin controls the ratio of box height to output size: margin=1.5 means the box occupies
+    1/1.5 of the output. No rotation is applied. Critical: must use the UNPADDED detection box
+    from the original frame -- many models were trained with specific context ratios and
+    arbitrary padding breaks them, causing subtle bias in predictions.
+    """
     x1, y1, x2, y2 = box
     w, h = x2 - x1, y2 - y1
     cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
@@ -1499,9 +1567,10 @@ def _rotate_region(frame_bgr: np.ndarray, box: tuple[int, int, int, int], angle_
 
 
 def _insightface_forward(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int]) -> np.ndarray:
-    # Replicates insightface's own alignment (model_zoo/attribute.py + utils/face_align.py): 1.5x margin.
+    """Prepare a face crop for insightface's combined age/gender ONNX model and run inference."""
+    # Insightface alignment uses 1.5x margin around the detection box.
     aligned = _margin_align(frame_bgr, box, INSIGHTFACE_INPUT_SIZE, margin=1.5)
-    # This export starts with Sub/Mul normalization nodes, so feed raw pixels.
+    # This ONNX export embeds Sub/Mul normalization, so feed raw pixels.
     blob = cv2.dnn.blobFromImage(aligned, 1.0, (INSIGHTFACE_INPUT_SIZE, INSIGHTFACE_INPUT_SIZE), (0, 0, 0), swapRB=True)
     with _lock_for(net):
         net.setInput(blob)
@@ -1509,11 +1578,13 @@ def _insightface_forward(net, frame_bgr: np.ndarray, box: tuple[int, int, int, i
 
 
 def predict_gender_insightface(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int]) -> str:
+    """Predict gender via insightface's combined gender/age ONNX model."""
     out = _insightface_forward(net, frame_bgr, box)
     return "Female" if np.argmax(out[:2]) == 0 else "Male"
 
 
 def predict_age_insightface(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int]) -> str:
+    """Predict continuous age via insightface's combined gender/age ONNX model (range 0-100)."""
     out = _insightface_forward(net, frame_bgr, box)
     return f"{round(out[2] * 100):.0f}"
 
@@ -1572,7 +1643,7 @@ def predict_emotion_mini_xception(net, face_bgr: np.ndarray) -> str:
     face_norm = (face_gray / 255.0 - 0.5) * 2.0
     tensor = face_norm[np.newaxis, ..., np.newaxis]
     with _lock_for(net):
-        probs = net.predict(tensor, verbose=0).flatten()
+        probs = net(tensor, training=False).numpy().flatten()
     return EMOTION_LABELS_MINI_XCEPTION[int(np.argmax(probs))]
 
 
@@ -1603,6 +1674,7 @@ def _format_results(pairs: list[tuple[str, str]]) -> list[str]:
 
 
 def _softmax(x: np.ndarray) -> np.ndarray:
+    """Numerically stable softmax (shift by max to prevent overflow)."""
     exp = np.exp(x - np.max(x))
     return exp / exp.sum()
 
@@ -1635,44 +1707,47 @@ def _fairface_forward(
 
 
 def predict_race_fairface(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int], landmarks=None) -> str:
-    # Use the dlib chip geometry when corresponding MediaPipe landmarks are available;
-    # retain the bbox approximation when the optional landmarker cannot supply them.
+    """Predict race via FairFace, using landmarks for alignment when available."""
+    # Prefer dlib chip geometry (MediaPipe landmarks) over bbox approximation for better alignment.
     logits = _fairface_forward(net, frame_bgr, box, "race_output", landmarks)
     return _format_race_label(_softmax(logits), RACE_LABELS_FAIRFACE)
 
 
 def predict_gender_fairface(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int], landmarks=None) -> str:
+    """Predict gender via FairFace, using landmarks for alignment when available."""
     out = _fairface_forward(net, frame_bgr, box, "gender_output", landmarks)
     return "Male" if np.argmax(out) == 0 else "Female"
 
 
 def predict_age_fairface(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int], landmarks=None) -> str:
+    """Predict age bucket via FairFace (9 categories: 0-2, 3-9, ..., 70+), using landmarks when available."""
     out = _fairface_forward(net, frame_bgr, box, "age_output", landmarks)
     return FAIRFACE_AGE_LABELS[int(np.argmax(out))]
 
 
 def predict_race_deepface(net, face_bgr: np.ndarray) -> str:
+    """Predict race via deepface VGGFace backend (6 categories)."""
     face_resized = cv2.resize(face_bgr, (224, 224)).astype(np.float32)
     with _lock_for(net):
-        probs = net.predict(face_resized[np.newaxis, ...], verbose=0).flatten()
+        probs = net(face_resized[np.newaxis, ...], training=False).numpy().flatten()
     return _format_race_label(probs, RACE_LABELS_DEEPFACE)
 
 
 def predict_gender_deepface(net, face_bgr: np.ndarray) -> str:
-    # Same VGGFace-backbone preprocessing as predict_race_deepface: 224x224 BGR, unnormalized [0,255].
+    """Predict gender via deepface VGGFace backend."""
+    # VGGFace input: 224x224 BGR, unnormalized [0,255].
     face_resized = cv2.resize(face_bgr, (224, 224)).astype(np.float32)
     with _lock_for(net):
-        probs = net.predict(face_resized[np.newaxis, ...], verbose=0).flatten()
-    # deepface's GENDER_LABELS = ["Woman", "Man"]; normalize to this repo's Male/Female convention.
+        probs = net(face_resized[np.newaxis, ...], training=False).numpy().flatten()
     return "Male" if np.argmax(probs) == 1 else "Female"
 
 
 def compute_face_embedding(net, face_bgr: np.ndarray) -> np.ndarray:
-    # Same VGGFace-backbone preprocessing as predict_race_deepface/predict_gender_deepface:
-    # 224x224 BGR, unnormalized [0,255].
+    """Compute normalized VGGFace embedding for identity recognition (cosine distance)."""
+    # VGGFace input: 224x224 BGR, unnormalized [0,255].
     face_resized = cv2.resize(face_bgr, (224, 224)).astype(np.float32)
     with _lock_for(net):
-        emb = net.predict(face_resized[np.newaxis, ...], verbose=0).flatten()
+        emb = net(face_resized[np.newaxis, ...], training=False).numpy().flatten()
     norm = np.linalg.norm(emb)
     return emb / norm if norm > 0 else emb
 
@@ -1690,6 +1765,7 @@ def match_face_identity(embedding: np.ndarray, gallery: dict) -> tuple[str, floa
 
 
 def load_gallery() -> dict:
+    """Load enrolled face embeddings from gallery/known_faces.json (VGGFace embeddings, pre-normalized)."""
     if not GALLERY_FILE.exists():
         return {}
     raw = json.loads(GALLERY_FILE.read_text())
@@ -1697,6 +1773,7 @@ def load_gallery() -> dict:
 
 
 def save_gallery(gallery: dict) -> None:
+    """Persist enrolled face embeddings to gallery/known_faces.json (JSON format)."""
     GALLERY_FILE.parent.mkdir(parents=True, exist_ok=True)
     GALLERY_FILE.write_text(json.dumps({name: vec.tolist() for name, vec in gallery.items()}))
 
@@ -1733,6 +1810,7 @@ _LBPH_CACHE_RESULT = None
 
 
 def _lbph_gallery_signature() -> str | None:
+    """Compute a SHA256 hash of the LBPH gallery structure (file paths, sizes, mtimes) to detect changes."""
     if not LBPH_GALLERY_DIR.is_dir():
         return None
     entries = []
@@ -1786,14 +1864,29 @@ def train_lbph_recognizer():
         return _LBPH_CACHE_RESULT
 
 
+# Modern phone cameras commonly produce 3000-4000px-wide photos. Every downstream detector
+# resizes its own input internally (SSD to 300x300, YOLO/SCRFD/RetinaFace to their own fixed
+# input size), so feeding them a multi-thousand-pixel source buys no detection quality -- it
+# only multiplies the cost of every full-frame op that runs BEFORE that internal resize
+# (decode, color conversion, cv2.dnn's own resize, drawing overlays, content hashing for the
+# detection/prediction caches). Capping the longer side here is quality-neutral for anything
+# feeding those fixed-size model inputs.
+MAX_UPLOAD_DIMENSION = 2000
+
+
 def decode_image_bytes(file_bytes: bytes | bytearray | np.ndarray) -> np.ndarray:
-    """Decode uploaded image bytes and reject empty or unsupported payloads clearly."""
+    """Decode uploaded image bytes (JPEG/PNG/WebP/etc) into BGR ndarray, downscaled if huge."""
     encoded = np.asarray(bytearray(file_bytes), dtype=np.uint8)
     if encoded.size == 0:
         raise ValueError("The uploaded file is empty or could not be read.")
     frame = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
     if frame is None or frame.size == 0:
         raise ValueError("The uploaded file is not a valid supported image.")
+    height, width = frame.shape[:2]
+    longer_side = max(height, width)
+    if longer_side > MAX_UPLOAD_DIMENSION:
+        scale = MAX_UPLOAD_DIMENSION / longer_side
+        frame = cv2.resize(frame, (round(width * scale), round(height * scale)), interpolation=cv2.INTER_AREA)
     return frame
 
 
@@ -1805,27 +1898,28 @@ def predict_identity_lbph(recognizer, label_names: list[str], face_bgr: np.ndarr
     return (label_names[label], confidence) if confidence < LBPH_CONFIDENCE_THRESHOLD else None
 
 
+# Per-face classifier output cache, keyed on exact preprocessed pixel bytes (not identity embedding).
+# Cache key invariant: identical bytes -> identical deterministic output. Embedding-based keys fail
+# because adjusted/re-cropped versions of "the same" face have different bytes and may legitimately
+# produce different classifications. This matters because Streamlit re-runs the entire script on any
+# widget interaction, recomputing every face classification despite no image/adjustment/model changes.
+# Module-level, unlocked: concurrent sessions may redundantly recompute the same key, but dict get/set
+# are GIL-atomic so no corruption risk. LRU-evicted to prevent unbounded memory growth.
 PREDICTION_CACHE_MAX_SIZE = 2048
-
-# Content-addressed cache for per-face classifier outputs, keyed on the exact preprocessed
-# input bytes rather than a face-identity embedding: a face-embedding hash is NOT a stable
-# cache key (an adjusted or re-cropped version of "the same" face has different bytes and
-# may legitimately warrant a different output), but identical bytes fed to the same model
-# always produce identical deterministic output, so hashing the input itself is correct by
-# construction. Real speedup comes from Streamlit re-running the whole script (and thus
-# every classifier for every face) on any unrelated widget interaction even when the image,
-# adjustments, and active models haven't changed. Module-level and unlocked: concurrent
-# sessions may occasionally race and recompute the same missing key redundantly, but a plain
-# dict get/set can't corrupt the cache under the GIL, so that's a wasted-work risk, not a
-# correctness one. Bounded (LRU-evicted) so a long session doesn't grow this unboundedly.
 _PREDICTION_CACHE: "OrderedDict[tuple, object]" = OrderedDict()
 
 
 def _cached_face_predict(feature: str, model_key: str, face_bgr: np.ndarray, predict_fn, *args):
-    """Memoize a predict_*(net, face, ...) call on (feature, model_key, hash(face bytes)).
-    Only used for predictors whose sole content input is the face crop itself -- predictors
-    that instead take the full frame + box (fairface, insightface) or hash a much larger,
-    more adjustment-sensitive buffer for comparatively little benefit are left uncached here."""
+    """Memoize a predict_*(net, face, ...) call on (feature, model_key, hash(image bytes)).
+    Despite the name, `face_bgr` may be a per-face crop OR a whole frame (face detection,
+    hand landmarks) -- the cache key only depends on that array's bytes, not what it depicts.
+    Not used for predictors that take the full frame + box (fairface, insightface) or hash a
+    much larger, more adjustment-sensitive buffer for comparatively little benefit.
+
+    NOTE: only `feature`/`model_key`/`face_bgr` are part of the cache key -- predict_fn's other
+    *args are NOT hashed. Any caller whose behavior also depends on another argument (e.g.
+    conf_threshold for detection) MUST fold that value into `model_key` itself, or a rerun with
+    a changed argument will wrongly return a stale cached result."""
     cache_key = (feature, model_key, face_bgr.shape, hashlib.blake2b(face_bgr.tobytes(), digest_size=16).digest())
     cached = _PREDICTION_CACHE.get(cache_key)
     if cached is not None or cache_key in _PREDICTION_CACHE:
@@ -1839,6 +1933,7 @@ def _cached_face_predict(feature: str, model_key: str, face_bgr: np.ndarray, pre
 
 
 def _sanitize_column_name(feature: str, model_key: str) -> str:
+    """Convert feature/model names into a valid SQLite column identifier."""
     return f"{feature}_{model_key}".lower().replace(" ", "_").replace("-", "_")
 
 
@@ -1855,10 +1950,11 @@ def _gather_face_results(pairs_by_feature: dict[str, list[tuple[str, str]]]) -> 
 
 
 def _crop_and_resize_for_eigenfaces(face_bgr: np.ndarray) -> np.ndarray:
-    """Grayscale + center-square crop (tighter than the padded face crop already saved to
-    faces/, i.e. 'zoomed in') + resize to EIGEN_FACE_SIZE. Used both when saving a new face
-    to eigen/ and when preprocessing a live query face for match_face_eigenfaces, so the two
-    are directly comparable."""
+    """Preprocess for eigenfaces: grayscale, center-square crop, resize to standard size.
+
+    Used during save_face() and match_face_eigenfaces() to ensure training and query
+    images have consistent preprocessing for PCA projection.
+    """
     gray = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2GRAY)
     h, w = gray.shape[:2]
     side = min(h, w)
@@ -1868,11 +1964,14 @@ def _crop_and_resize_for_eigenfaces(face_bgr: np.ndarray) -> np.ndarray:
 
 
 def save_face(face_bgr: np.ndarray, raw_columns: dict[str, str]) -> int:
-    """Save one classified face: a DB row (sparse columns, see module docstring above),
-    the color crop to faces/{id}.jpg, and a grayscale/zoomed crop to eigen/{id}.jpg for
-    eigenfaces matching. raw_columns is {column_name: value} from _gather_face_results --
-    only columns present here get created (ALTER TABLE), so a model that was never run on
-    any saved face never gets a column. Returns the randomly generated id (1..999999)."""
+    """Save one classified face into the database with sparse columns and image artifacts.
+
+    Persists: (1) a DB row with sparse columns (columns created on-demand per model/feature
+    that actually contributes a value), (2) color crop to faces/{id}.jpg, (3) grayscale/zoomed
+    crop to eigen/{id}.jpg for eigenfaces training/matching. Returns a unique random face_id.
+    Sparse column design: a model never run on any saved face doesn't create a column,
+    keeping the schema flexible and compact as features are added/removed.
+    """
     FACES_DIR.mkdir(parents=True, exist_ok=True)
     EIGEN_DIR.mkdir(parents=True, exist_ok=True)
     FACES_DB_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -1933,8 +2032,10 @@ def save_face(face_bgr: np.ndarray, raw_columns: dict[str, str]) -> int:
 
 
 def _load_eigen_images() -> tuple[list[int], np.ndarray]:
-    """Load every image in eigen/ as a flattened float64 row vector. Returns (ids, data)
-    where data has shape (M, EIGEN_FACE_SIZE[0]*EIGEN_FACE_SIZE[1])."""
+    """Load all saved eigenfaces from eigen/ into memory as flattened vectors.
+
+    Returns (ids, data) where data is (M, EIGEN_FACE_SIZE[0]*EIGEN_FACE_SIZE[1]) float64.
+    """
     ids: list[int] = []
     vectors = []
     if EIGEN_DIR.is_dir():
@@ -1957,12 +2058,12 @@ def _load_eigen_images() -> tuple[list[int], np.ndarray]:
 
 
 def _train_eigenfaces(k: int = 15) -> tuple[list[int], np.ndarray, np.ndarray, np.ndarray] | None:
-    """Turk & Pentland eigenfaces (PCA) training step, per ideas/eigenfaces.md: trains fresh
-    against every image in eigen/ (the training set is just previously-SAVEd faces, so this is
-    cheap at the scale it's meant for). Uses the M x M covariance trick from the paper (A @ A.T
-    instead of A.T @ A) since the number of saved faces M is much smaller than the pixel
-    dimension N*N. Returns (ids, mean_face, eigenfaces, weights) or None if eigen/ has fewer
-    than 2 images (PCA needs at least 2 samples to have any variance to project onto)."""
+    """Train PCA-based face subspace from saved eigenfaces (faces ever clicked SAVE on).
+
+    Re-trains fresh on every matching attempt (no persisted model), matching eigenfaces.md.
+    Uses the trick A @ A.T instead of A.T @ A for covariance (M << N*N for saved face count).
+    Returns (ids, mean_face, eigenfaces, weights) or None if fewer than 2 saved faces exist.
+    """
     ids, data = _load_eigen_images()
     if len(ids) < 2:
         return None
@@ -2002,6 +2103,7 @@ def match_face_eigenfaces(face_bgr: np.ndarray, k: int = 15) -> tuple[int, float
 
 
 def _match_against_trained(face_bgr: np.ndarray, ids: list[int], mean_face: np.ndarray, eigenfaces: np.ndarray, weights: np.ndarray) -> tuple[int, float] | None:
+    """Project a query face into eigenspace and find the closest training sample (L2 distance)."""
     query = _crop_and_resize_for_eigenfaces(face_bgr).flatten().astype(np.float64) - mean_face
     query_weights = query @ eigenfaces
     distances = np.linalg.norm(weights - query_weights, axis=1)
@@ -2056,6 +2158,7 @@ def build_gallery_from_directory(face_net, recognition_net, directory: str | Pat
 
 
 def _detect_face_landmarker(landmarker, face_bgr: np.ndarray):
+    """Run MediaPipe FaceLandmarker on one face crop with thread-safe locking."""
     face_rgb = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2RGB)
     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=face_rgb)
     with _lock_for(landmarker):
@@ -2088,7 +2191,7 @@ def predict_mask_mobilenetv2(net, face_bgr: np.ndarray) -> str:
     face_rgb = cv2.cvtColor(cv2.resize(face_bgr, (224, 224)), cv2.COLOR_BGR2RGB).astype(np.float32)
     face_norm = face_rgb / 127.5 - 1.0
     with _lock_for(net):
-        probs = net.predict(face_norm[np.newaxis, ...], verbose=0).flatten()
+        probs = net(face_norm[np.newaxis, ...], training=False).numpy().flatten()
     return MASK_LABELS[int(np.argmax(probs))]
 
 
@@ -2242,6 +2345,7 @@ def predict_head_pose_mediapipe(landmarker, face_bgr: np.ndarray, result=None) -
 
 
 def _record_model_latency(metrics: dict | None, feature: str, model: str, started: float) -> None:
+    """Append per-model inference latency (ms) to metrics dict for performance monitoring."""
     if metrics is None:
         return
     metrics.setdefault("model_latency_ms", {}).setdefault(f"{feature}/{model}", []).append(
@@ -2411,20 +2515,31 @@ def analyze_frame(
     yolo_net = models.yolo_face_nets.get("yolo")
     scrfd_net = models.scrfd_face_nets.get("scrfd")
     retinaface_net = models.retinaface_nets.get("retinaface")
+    # Detection runs on the whole frame and is independent of which classifiers are active,
+    # but Streamlit reruns this whole function on every unrelated widget interaction (a model
+    # checkbox toggle, an export button) even when the frame bytes are unchanged. Route through
+    # _cached_face_predict (it hashes whatever ndarray it's given, not just face crops) so a
+    # rerun with the same frame + conf_threshold + detector reuses last run's boxes instead of
+    # re-running the detector network. Video/webcam frames differ every call, so this is a
+    # pure win there too -- worst case is one wasted hash per frame, never a wrong cache hit.
+    # conf_threshold is folded into model_key (not just passed as an arg) because
+    # _cached_face_predict's cache key is (feature, model_key, frame hash) -- it does not hash
+    # predict_fn's *args, so a bare "yolo" key would wrongly reuse boxes from a different
+    # confidence threshold.
     if face_detector == "yolo" and yolo_net is not None:
-        face_boxes = detect_faces_yolo(yolo_net, frame, conf_threshold)
+        face_boxes = _cached_face_predict("face_detection", f"yolo:{conf_threshold}", frame, detect_faces_yolo, yolo_net, frame, conf_threshold)
     elif face_detector == "scrfd" and scrfd_net is not None:
-        face_boxes = detect_faces_scrfd(scrfd_net, frame, conf_threshold)
+        face_boxes = _cached_face_predict("face_detection", f"scrfd:{conf_threshold}", frame, detect_faces_scrfd, scrfd_net, frame, conf_threshold)
     elif face_detector == "retinaface" and retinaface_net is not None:
-        face_boxes = detect_faces_retinaface(retinaface_net, frame, conf_threshold)
+        face_boxes = _cached_face_predict("face_detection", f"retinaface:{conf_threshold}", frame, detect_faces_retinaface, retinaface_net, frame, conf_threshold)
     else:
-        face_boxes = detect_faces(models.face_net, frame, conf_threshold)
+        face_boxes = _cached_face_predict("face_detection", f"ssd:{conf_threshold}", frame, detect_faces, models.face_net, frame, conf_threshold)
     track_ids = tracker.update(face_boxes) if tracker is not None else [None] * len(face_boxes)
     cropped_faces = []
     hands_detected = False
     hand_net = models.hand_nets.get("mediapipe")
     if hand_net is not None and "mediapipe" in active_hands:
-        hands = detect_hand_landmarks_mediapipe(hand_net, frame)
+        hands = _cached_face_predict("hand_landmarks", "mediapipe", frame, detect_hand_landmarks_mediapipe, hand_net, frame)
         if hands:
             hands_detected = True
             draw_hand_landmarks(annotated_frame, hands)
@@ -2434,19 +2549,19 @@ def analyze_frame(
 
     eye_cascade = models.eye_color_nets.get("colorimetric")
 
-    # Trained once per frame, not once per face -- LBPH has no persisted model, retraining per
-    # face would multiply an already-nontrivial cost by the face count for no benefit.
+    # Train LBPH once per frame, not per face -- prevents M x face_count redundant training calls.
     lbph_trained = train_lbph_recognizer() if "lbph" in active_recognition and models.recognition_nets.get("lbph") else None
 
     for idx, ((x1, y1, x2, y2), track_id) in enumerate(zip(face_boxes, track_ids), 1):
-        # Correct in-plane roll (tilted head) before cropping/classifying, using the same
-        # eye cascade for roll alignment -- no new model/dependency. crop_frame/cx*/cy*
-        # are the rotation-corrected region+box; x1..y2 stay untouched for the box overlay
-        # drawn on annotated_frame further below.
+        # Straighten tilted heads (in-plane roll) before classification. Asymmetric head poses
+        # can confuse some classifiers. No new model dependency -- reuses the eye cascade.
         crop_frame, (cx1, cy1, cx2, cy2) = frame, (x1, y1, x2, y2)
         if eye_cascade is not None:
             probe = frame[max(0, y1 - 20):min(y2 + 20, frame.shape[0]), max(0, x1 - 20):min(x2 + 20, frame.shape[1])]
-            angle = _estimate_roll_angle(probe, eye_cascade) if probe.size else None
+            # Same content-addressed memoization as face detection above: identical probe
+            # bytes always yield the same angle, so a rerun with an unchanged face region
+            # (e.g. from a toggled model checkbox) skips the Haar cascade re-scan.
+            angle = _cached_face_predict("roll_angle", "haarcascade", probe, _estimate_roll_angle, probe, eye_cascade) if probe.size else None
             if angle is not None and abs(angle) > 3:  # skip work for near-level faces
                 crop_frame, (cx1, cy1, cx2, cy2) = _rotate_region(frame, (x1, y1, x2, y2), angle)
 

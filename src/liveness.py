@@ -14,6 +14,8 @@ TEXTURE_ARTIFACT_THRESHOLD = 0.72
 
 @dataclass(frozen=True)
 class LivenessResult:
+    """Liveness assessment result for a face."""
+
     status: str
     blink_count: int
     blink_rate: float | None
@@ -22,12 +24,15 @@ class LivenessResult:
 
     @property
     def summary(self) -> str:
+        """Return human-readable liveness summary."""
         rate = "n/a" if self.blink_rate is None else f"{self.blink_rate:.1f}/min"
         return f"{self.status} (blinks={self.blink_count}, rate={rate}, texture={self.texture_score:.2f})"
 
 
 @dataclass
 class _TrackState:
+    """Temporal state for tracking blinks in one face."""
+
     first_seen: float
     last_seen: float
     eye_closed: bool = False
@@ -36,6 +41,10 @@ class _TrackState:
 
 
 def _axis_differences(gray: Sequence[Sequence[float]], step: int) -> tuple[list[float], list[float]]:
+    """Compute pixel differences along adjacent and periodic step offsets.
+
+    Returns (adjacent_diffs, periodic_diffs) for horizontal and vertical axes.
+    """
     adjacent: list[float] = []
     repeated: list[float] = []
     for row in gray:
@@ -71,6 +80,7 @@ def texture_artifact_score(gray: Sequence[Sequence[float]]) -> float:
     adjacent_mean = fmean(adjacent)
     high_frequency = min(1.0, adjacent_mean / 85.0)
     repeated_mean = fmean(repeated) if repeated else adjacent_mean
+    # Avoid division by zero when adjacent_mean is near 0 (uniform texture).
     periodicity = max(0.0, 1.0 - repeated_mean / (adjacent_mean + 1e-6))
     return max(0.0, min(1.0, high_frequency * periodicity))
 
@@ -95,6 +105,7 @@ def _make_result(
     texture_score: float,
     texture_threshold: float,
 ) -> LivenessResult:
+    """Build a LivenessResult from blink, elapsed time, and texture metrics."""
     texture_artifact = texture_score >= texture_threshold
     if texture_artifact:
         status = "SUSPECTED SPOOF"
@@ -119,6 +130,7 @@ class LivenessTracker:
         blink_threshold: float = BLINK_THRESHOLD,
         texture_threshold: float = TEXTURE_ARTIFACT_THRESHOLD,
     ) -> None:
+        """Initialize liveness tracker with detection thresholds."""
         self._blink_threshold = blink_threshold
         self._texture_threshold = texture_threshold
         self._states: dict[int, _TrackState] = {}
@@ -138,6 +150,7 @@ class LivenessTracker:
             if state is None:
                 state = _TrackState(timestamp, timestamp)
                 self._states[track_id] = state
+            # Enforce monotonic time to handle out-of-order frame processing.
             timestamp = max(timestamp, state.last_seen)
             is_closed = blink_score is not None and blink_score >= self._blink_threshold
             if blink_score is not None:
@@ -151,5 +164,6 @@ class LivenessTracker:
             return _make_result(state.blink_count, elapsed, texture_score, self._texture_threshold)
 
     def reset(self) -> None:
+        """Clear all tracked face states."""
         with self._lock:
             self._states.clear()
