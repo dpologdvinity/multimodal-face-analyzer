@@ -7,6 +7,7 @@ APP_SOURCE = Path(__file__).parents[1] / "src" / "app.py"
 
 class AppPresentationSourceTests(unittest.TestCase):
     def test_image_output_has_bounded_view_and_fullscreen_viewer(self):
+        """Verify display width and image preview dialog are wired."""
         source = APP_SOURCE.read_text()
 
         self.assertIn('@st.dialog("IMAGE PREVIEW", width="large")', source)
