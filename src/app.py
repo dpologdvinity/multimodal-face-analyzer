@@ -281,20 +281,22 @@ except Exception as e:
     st.error(f"[SYSTEM ERROR] Failed to load models: {e}")
     st.stop()
 
-def _model_checkboxes(label: str, nets: dict, container=None) -> set:
+def _model_checkboxes(label: str, nets: dict, container=None, help: str | None = None) -> set:
     """Render one checkbox per loaded model for a feature; return the set of checked keys."""
     active = set()
     if not nets:
         return active
     container = container if container is not None else st.sidebar
     container.markdown(f"**{label}**")
+    if help:
+        container.caption(help)
     for key in nets:
         if container.checkbox(key.upper(), value=True, key=f"chk_{label}_{key}"):
             active.add(key)
     return active
 
 
-def _landmark_enable_button(label: str, nets: dict, state_key: str, container=None) -> set:
+def _landmark_enable_button(label: str, nets: dict, state_key: str, container=None, help: str | None = None) -> set:
     """Expose one clear on/off control for each landmark family."""
     if not nets:
         return set()
@@ -302,6 +304,8 @@ def _landmark_enable_button(label: str, nets: dict, state_key: str, container=No
     enabled = st.session_state.setdefault(state_key, True)
     button_label = f"DISABLE {label}" if enabled else f"ENABLE {label}"
     container.markdown(f"**{label}**")
+    if help:
+        container.caption(help)
     if container.button(button_label, key=f"enable_{state_key}", use_container_width=True):
         st.session_state[state_key] = not enabled
         st.rerun()
@@ -328,26 +332,35 @@ with st.sidebar.expander("DETECTION", expanded=True):
         )
 
 with st.sidebar.expander("CLASSIFICATION", expanded=True):
-    active_age = _model_checkboxes("AGE", models.age_nets, st)
-    active_gender = _model_checkboxes("GENDER", models.gender_nets, st)
-    active_race = _model_checkboxes("RACE", models.race_nets, st)
-    active_emotion = _model_checkboxes("EMOTION", models.emotion_nets, st)
-    active_glasses = _model_checkboxes("GLASSES", models.glasses_nets, st)
-    active_mask = _model_checkboxes("MASK", models.mask_nets, st)
-    active_hair_color = _model_checkboxes("HAIR COLOR", models.hair_color_nets, st)
-    active_eye_color = _model_checkboxes("EYE COLOR", models.eye_color_nets, st)
+    active_age = _model_checkboxes("AGE", models.age_nets, st, help="Estimated age per detected face.")
+    active_gender = _model_checkboxes("GENDER", models.gender_nets, st, help="Predicted gender per detected face.")
+    active_race = _model_checkboxes("RACE", models.race_nets, st, help="Predicted race/ethnicity; close top-2 predictions are shown together.")
+    active_emotion = _model_checkboxes("EMOTION", models.emotion_nets, st, help="Predicted facial expression (7 categories).")
+    active_glasses = _model_checkboxes("GLASSES", models.glasses_nets, st, help="Detects whether the face is wearing glasses.")
+    active_mask = _model_checkboxes("MASK", models.mask_nets, st, help="Detects whether the face is wearing a mask.")
+    active_hair_color = _model_checkboxes("HAIR COLOR", models.hair_color_nets, st, help="Estimated dominant hair color.")
+    active_eye_color = _model_checkboxes("EYE COLOR", models.eye_color_nets, st, help="Estimated dominant eye color.")
 
 with st.sidebar.expander("IDENTITY & BIOMETRICS", expanded=False):
-    active_recognition = _model_checkboxes("RECOGNITION", models.recognition_nets, st)
-    active_liveness = _model_checkboxes("LIVENESS", models.liveness_nets, st)
+    active_recognition = _model_checkboxes("RECOGNITION", models.recognition_nets, st, help="Matches faces against the saved gallery/identity search directories.")
+    active_liveness = _model_checkboxes("LIVENESS", models.liveness_nets, st, help="Blink-based liveness check to flag still-photo spoofing.")
     if models.liveness_nets:
         st.caption("Liveness only runs in Webcam / LIVE -- a single image has no blinks to check.")
-    active_gaze = _model_checkboxes("GAZE", models.gaze_nets, st)
+    active_gaze = _model_checkboxes("GAZE", models.gaze_nets, st, help="Estimated gaze direction per detected face.")
 
 with st.sidebar.expander("LANDMARKS & EXPERIMENTAL", expanded=False):
-    active_colorization = _model_checkboxes("AUTO-COLORIZE B&W", models.colorization_nets, st)
-    active_face_landmarks = _landmark_enable_button("FACE LANDMARKS", models.face_landmarks_nets, "face_landmarks_enabled", st)
-    active_hands = _landmark_enable_button("HAND LANDMARKS", models.hand_nets, "hand_landmarks_enabled", st)
+    active_colorization = _model_checkboxes(
+        "AUTO-COLORIZE B&W", models.colorization_nets, st,
+        help="Converts detected grayscale source images to color before face detection runs.",
+    )
+    active_face_landmarks = _landmark_enable_button(
+        "FACE LANDMARKS", models.face_landmarks_nets, "face_landmarks_enabled", st,
+        help="Overlays facial mesh/keypoints on each detected face.",
+    )
+    active_hands = _landmark_enable_button(
+        "HAND LANDMARKS", models.hand_nets, "hand_landmarks_enabled", st,
+        help="Overlays hand keypoints on the whole frame, independent of face detection.",
+    )
 
 
 def _reset_adjustments(prefixes: tuple[str, ...]) -> None:
