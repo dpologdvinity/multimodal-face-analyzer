@@ -194,7 +194,8 @@ RACE_LABELS_FAIRFACE = ['White', 'Black', 'Latino_Hispanic', 'East Asian', 'Sout
 RACE_LABELS_DEEPFACE = ['asian', 'indian', 'black', 'white', 'middle eastern', 'latino hispanic']
 RACE_CLOSE_MARGIN = 0.10  # show top-2 race classes together if within this probability margin
 RECOGNITION_COSINE_THRESHOLD = 0.68  # deepface's own default VGG-Face verification threshold
-DEX_MEAN_VALUES = (103.939, 116.779, 123.68)  # VGG-16 ImageNet BGR mean, per DEX's own preprocessing
+DEX_MEAN_VALUES = (103.939, 116.779, 123.68)  # Existing VGG/ImageNet BGR channel-mean approximation.
+DEX_MAX_AGE_SD = 10.0  # Display heuristic in years, not a calibrated error/confidence bound.
 GALLERY_FILE = BASE_DIR / "gallery" / "known_faces.json"
 LBPH_GALLERY_DIR = BASE_DIR / "gallery" / "lbph"
 LBPH_FACE_SIZE = (200, 200)
@@ -1418,14 +1419,39 @@ def predict_age_ssrnet(net, face_bgr: np.ndarray) -> str:
     return f"{age:.0f}"
 
 
+def crop_face_dex(frame: np.ndarray, box: tuple[int, int, int, int]) -> np.ndarray:
+    """Extract DEX's 40% width/height margins, replicating missing edge pixels.
+
+    Translate the reference extractSubImage.m crop to zero-based exclusive boxes.
+    Use the original detector box without the shared padding or roll correction.
+    """
+    x1, y1, x2, y2 = box
+    pad_x, pad_y = round((x2 - x1) * 0.4), round((y2 - y1) * 0.4)
+    left, top, right, bottom = x1 - pad_x, y1 - pad_y, x2 + pad_x, y2 + pad_y
+    height, width = frame.shape[:2]
+    crop = frame[max(0, top):min(height, bottom), max(0, left):min(width, right)]
+    return cv2.copyMakeBorder(crop, max(0, -top), max(0, bottom - height),
+                              max(0, -left), max(0, right - width), cv2.BORDER_REPLICATE)
+
+
 def predict_age_dex(net, face_bgr: np.ndarray) -> str:
     """Predict a continuous age with DEX (Deep EXpectation): 101-class softmax over ages 0-100,
     decoded as an expected value (weighted sum of class centers), not argmax."""
     blob = cv2.dnn.blobFromImage(face_bgr, 1.0, (224, 224), DEX_MEAN_VALUES, swapRB=False, crop=False)
     with _lock_for(net):
         net.setInput(blob)
-        probs = net.forward().flatten()
-    age = sum(p * i for i, p in enumerate(probs))
+        probs = net.forward().flatten().astype(np.float64)
+    if probs.size != 101 or not np.isfinite(probs).all() or (probs < 0).any():
+        return "unknown"
+    total = probs.sum()
+    if not np.isfinite(total) or total <= 0:
+        return "unknown"
+    probs /= total
+    years = np.arange(101)
+    age = float(probs @ years)
+    spread = float(np.sqrt(probs @ ((years - age) ** 2)))
+    if spread > DEX_MAX_AGE_SD:
+        return f"uncertain (mean {age:.0f}, SD {spread:.0f})"
     return f"{age:.0f}"
 
 
@@ -2615,7 +2641,10 @@ def analyze_frame(
                 elif key == "fairface":
                     value = predict_age_fairface(net, crop_frame, (cx1, cy1, cx2, cy2), fairface_landmarks)
                 elif key == "dex":
-                    value = _cached_face_predict("age", key, face, predict_age_dex, net, face)
+                    dex_face = crop_face_dex(frame, (x1, y1, x2, y2))
+                    if face_adjustments and any(face_adjustments.values()):
+                        dex_face = apply_image_adjustments(dex_face, face_adjustments)
+                    value = _cached_face_predict("age", key, dex_face, predict_age_dex, net, dex_face)
                 elif key == "mivolo":
                     value = predict_age_mivolo(net, face, body)
                 else:

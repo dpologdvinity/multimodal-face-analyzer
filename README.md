@@ -79,6 +79,15 @@ roll correction rotates in the direction that levels the detected eye line.
 
 `dex` (Deep EXpectation, Rothe et al. ICCV 2015) is a VGG-16 trained on IMDB-WIKI, a heavy age option (513MB caffemodel). **Research/academic-use license** (ETH Zurich, IMDB-WIKI-derived) -- not for commercial deployments without independent licensing.
 
+DEX uses the original detector box with 40% margins on each axis and replicated image edges,
+matching the authors' [crop extraction](https://data.vision.ee.ethz.ch/cvl/rrothe/imdb-wiki/static/extractSubImage.m).
+The input remains 224x224 BGR with the existing ImageNet channel-mean approximation; it does
+not use landmark warping or Haar roll correction. Age is the normalized expectation over
+101 probabilities, as specified by the [authors](https://data.vision.ee.ethz.ch/cvl/rrothe/imdb-wiki/).
+Invalid distributions return `unknown`. Distributions with standard deviation above 10 years
+show `uncertain (mean ..., SD ...)` instead of a bare age. This is an uncalibrated display
+heuristic, not a confidence interval or proof that narrower predictions are correct.
+
 `mivolo` (MiVOLO: Multi-input Transformer for Age/Gender, Apache 2.0, WildChlamydia/MiVOLO) is a vision transformer that runs in face-only mode (no body context in this pipeline), sharing one checkpoint with the gender backend. Accuracy is ~4.24 years age MAE (face-only mode); heaviest option (~110MB checkpoint plus ultralytics/timm dependencies). Web app only.
 
 ### Gender
