@@ -26,6 +26,15 @@ os.environ.setdefault("TF_ENABLE_ONEDNN_OPTS", "0")
 os.environ.setdefault("CUDA_VISIBLE_DEVICES", "-1")  # no GPU in this environment; skip cuInit probe entirely rather than logging its failure
 os.environ.setdefault("GLOG_minloglevel", "2")  # silence glog/absl banners emitted by mediapipe's C++ backend
 
+import warnings
+
+# Vendored net code (src/nets/) uses APIs (torch.jit.script, torchvision positional
+# `weights`, Keras `input_shape` on non-Input layers) that only emit deprecation noise --
+# not actionable here since that code isn't ours to change. Silence before those modules import.
+warnings.filterwarnings("ignore", category=FutureWarning, module="torch.jit")
+warnings.filterwarnings("ignore", category=UserWarning, module="torchvision")
+warnings.filterwarnings("ignore", category=UserWarning, message=r".*input_shape.*")
+
 import cv2
 import numpy as np
 
