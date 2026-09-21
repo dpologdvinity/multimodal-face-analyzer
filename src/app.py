@@ -214,6 +214,23 @@ st.markdown(
         overflow: auto;
         box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
     }
+    .face-hover-label {
+        position: absolute;
+        top: 0;
+        left: 0;
+        transform: translateY(-100%);
+        background: rgba(0, 0, 0, 0.72);
+        color: var(--accent);
+        font-size: 0.65rem;
+        padding: 2px 6px;
+        border-radius: 4px 4px 0 0;
+        white-space: nowrap;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        pointer-events: none;
+        z-index: 2;
+    }
     @media (max-width: 640px) {
         .block-container { padding: 1.25rem 1rem 3rem; }
         .app-hero { padding-left: 1rem; margin-bottom: 1.5rem; }
@@ -264,20 +281,22 @@ except Exception as e:
     st.error(f"[SYSTEM ERROR] Failed to load models: {e}")
     st.stop()
 
-def _model_checkboxes(label: str, nets: dict, container=None) -> set:
+def _model_checkboxes(label: str, nets: dict, container=None, help: str | None = None) -> set:
     """Render one checkbox per loaded model for a feature; return the set of checked keys."""
     active = set()
     if not nets:
         return active
     container = container if container is not None else st.sidebar
     container.markdown(f"**{label}**")
+    if help:
+        container.caption(help)
     for key in nets:
         if container.checkbox(key.upper(), value=True, key=f"chk_{label}_{key}"):
             active.add(key)
     return active
 
 
-def _landmark_enable_button(label: str, nets: dict, state_key: str, container=None) -> set:
+def _landmark_enable_button(label: str, nets: dict, state_key: str, container=None, help: str | None = None) -> set:
     """Expose one clear on/off control for each landmark family."""
     if not nets:
         return set()
@@ -285,6 +304,8 @@ def _landmark_enable_button(label: str, nets: dict, state_key: str, container=No
     enabled = st.session_state.setdefault(state_key, True)
     button_label = f"DISABLE {label}" if enabled else f"ENABLE {label}"
     container.markdown(f"**{label}**")
+    if help:
+        container.caption(help)
     if container.button(button_label, key=f"enable_{state_key}", use_container_width=True):
         st.session_state[state_key] = not enabled
         st.rerun()
@@ -311,26 +332,35 @@ with st.sidebar.expander("DETECTION", expanded=True):
         )
 
 with st.sidebar.expander("CLASSIFICATION", expanded=True):
-    active_age = _model_checkboxes("AGE", models.age_nets, st)
-    active_gender = _model_checkboxes("GENDER", models.gender_nets, st)
-    active_race = _model_checkboxes("RACE", models.race_nets, st)
-    active_emotion = _model_checkboxes("EMOTION", models.emotion_nets, st)
-    active_glasses = _model_checkboxes("GLASSES", models.glasses_nets, st)
-    active_mask = _model_checkboxes("MASK", models.mask_nets, st)
-    active_hair_color = _model_checkboxes("HAIR COLOR", models.hair_color_nets, st)
-    active_eye_color = _model_checkboxes("EYE COLOR", models.eye_color_nets, st)
+    active_age = _model_checkboxes("AGE", models.age_nets, st, help="Estimated age per detected face.")
+    active_gender = _model_checkboxes("GENDER", models.gender_nets, st, help="Predicted gender per detected face.")
+    active_race = _model_checkboxes("RACE", models.race_nets, st, help="Predicted race/ethnicity; close top-2 predictions are shown together.")
+    active_emotion = _model_checkboxes("EMOTION", models.emotion_nets, st, help="Predicted facial expression (7 categories).")
+    active_glasses = _model_checkboxes("GLASSES", models.glasses_nets, st, help="Detects whether the face is wearing glasses.")
+    active_mask = _model_checkboxes("MASK", models.mask_nets, st, help="Detects whether the face is wearing a mask.")
+    active_hair_color = _model_checkboxes("HAIR COLOR", models.hair_color_nets, st, help="Estimated dominant hair color.")
+    active_eye_color = _model_checkboxes("EYE COLOR", models.eye_color_nets, st, help="Estimated dominant eye color.")
 
 with st.sidebar.expander("IDENTITY & BIOMETRICS", expanded=False):
-    active_recognition = _model_checkboxes("RECOGNITION", models.recognition_nets, st)
-    active_liveness = _model_checkboxes("LIVENESS", models.liveness_nets, st)
+    active_recognition = _model_checkboxes("RECOGNITION", models.recognition_nets, st, help="Matches faces against the saved gallery/identity search directories.")
+    active_liveness = _model_checkboxes("LIVENESS", models.liveness_nets, st, help="Blink-based liveness check to flag still-photo spoofing.")
     if models.liveness_nets:
         st.caption("Liveness only runs in Webcam / LIVE -- a single image has no blinks to check.")
-    active_gaze = _model_checkboxes("GAZE", models.gaze_nets, st)
+    active_gaze = _model_checkboxes("GAZE", models.gaze_nets, st, help="Estimated gaze direction per detected face.")
 
 with st.sidebar.expander("LANDMARKS & EXPERIMENTAL", expanded=False):
-    active_colorization = _model_checkboxes("AUTO-COLORIZE B&W", models.colorization_nets, st)
-    active_face_landmarks = _landmark_enable_button("FACE LANDMARKS", models.face_landmarks_nets, "face_landmarks_enabled", st)
-    active_hands = _landmark_enable_button("HAND LANDMARKS", models.hand_nets, "hand_landmarks_enabled", st)
+    active_colorization = _model_checkboxes(
+        "AUTO-COLORIZE B&W", models.colorization_nets, st,
+        help="Converts detected grayscale source images to color before face detection runs.",
+    )
+    active_face_landmarks = _landmark_enable_button(
+        "FACE LANDMARKS", models.face_landmarks_nets, "face_landmarks_enabled", st,
+        help="Overlays facial mesh/keypoints on each detected face.",
+    )
+    active_hands = _landmark_enable_button(
+        "HAND LANDMARKS", models.hand_nets, "hand_landmarks_enabled", st,
+        help="Overlays hand keypoints on the whole frame, independent of face detection.",
+    )
 
 
 def _reset_adjustments(prefixes: tuple[str, ...]) -> None:
@@ -421,6 +451,17 @@ def _target_card_html(face: dict) -> str:
     return f'<div class="target-card"><div class="target-card-id">FACE {face["idx"]:02d}</div>{rows}</div>'
 
 
+def _one_line_summary(face: dict) -> str:
+    """Compact always-visible label for a face box -- feature: output pairs, no model names."""
+    seen = {}
+    for result in sorted(face.get("model_results", []), key=lambda row: (row["Feature"], row["Model"])):
+        seen.setdefault(result["Feature"], result["Output"])
+    if not seen:
+        return f"F{face['idx']:02d}"
+    parts = "  ".join(f"{feature}: {output}" for feature, output in seen.items())
+    return f"F{face['idx']:02d}  {parts}"
+
+
 def _hoverable_face_image(frame_bgr: np.ndarray, faces: list[dict]) -> str:
     """Render the annotated frame with focusable hover regions over detected boxes."""
     height, width = frame_bgr.shape[:2]
@@ -438,6 +479,7 @@ def _hoverable_face_image(frame_bgr: np.ndarray, faces: list[dict]) -> str:
         targets.append(
             f'<div class="face-hover-target{placement}" style="{style}" tabindex="0" '
             f'aria-label="Face {face["idx"]}: hover or focus for details">'
+            f'<div class="face-hover-label">{escape(_one_line_summary(face))}</div>'
             f'<div class="face-hover-info">{_target_card_html(face)}</div></div>'
         )
     return (
@@ -655,22 +697,6 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
                                        file_name=f"face_{face['idx']}_processed.png", mime="image/png",
                                        key=f"image_op_dl_{identifier}_{face['idx']}")
             st.markdown(_target_card_html(face), unsafe_allow_html=True)
-            lbph_available = models.recognition_nets.get("lbph") is not None
-            if face["embedding"] is not None or lbph_available:
-                enroll_name = st.text_input("ENROLL AS", key=f"enroll_name_{identifier}_{face['idx']}", label_visibility="collapsed", placeholder="ENROLL AS...")
-                if st.button("ENROLL", key=f"enroll_btn_{identifier}_{face['idx']}") and enroll_name:
-                    try:
-                        safe_name = inference.validate_lbph_name(enroll_name) if lbph_available else enroll_name.strip()
-                        if not safe_name:
-                            raise ValueError("Enrollment name cannot be empty.")
-                        if face["embedding"] is not None:
-                            st.session_state["gallery"][safe_name] = np.array(face["embedding"], dtype=np.float32)
-                            inference.save_gallery(st.session_state["gallery"])
-                        if lbph_available:
-                            inference.enroll_lbph_face(safe_name, cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR))
-                        st.rerun()
-                    except ValueError as exc:
-                        st.error(f"[INVALID ENROLLMENT] {exc}")
 
             col_search, col_save = st.columns(2)
             if col_search.button("SEARCH", key=f"search_btn_{identifier}_{face['idx']}"):
@@ -693,46 +719,69 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
                 saved_id = inference.save_face(face_bgr, face["raw_columns"])
                 st.info(f"[ SAVED ] ID {saved_id}")
 
-            if models.reconstruction_3d_nets:
-                if st.button("3D RECON", key=f"recon3d_btn_{identifier}_{face['idx']}"):
-                    face_bgr = cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR)
-                    result = inference.run_3d_reconstruction(models, face_bgr)
-                    if result is None:
-                        st.warning("[ NO RECONSTRUCTION ] -- no face landmarks found in this crop")
-                    else:
-                        vertices, faces, colors = result
-                        obj_text = inference.mesh_to_obj_str(vertices, faces, colors)
-                        st.download_button(
-                            "DOWNLOAD .OBJ", data=obj_text, file_name=f"face_{identifier}_{face['idx']}.obj",
-                            mime="text/plain", key=f"recon3d_dl_{identifier}_{face['idx']}",
-                        )
+            lbph_available = models.recognition_nets.get("lbph") is not None
+            has_more_actions = (
+                face["embedding"] is not None or lbph_available
+                or models.reconstruction_3d_nets or models.age_progression_nets
+            )
+            if has_more_actions:
+                with st.expander("MORE ACTIONS", expanded=False):
+                    if face["embedding"] is not None or lbph_available:
+                        enroll_name = st.text_input("ENROLL AS", key=f"enroll_name_{identifier}_{face['idx']}", label_visibility="collapsed", placeholder="ENROLL AS...")
+                        if st.button("ENROLL", key=f"enroll_btn_{identifier}_{face['idx']}") and enroll_name:
+                            try:
+                                safe_name = inference.validate_lbph_name(enroll_name) if lbph_available else enroll_name.strip()
+                                if not safe_name:
+                                    raise ValueError("Enrollment name cannot be empty.")
+                                if face["embedding"] is not None:
+                                    st.session_state["gallery"][safe_name] = np.array(face["embedding"], dtype=np.float32)
+                                    inference.save_gallery(st.session_state["gallery"])
+                                if lbph_available:
+                                    inference.enroll_lbph_face(safe_name, cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR))
+                                st.rerun()
+                            except ValueError as exc:
+                                st.error(f"[INVALID ENROLLMENT] {exc}")
 
-            if models.age_progression_nets:
-                st.caption("AGE PROGRESSION (non-commercial use only -- see README)")
-                col_src_age, col_tgt_age = st.columns(2)
-                source_age = col_src_age.number_input(
-                    "Source age", min_value=0, max_value=100, value=30,
-                    key=f"reage_src_{identifier}_{face['idx']}",
-                )
-                target_age = col_tgt_age.number_input(
-                    "Target age", min_value=0, max_value=100, value=60,
-                    key=f"reage_tgt_{identifier}_{face['idx']}",
-                )
-                if st.button("AGE PROGRESSION", key=f"reage_btn_{identifier}_{face['idx']}"):
-                    face_bgr = cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR)
-                    aged_bgr = inference.run_age_progression(models, face_bgr, source_age, target_age)
-                    st.session_state[f"reage_result_{identifier}_{face['idx']}"] = aged_bgr
-                result_key = f"reage_result_{identifier}_{face['idx']}"
-                if result_key in st.session_state:
-                    aged_bgr = st.session_state[result_key]
-                    col_before, col_after = st.columns(2)
-                    col_before.image(face["image"], caption="Before")
-                    col_after.image(cv2.cvtColor(aged_bgr, cv2.COLOR_BGR2RGB), caption="After")
-                    st.download_button(
-                        "DOWNLOAD AGED PNG", cv2.imencode(".png", aged_bgr)[1].tobytes(),
-                        file_name=f"face_{identifier}_{face['idx']}_aged.png", mime="image/png",
-                        key=f"reage_dl_{identifier}_{face['idx']}",
-                    )
+                    if models.reconstruction_3d_nets:
+                        if st.button("3D RECON", key=f"recon3d_btn_{identifier}_{face['idx']}"):
+                            face_bgr = cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR)
+                            result = inference.run_3d_reconstruction(models, face_bgr)
+                            if result is None:
+                                st.warning("[ NO RECONSTRUCTION ] -- no face landmarks found in this crop")
+                            else:
+                                vertices, faces, colors = result
+                                obj_text = inference.mesh_to_obj_str(vertices, faces, colors)
+                                st.download_button(
+                                    "DOWNLOAD .OBJ", data=obj_text, file_name=f"face_{identifier}_{face['idx']}.obj",
+                                    mime="text/plain", key=f"recon3d_dl_{identifier}_{face['idx']}",
+                                )
+
+                    if models.age_progression_nets:
+                        st.caption("AGE PROGRESSION (non-commercial use only -- see README)")
+                        col_src_age, col_tgt_age = st.columns(2)
+                        source_age = col_src_age.number_input(
+                            "Source age", min_value=0, max_value=100, value=30,
+                            key=f"reage_src_{identifier}_{face['idx']}",
+                        )
+                        target_age = col_tgt_age.number_input(
+                            "Target age", min_value=0, max_value=100, value=60,
+                            key=f"reage_tgt_{identifier}_{face['idx']}",
+                        )
+                        if st.button("AGE PROGRESSION", key=f"reage_btn_{identifier}_{face['idx']}"):
+                            face_bgr = cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR)
+                            aged_bgr = inference.run_age_progression(models, face_bgr, source_age, target_age)
+                            st.session_state[f"reage_result_{identifier}_{face['idx']}"] = aged_bgr
+                        result_key = f"reage_result_{identifier}_{face['idx']}"
+                        if result_key in st.session_state:
+                            aged_bgr = st.session_state[result_key]
+                            col_before, col_after = st.columns(2)
+                            col_before.image(face["image"], caption="Before")
+                            col_after.image(cv2.cvtColor(aged_bgr, cv2.COLOR_BGR2RGB), caption="After")
+                            st.download_button(
+                                "DOWNLOAD AGED PNG", cv2.imencode(".png", aged_bgr)[1].tobytes(),
+                                file_name=f"face_{identifier}_{face['idx']}_aged.png", mime="image/png",
+                                key=f"reage_dl_{identifier}_{face['idx']}",
+                            )
 
 
 global_adjustments = {
