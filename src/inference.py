@@ -1673,6 +1673,47 @@ def _format_results(pairs: list[tuple[str, str]]) -> list[str]:
     return [value for _, value in pairs]
 
 
+CONTINUOUS_AGE_MODELS = frozenset(("insightface", "ssrnet", "dex", "mivolo"))
+AGE_CONSENSUS_MAX_RANGE = 10.0  # Agreement gate in years; not a calibrated accuracy bound.
+
+
+def conservative_age_consensus(age_pairs: list[tuple[str, str]]) -> str | None:
+    """Return a consensus only when at least two continuous models closely agree.
+
+    Bucketed ages, DEX's explicit uncertainty label, malformed values, and model disagreements
+    stay visible as individual results but do not produce a misleading combined estimate.
+    """
+    numeric_ages = []
+    for model_key, value in age_pairs:
+        if model_key not in CONTINUOUS_AGE_MODELS:
+            continue
+        try:
+            age = float(value)
+        except (TypeError, ValueError):
+            continue
+        if np.isfinite(age) and 0 <= age <= 122:
+            numeric_ages.append(age)
+    if len(numeric_ages) < 2:
+        return None
+    spread = max(numeric_ages) - min(numeric_ages)
+    if spread > AGE_CONSENSUS_MAX_RANGE:
+        return None
+    consensus = round(float(np.median(numeric_ages)))
+    return f"{consensus} ({len(numeric_ages)} models agree within {spread:.0f}y)"
+
+
+def age_model_results(age_pairs: list[tuple[str, str]]) -> list[dict[str, str]]:
+    """Build display rows while retaining individual age outputs beside consensus."""
+    rows = [
+        {"Feature": "AGE", "Model": model, "Output": str(value)}
+        for model, value in age_pairs
+    ]
+    consensus = conservative_age_consensus(age_pairs)
+    if consensus is not None:
+        rows.append({"Feature": "AGE", "Model": "consensus", "Output": consensus})
+    return rows
+
+
 def _softmax(x: np.ndarray) -> np.ndarray:
     """Numerically stable softmax (shift by max to prevent overflow)."""
     exp = np.exp(x - np.max(x))
@@ -2828,6 +2869,7 @@ def analyze_frame(
         }
 
         age_pairs = futures["age"].result()
+        age_consensus = conservative_age_consensus(age_pairs)
         gender_pairs = futures["gender"].result()
         emotion_pairs = futures["emotion"].result()
         race_pairs = futures["race"].result()
@@ -2870,10 +2912,10 @@ def analyze_frame(
             "hair_color": hair_color_pairs, "eye_color": eye_color_pairs,
             "liveness": liveness_pairs,
         })
-        model_results = [
+        model_results = age_model_results(age_pairs) + [
             {"Feature": feature.replace("_", " ").upper(), "Model": model, "Output": str(value)}
             for feature, pairs in {
-                "age": age_pairs, "gender": gender_pairs, "race": race_pairs, "emotion": emotion_pairs,
+                "gender": gender_pairs, "race": race_pairs, "emotion": emotion_pairs,
                 "gaze": gaze_pairs, "identity": recognition_pairs,
                 "eye contact": [("derived", value) for value in eye_contact],
                 "head pose": head_pose_pairs,
@@ -2890,6 +2932,7 @@ def analyze_frame(
             "box": (x1, y1, x2, y2),
             "image": cv2.cvtColor(face, cv2.COLOR_BGR2RGB),
             "age": _format_results(age_pairs),
+            "age_consensus": age_consensus,
             "gender": _format_results(gender_pairs),
             "race": _format_results(race_pairs),
             "emotion": _format_results(emotion_pairs),
