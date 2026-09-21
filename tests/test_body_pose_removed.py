@@ -9,12 +9,14 @@ INFERENCE_SOURCE = ROOT.joinpath("src", "inference.py").read_text()
 
 class BodyPoseRemovalTests(unittest.TestCase):
     def test_body_pose_is_not_exposed_or_loaded(self):
+        """Verify body pose code is not in inference or app."""
         self.assertNotIn('"BODY LANDMARKS"', APP_SOURCE)
         self.assertNotIn("active_pose", APP_SOURCE)
         self.assertNotIn("pose_nets", INFERENCE_SOURCE)
         self.assertNotIn("detect_pose_mpi", INFERENCE_SOURCE)
 
     def test_pose_build_option_is_removed(self):
+        """Verify POSE_MODEL ARG was removed from build system."""
         for filename in ("Dockerfile", "build-and-run.sh", "install-and-run.sh"):
             source = ROOT.joinpath(filename).read_text()
             self.assertNotIn("POSE_MODEL", source)

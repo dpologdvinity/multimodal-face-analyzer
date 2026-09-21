@@ -10,9 +10,11 @@ SCRIPT = Path(__file__).parents[1] / "build-and-run.sh"
 
 class BuildPromptFormattingTests(unittest.TestCase):
     def _run_build(self, selections: list[str]) -> str:
+        """Run build-and-run.sh with fake docker to test prompts without actually building."""
         with tempfile.TemporaryDirectory() as temp_dir:
             fake_bin = Path(temp_dir) / "bin"
             fake_bin.mkdir()
+            # Mock docker to avoid expensive image builds and still exercise prompt paths
             docker = fake_bin / "docker"
             docker.write_text("#!/bin/sh\nexit 0\n")
             docker.chmod(0o755)
@@ -32,6 +34,7 @@ class BuildPromptFormattingTests(unittest.TestCase):
             return result.stdout + result.stderr
 
     def test_prompts_match_native_visual_format_and_model_order(self):
+        """Verify prompt sections are formatted with colors and models in correct order."""
         output = self._run_build(["0"] * 8)
 
         for section in (
@@ -62,6 +65,7 @@ class BuildPromptFormattingTests(unittest.TestCase):
         self.assertNotIn("\033[1;34m  9) all", output)
 
     def test_reordered_choices_still_forward_the_selected_build_models(self):
+        """Verify selected model indices map correctly to docker build args."""
         selections = ["2", "5", "4", "2", "5", "0", "0", "3"]
         output = self._run_build(selections)
 
@@ -72,6 +76,7 @@ class BuildPromptFormattingTests(unittest.TestCase):
         self.assertIn("RECONSTRUCTION_3D_MODEL=deep3d", output)
 
     def test_face_detector_selection_accepts_all_multi_option_separators(self):
+        """Support multiple input separators (spaces, commas, or no separator) for multi-select."""
         for selection in ("123", "1 2 3", "1,2,3"):
             with self.subTest(selection=selection):
                 output = self._run_build([selection] + ["0"] * 7)
@@ -81,12 +86,14 @@ class BuildPromptFormattingTests(unittest.TestCase):
                 self.assertIn("RETINAFACE_MODEL=retinaface", output)
 
     def test_build_context_contains_only_required_models(self):
+        """Verify default selection (all 0) stages only the three core model files."""
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
             fake_bin = temp_path / "bin"
             fake_bin.mkdir()
             manifest = temp_path / "models.txt"
             docker = fake_bin / "docker"
+            # Mock docker to capture which models were passed to the build context
             docker.write_text(
                 "#!/bin/sh\n"
                 "if [ \"$1\" = build ]; then\n"
@@ -117,12 +124,14 @@ class BuildPromptFormattingTests(unittest.TestCase):
             )
 
     def test_shared_model_is_staged_once_for_multiple_features(self):
+        """Verify insightface_genderage.onnx appears once when both age and gender select it."""
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
             fake_bin = temp_path / "bin"
             fake_bin.mkdir()
             manifest = temp_path / "models.txt"
             docker = fake_bin / "docker"
+            # Mock docker to capture which models were passed to the build context
             docker.write_text(
                 "#!/bin/sh\n"
                 "if [ \"$1\" = build ]; then\n"

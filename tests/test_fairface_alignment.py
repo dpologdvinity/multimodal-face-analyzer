@@ -26,14 +26,17 @@ class RecordingNet:
 
 class FairFaceAlignmentTests(unittest.TestCase):
     def setUp(self):
+        # Create synthetic frame with pixel values encoding position for alignment verification
         y, x = np.mgrid[:224, :224]
         self.frame = np.stack((x, y, (x + y) // 2), axis=-1).astype(np.uint8)
 
     def test_dlib_reference_preserves_pixels_and_padding(self):
+        """Verify landmark alignment with dlib reference points preserves frame content."""
         aligned = inference.align_face_with_landmarks(self.frame, REFERENCE, 224)
         np.testing.assert_allclose(aligned[1:-1, 1:-1], self.frame[1:-1, 1:-1], atol=1)
 
     def test_recovers_rotated_translated_scaled_face(self):
+        """Recover face alignment from rotated, translated, and scaled landmarks."""
         transform = cv2.getRotationMatrix2D((112, 112), 20, 1.2)
         transform[:, 2] += (35, 30)
         moved = cv2.warpAffine(self.frame, transform, (320, 320))
@@ -42,17 +45,21 @@ class FairFaceAlignmentTests(unittest.TestCase):
         np.testing.assert_allclose(aligned[25:-25, 25:-25], self.frame[25:-25, 25:-25], atol=2)
 
     def test_mediapipe_uses_four_eye_corners_and_nose(self):
+        """Convert mediapipe landmark indices to dlib-format points."""
         points = [(0.5, 0.5)] * 468
+        # Place reference points at specific mediapipe indices (eye corners, nose)
         for index, point in zip((263, 362, 33, 133, 1), REFERENCE / 224):
             points[index] = tuple(point)
         actual = inference.fairface_landmarks_from_mediapipe(points, 224, 224)
         np.testing.assert_allclose(actual, REFERENCE, atol=1e-4)
 
     def test_invalid_landmarks_use_original_bbox_input(self):
+        """Fall back to bounding box when landmarks are invalid (wrong shape, NaN, or degenerate)."""
         net = RecordingNet()
         box = (40, 40, 180, 200)
         inference._fairface_forward(net, self.frame, box, "age_output")
         expected = net.blob.copy()
+        # Test multiple types of invalid landmarks: wrong count, NaN values, collinear points
         for bad in (np.zeros((4, 2)), np.zeros((5, 2)), np.full((5, 2), np.nan),
                     np.column_stack((np.arange(5), np.arange(5)))):
             with self.subTest(points=bad):
@@ -61,21 +68,25 @@ class FairFaceAlignmentTests(unittest.TestCase):
                 np.testing.assert_array_equal(net.blob, expected)
 
     def test_analyze_frame_translates_crop_landmarks_before_inference(self):
+        """Verify landmarks detected in full frame are correctly translated to cropped face coords."""
         frame = np.tile(self.frame, (2, 2, 1))
         box = (80, 90, 240, 280)
         x1, y1, x2, y2 = inference.face_crop_bounds(box, frame.shape[:2])
         points = [(0.5, 0.5)] * 468
+        # Place reference points at specific mediapipe indices
         for index, point in zip((263, 362, 33, 133, 1), REFERENCE / 224):
             points[index] = tuple(point)
         result = SimpleNamespace(face_landmarks=[
             [SimpleNamespace(x=x, y=y) for x, y in points]
         ])
         net = RecordingNet()
+        # Compute expected input blob as if we had manually translated landmarks
         landmarks = REFERENCE / 224 * (x2-x1, y2-y1) + (x1, y1)
         inference._fairface_forward(net, frame, box, "age_output", landmarks)
         expected = net.blob.copy()
         models = inference.Models(face_net=None, age_nets={"fairface": net},
                                   face_landmarks_nets={"mediapipe": object()})
+        # Mock face detection and landmark detection; analyze_frame should produce same blob
         with patch.object(inference, "detect_faces", return_value=[box]), \
              patch.object(inference, "_detect_face_landmarker", return_value=result):
             output = inference.analyze_frame(
