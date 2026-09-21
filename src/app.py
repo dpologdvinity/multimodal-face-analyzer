@@ -891,7 +891,7 @@ def _render_bounded_image(image_rgb: np.ndarray, caption: str, key: str, width: 
     """Keep routine output within the viewport while retaining a full-resolution modal view."""
     image_tools, _ = st.columns([1, 12])
     with image_tools:
-        if st.button("🔍", key=f"fullscreen_{key}", help="Open the full-resolution image"):
+        if st.button("Open image", key=f"fullscreen_{key}", help="Open the full-resolution image", width="content"):
             _show_fullscreen_image(image_rgb, caption)
     st.image(image_rgb, caption=caption, width=width)
 
@@ -968,13 +968,22 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
         st.caption("[ HANDS DETECTED ] -- landmark overlay drawn")
 
     if not has_faces:
-        st.warning(f"[TARGET MISSING] Zero targets detected in file: {identifier}")
-        _render_bounded_image(
-            cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB), identifier, f"annotated_{identifier}"
-        )
+        with st.container(border=True):
+            st.warning(
+                f"No face detected in {identifier}. Try a brighter, closer image or lower the confidence threshold."
+            )
+            _render_bounded_image(
+                cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB), identifier, f"annotated_{identifier}"
+            )
         return
 
-    st.markdown(f"#### Results for `{identifier}`")
+    st.markdown(f"### Results for `{identifier}`")
+
+    with st.container(border=True):
+        summary_cols = st.columns(3)
+        summary_cols[0].metric("Faces detected", len(cropped_faces))
+        summary_cols[1].metric("Models active", len(active_labels))
+        summary_cols[2].metric("Detector", active_face_detector.upper())
 
     export_rows = []
     for face in cropped_faces:
@@ -989,12 +998,8 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
         writer = csv.DictWriter(csv_buffer, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows({key: json.dumps(value) if isinstance(value, list) else value for key, value in row.items()} for row in export_rows)
-    export_col_json, export_col_csv = st.columns(2)
-    export_col_json.download_button("DOWNLOAD RESULTS JSON", export_json, f"{identifier}_results.json", "application/json", key=f"json_dl_{identifier}")
-    export_col_csv.download_button("DOWNLOAD RESULTS CSV", csv_buffer.getvalue(), f"{identifier}_results.csv", "text/csv", key=f"csv_dl_{identifier}")
-
     if enable_crowd_count:
-        with st.expander(f"CROWD COUNT: {len(cropped_faces)} face(s) detected", expanded=False):
+        with st.expander(f"Aggregate summary: {len(cropped_faces)} faces detected", expanded=False):
             aggregate = inference.aggregate_demographics(cropped_faces)
             if not aggregate:
                 st.caption("No age/gender/race model is active -- enable one to see a breakdown.")
@@ -1003,14 +1008,30 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
                     st.caption(f"{feature.upper()} ({model_key})")
                     st.bar_chart(counts)
 
-    st.caption("Hover or tap a face box to see its details.")
-    image_tools, _ = st.columns([1, 12])
-    with image_tools:
-        if st.button("🔍", key=f"fullscreen_annotated_{identifier}", help="Open the full-resolution image"):
-            _show_fullscreen_image(cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB), identifier)
-    st.markdown(_hoverable_face_image(annotated_frame, cropped_faces), unsafe_allow_html=True)
+    with st.container(border=True):
+        st.caption("Hover or tap a face box for a quick preview. Review full details below.")
+        image_tools, _ = st.columns([1, 12])
+        with image_tools:
+            if st.button(
+                "Open image", key=f"fullscreen_annotated_{identifier}",
+                help="Open the full-resolution image", width="content",
+            ):
+                _show_fullscreen_image(cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB), identifier)
+        st.markdown(_hoverable_face_image(annotated_frame, cropped_faces), unsafe_allow_html=True)
 
-    if st.button("SCAN ALL FACES: RECOGNIZED / UNRECOGNIZED", key=f"scan_btn_{identifier}"):
+    export_col_json, export_col_csv = st.columns(2)
+    export_col_json.download_button(
+        "Download results as JSON", export_json, f"{identifier}_results.json", "application/json",
+        key=f"json_dl_{identifier}",
+    )
+    export_col_csv.download_button(
+        "Download results as CSV", csv_buffer.getvalue(), f"{identifier}_results.csv", "text/csv",
+        key=f"csv_dl_{identifier}",
+    )
+
+    st.markdown("### Face details")
+
+    if st.button("Scan all faces for recognition", key=f"scan_btn_{identifier}"):
         faces_bgr = [cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR) for face in cropped_faces]
         matches = inference.match_faces_eigenfaces_batch(faces_bgr)
         scan_frame = frame.copy()
@@ -1020,7 +1041,7 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
         )
 
         recognized_count = sum(match is not None for match in matches)
-        st.caption(f"[ SCAN COMPLETE ] {recognized_count}/{len(matches)} face(s) recognized against saved faces (eigen/)")
+        st.caption(f"Recognition scan complete: {recognized_count}/{len(matches)} faces matched in saved faces.")
         for face, match in zip(cropped_faces, matches):
             if match:
                 st.text(f"#{face['idx']}: Recognized -- saved face ID {match[0]} (distance {match[1]:.0f})")
