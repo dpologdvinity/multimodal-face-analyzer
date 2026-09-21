@@ -651,7 +651,7 @@ def _get_voice_fusion() -> inference.VoiceFaceFusion:
 try:
     models = load_models()
 except Exception as e:
-    st.error(f"[SYSTEM ERROR] Failed to load models: {e}")
+    st.error(f"Unable to load models: {e}")
     st.stop()
 
 st.markdown(
@@ -719,25 +719,25 @@ with st.sidebar.expander("Detection", expanded=True):
     if len(_face_detector_options) > 1:
         active_face_detector = st.selectbox(
             "Face detector", _face_detector_options, index=_face_detector_options.index(active_face_detector),
-            help="Exactly one detector runs per frame -- yolo is the default YOLOv8-Face detector when loaded; ssd is the always-available TensorFlow SSD/ResNet-10 fallback; scrfd and retinaface are alternatives.",
+            help="One detector runs per frame. YOLO is preferred when loaded; SSD is the always-available fallback.",
         )
 
 with st.sidebar.expander("Classification", expanded=True):
     active_age = _model_checkboxes("AGE", models.age_nets, st, help="Estimated age per detected face.")
-    active_gender = _model_checkboxes("GENDER", models.gender_nets, st, help="Predicted gender per detected face.")
-    active_race = _model_checkboxes("RACE", models.race_nets, st, help="Predicted race/ethnicity; close top-2 predictions are shown together.")
-    active_emotion = _model_checkboxes("EMOTION", models.emotion_nets, st, help="Predicted facial expression (7 categories).")
-    active_glasses = _model_checkboxes("GLASSES", models.glasses_nets, st, help="Detects whether the face is wearing glasses.")
-    active_mask = _model_checkboxes("MASK", models.mask_nets, st, help="Detects whether the face is wearing a mask.")
-    active_hair_color = _model_checkboxes("HAIR COLOR", models.hair_color_nets, st, help="Estimated dominant hair color.")
-    active_eye_color = _model_checkboxes("EYE COLOR", models.eye_color_nets, st, help="Estimated dominant eye color.")
+    active_gender = _model_checkboxes("GENDER", models.gender_nets, st, help="Estimated gender label per detected face.")
+    active_race = _model_checkboxes("RACE", models.race_nets, st, help="Estimated race or ethnicity label per detected face.")
+    active_emotion = _model_checkboxes("EMOTION", models.emotion_nets, st, help="Estimated facial expression across seven categories.")
+    active_glasses = _model_checkboxes("GLASSES", models.glasses_nets, st, help="Detects whether the face appears to wear glasses.")
+    active_mask = _model_checkboxes("MASK", models.mask_nets, st, help="Detects whether the face appears to wear a mask.")
+    active_hair_color = _model_checkboxes("HAIR COLOR", models.hair_color_nets, st, help="Estimates dominant hair color.")
+    active_eye_color = _model_checkboxes("EYE COLOR", models.eye_color_nets, st, help="Estimates dominant eye color.")
 
 with st.sidebar.expander("Identity and biometrics", expanded=False):
-    active_recognition = _model_checkboxes("RECOGNITION", models.recognition_nets, st, help="Matches faces against the saved gallery/identity search directories.")
-    active_liveness = _model_checkboxes("LIVENESS", models.liveness_nets, st, help="Blink-based liveness check to flag still-photo spoofing.")
+    active_recognition = _model_checkboxes("RECOGNITION", models.recognition_nets, st, help="Matches faces against saved gallery and local reference photos.")
+    active_liveness = _model_checkboxes("LIVENESS", models.liveness_nets, st, help="Uses blink history to flag possible still-photo spoofing.")
     if models.liveness_nets:
         st.caption("Liveness runs in live webcam mode. A single image has no blink history.")
-    active_gaze = _model_checkboxes("GAZE", models.gaze_nets, st, help="Estimated gaze direction per detected face.")
+    active_gaze = _model_checkboxes("GAZE", models.gaze_nets, st, help="Estimates gaze direction per detected face.")
 
 with st.sidebar.expander("Landmarks and experimental", expanded=False):
     active_colorization = _model_checkboxes(
@@ -745,11 +745,11 @@ with st.sidebar.expander("Landmarks and experimental", expanded=False):
         help="Converts detected grayscale source images to color before face detection runs.",
     )
     active_face_landmarks = _landmark_enable_button(
-        "FACE LANDMARKS", models.face_landmarks_nets, "face_landmarks_enabled", st,
+        "Face landmarks", models.face_landmarks_nets, "face_landmarks_enabled", st,
         help="Overlays facial mesh/keypoints on each detected face.",
     )
     active_hands = _landmark_enable_button(
-        "HAND LANDMARKS", models.hand_nets, "hand_landmarks_enabled", st,
+        "Hand landmarks", models.hand_nets, "hand_landmarks_enabled", st,
         help="Overlays hand keypoints on the whole frame, independent of face detection.",
     )
 
@@ -797,7 +797,7 @@ if models.recognition_nets:
             st.rerun()
 
     st.sidebar.markdown("### Identity search")
-    st.sidebar.caption("Local directory matching only -- no live internet search.")
+    st.sidebar.caption("Matches local directories only. No live internet search.")
     custom_search_dir = st.sidebar.text_input(
         "Search directory (optional)", value="", placeholder="/path/to/reference/photos",
         help="Extra directory of named reference photos to search, in addition to the bundled known_people/.",
@@ -904,11 +904,11 @@ def _render_photo_editor(frame_bgr: np.ndarray, identifier: str, adjustment_key:
     editing_key = f"photo_editor_{identifier}"
     image_col, editor_col = st.columns([3, 2])
     with editor_col:
-        if st.button("EDIT IMAGE", key=f"edit_image_{identifier}"):
+        if st.button("Edit image", key=f"edit_image_{identifier}"):
             st.session_state[editing_key] = not st.session_state.get(editing_key, False)
         editing = st.session_state.get(editing_key, False)
         if editing:
-            st.caption("Drag the crop rectangle with your mouse, then apply adjustments beside the preview.")
+            st.caption("Drag the crop rectangle, then adjust the preview before analysis.")
             adjustments = _adjustment_sliders(
                 "Adjust the image before detection.", adjustment_key, column_count=1,
             )
@@ -924,7 +924,7 @@ def _render_photo_editor(frame_bgr: np.ndarray, identifier: str, adjustment_key:
                 return_type="image", key=f"cropper_{identifier}",
             )
             edited_bgr = cv2.cvtColor(np.asarray(cropped), cv2.COLOR_RGB2BGR)
-            if st.button("CROP PHOTO", key=f"crop_photo_{identifier}"):
+            if st.button("Crop photo", key=f"crop_photo_{identifier}"):
                 st.session_state[f"cropped_photo_{identifier}"] = edited_bgr
                 st.session_state[editing_key] = False
                 st.rerun()
@@ -939,7 +939,7 @@ def _render_photo_editor(frame_bgr: np.ndarray, identifier: str, adjustment_key:
 
 def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: float) -> None:
     """Run detection/inference on frame and render result in Streamlit."""
-    frame = _render_photo_editor(frame, identifier, "global_adj", "SOURCE PHOTO")
+    frame = _render_photo_editor(frame, identifier, "global_adj", "Source photo")
     frame, was_colorized = inference.maybe_colorize(models, frame, active_colorization)
 
     active_labels = [
@@ -963,9 +963,9 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
         )
 
     if was_colorized:
-        st.caption("[ AUTO-COLORIZED ] -- source detected as grayscale")
+        st.caption("Source converted from grayscale before analysis.")
     if hands_detected:
-        st.caption("[ HANDS DETECTED ] -- landmark overlay drawn")
+        st.caption("Hand landmarks detected and overlaid on the image.")
 
     if not has_faces:
         with st.container(border=True):
@@ -985,6 +985,13 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
         summary_cols[1].metric("Models active", len(active_labels))
         summary_cols[2].metric("Detector", active_face_detector.upper())
 
+    with st.container(border=True):
+        st.caption("Model limitations")
+        st.write(
+            "These outputs are model estimates, not biometric proof. "
+            "Do not use them as the sole basis for high-impact decisions."
+        )
+
     export_rows = []
     for face in cropped_faces:
         export_rows.append({
@@ -1002,7 +1009,7 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
         with st.expander(f"Aggregate summary: {len(cropped_faces)} faces detected", expanded=False):
             aggregate = inference.aggregate_demographics(cropped_faces)
             if not aggregate:
-                st.caption("No age/gender/race model is active -- enable one to see a breakdown.")
+                st.caption("No age, gender, or race model is active. Enable one to see a breakdown.")
             for feature in inference.AGGREGATE_FEATURES:
                 for model_key, counts in aggregate.get(feature, {}).items():
                     st.caption(f"{feature.upper()} ({model_key})")
@@ -1058,7 +1065,7 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
             op_key = f"image_op_result_{identifier}_{face['idx']}"
             with face_editor_col:
                 if st.button(
-                    "CLOSE EDITOR" if st.session_state[face_editor_open_key] else "EDIT FACE",
+                    "Close editor" if st.session_state[face_editor_open_key] else "Edit face",
                     key=f"edit_face_toggle_{identifier}_{face['idx']}",
                 ):
                     st.session_state[face_editor_open_key] = not st.session_state[face_editor_open_key]
@@ -1079,23 +1086,23 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
                 )
                 if st.session_state[face_editor_open_key]:
                     st.download_button(
-                        "DOWNLOAD EDITED FACE PNG", cv2.imencode(".png", edited_face_bgr)[1].tobytes(),
+                        "Download edited face", cv2.imencode(".png", edited_face_bgr)[1].tobytes(),
                         file_name=f"face_{face['idx']}_edited.png", mime="image/png",
                         key=f"face_edit_dl_{identifier}_{face['idx']}",
                     )
 
-                    op = st.selectbox("IMAGE OP", inference.IMAGE_OP_OPTIONS, key=f"image_op_{identifier}_{face['idx']}")
+                    op = st.selectbox("Image operation", inference.IMAGE_OP_OPTIONS, key=f"image_op_{identifier}_{face['idx']}")
                     op_params = {}
                     if op == "intensity":
-                        op_params["method"] = st.selectbox("INTENSITY METHOD", inference.INTENSITY_METHODS,
+                        op_params["method"] = st.selectbox("Intensity method", inference.INTENSITY_METHODS,
                                                             key=f"intensity_method_{identifier}_{face['idx']}")
                     elif op == "sharpen":
-                        op_params["method"] = st.selectbox("SHARPEN METHOD", inference.SHARPEN_METHODS,
+                        op_params["method"] = st.selectbox("Sharpen method", inference.SHARPEN_METHODS,
                                                             key=f"sharpen_method_{identifier}_{face['idx']}")
                     elif op == "denoise":
-                        op_params["method"] = st.selectbox("DENOISE METHOD", inference.DENOISE_METHODS,
+                        op_params["method"] = st.selectbox("Denoise method", inference.DENOISE_METHODS,
                                                             key=f"denoise_method_{identifier}_{face['idx']}")
-                    if st.button("APPLY IMAGE OP", key=f"image_op_btn_{identifier}_{face['idx']}"):
+                    if st.button("Apply image operation", key=f"image_op_btn_{identifier}_{face['idx']}"):
                         st.session_state[op_key] = inference.apply_image_op(edited_face_bgr, op, **op_params)
             with face_preview_col:
                 _render_bounded_image(
@@ -1108,31 +1115,31 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
                         cv2.cvtColor(result, cv2.COLOR_BGR2RGB), "Processed face",
                         f"processed_face_{identifier}_{face['idx']}", width=360,
                     )
-                    st.download_button("DOWNLOAD FACE PNG", cv2.imencode(".png", result)[1].tobytes(),
+                    st.download_button("Download face PNG", cv2.imencode(".png", result)[1].tobytes(),
                                        file_name=f"face_{face['idx']}_processed.png", mime="image/png",
                                        key=f"image_op_dl_{identifier}_{face['idx']}")
             st.markdown(_target_card_html(face), unsafe_allow_html=True)
 
             col_search, col_save = st.columns(2)
-            if col_search.button("SEARCH", key=f"search_btn_{identifier}_{face['idx']}"):
+            if col_search.button("Search", key=f"search_btn_{identifier}_{face['idx']}"):
                 face_bgr = cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR)
                 found = False
                 if face["embedding"] is not None and search_gallery:
                     match = inference.match_face_identity(np.array(face["embedding"], dtype=np.float32), search_gallery)
                     if match:
-                        st.success(f"[ PHOTO MATCH ] {match[0]} ({match[1] * 100:.0f}%)")
+                        st.success(f"Photo match: {match[0]} ({match[1] * 100:.0f}%).")
                         found = True
                 eigen_match = inference.match_face_eigenfaces(face_bgr)
                 if eigen_match:
-                    st.success(f"[ EIGENFACE MATCH ] saved face ID {eigen_match[0]} (distance {eigen_match[1]:.0f})")
+                    st.success(f"Eigenface match: saved face {eigen_match[0]} (distance {eigen_match[1]:.0f}).")
                     found = True
                 if not found:
-                    st.warning("[ NO MATCH ] -- no known/saved face matched")
+                    st.warning("No match found in saved faces or local reference photos.")
 
-            if col_save.button("SAVE", key=f"save_btn_{identifier}_{face['idx']}"):
+            if col_save.button("Save face", key=f"save_btn_{identifier}_{face['idx']}"):
                 face_bgr = cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR)
                 saved_id = inference.save_face(face_bgr, face["raw_columns"])
-                st.info(f"[ SAVED ] ID {saved_id}")
+                st.info(f"Face saved with ID {saved_id}.")
 
             lbph_available = models.recognition_nets.get("lbph") is not None
             has_more_actions = (
@@ -1140,10 +1147,10 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
                 or models.reconstruction_3d_nets or models.age_progression_nets
             )
             if has_more_actions:
-                with st.expander("MORE ACTIONS", expanded=False):
+                with st.expander("More actions", expanded=False):
                     if face["embedding"] is not None or lbph_available:
-                        enroll_name = st.text_input("ENROLL AS", key=f"enroll_name_{identifier}_{face['idx']}", label_visibility="collapsed", placeholder="ENROLL AS...")
-                        if st.button("ENROLL", key=f"enroll_btn_{identifier}_{face['idx']}") and enroll_name:
+                        enroll_name = st.text_input("Enroll as", key=f"enroll_name_{identifier}_{face['idx']}", placeholder="Enter a saved face name")
+                        if st.button("Enroll", key=f"enroll_btn_{identifier}_{face['idx']}") and enroll_name:
                             try:
                                 safe_name = inference.validate_lbph_name(enroll_name) if lbph_available else enroll_name.strip()
                                 if not safe_name:
@@ -1155,24 +1162,24 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
                                     inference.enroll_lbph_face(safe_name, cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR))
                                 st.rerun()
                             except ValueError as exc:
-                                st.error(f"[INVALID ENROLLMENT] {exc}")
+                                st.error(f"Could not enroll face: {exc}")
 
                     if models.reconstruction_3d_nets:
-                        if st.button("3D RECON", key=f"recon3d_btn_{identifier}_{face['idx']}"):
+                        if st.button("Create 3D reconstruction", key=f"recon3d_btn_{identifier}_{face['idx']}"):
                             face_bgr = cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR)
                             result = inference.run_3d_reconstruction(models, face_bgr)
                             if result is None:
-                                st.warning("[ NO RECONSTRUCTION ] -- no face landmarks found in this crop")
+                                st.warning("No reconstruction available. Face landmarks were not found in this crop.")
                             else:
                                 vertices, faces, colors = result
                                 obj_text = inference.mesh_to_obj_str(vertices, faces, colors)
                                 st.download_button(
-                                    "DOWNLOAD .OBJ", data=obj_text, file_name=f"face_{identifier}_{face['idx']}.obj",
+                                    "Download 3D mesh (.obj)", data=obj_text, file_name=f"face_{identifier}_{face['idx']}.obj",
                                     mime="text/plain", key=f"recon3d_dl_{identifier}_{face['idx']}",
                                 )
 
                     if models.age_progression_nets:
-                        st.caption("AGE PROGRESSION (non-commercial use only -- see README)")
+                        st.caption("Age progression is for non-commercial research use only.")
                         col_src_age, col_tgt_age = st.columns(2)
                         source_age = col_src_age.number_input(
                             "Source age", min_value=0, max_value=100, value=30,
@@ -1182,7 +1189,7 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
                             "Target age", min_value=0, max_value=100, value=60,
                             key=f"reage_tgt_{identifier}_{face['idx']}",
                         )
-                        if st.button("AGE PROGRESSION", key=f"reage_btn_{identifier}_{face['idx']}"):
+                        if st.button("Run age progression", key=f"reage_btn_{identifier}_{face['idx']}"):
                             face_bgr = cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR)
                             aged_bgr = inference.run_age_progression(models, face_bgr, source_age, target_age)
                             st.session_state[f"reage_result_{identifier}_{face['idx']}"] = aged_bgr
@@ -1193,7 +1200,7 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
                             col_before.image(face["image"], caption="Before")
                             col_after.image(cv2.cvtColor(aged_bgr, cv2.COLOR_BGR2RGB), caption="After")
                             st.download_button(
-                                "DOWNLOAD AGED PNG", cv2.imencode(".png", aged_bgr)[1].tobytes(),
+                                "Download aged face", cv2.imencode(".png", aged_bgr)[1].tobytes(),
                                 file_name=f"face_{identifier}_{face['idx']}_aged.png", mime="image/png",
                                 key=f"reage_dl_{identifier}_{face['idx']}",
                             )
@@ -1220,28 +1227,28 @@ with tab_upload:
             try:
                 frame = decode_image_bytes(uploaded_file.read())
             except ValueError as exc:
-                st.error(f"[INVALID IMAGE] {uploaded_file.name}: {exc}")
+                st.error(f"Could not read {uploaded_file.name}: {exc}")
                 continue
             process_and_display(frame, uploaded_file.name, conf_threshold)
 
 with tab_webcam:
-    capture_mode = st.radio("Capture mode", ["SNAPSHOT", "LIVE"], horizontal=True, format_func=str.title)
+    capture_mode = st.segmented_control("Capture mode", ["Snapshot", "Live"], default="Snapshot")
 
-    if capture_mode == "SNAPSHOT":
+    if capture_mode == "Snapshot":
         webcam_image = st.camera_input("Take a snapshot")
 
         if webcam_image:
             try:
                 frame = decode_image_bytes(webcam_image.read())
             except ValueError as exc:
-                st.error(f"[INVALID IMAGE] WEBCAM_CAPTURE: {exc}")
+                st.error(f"Could not read camera image: {exc}")
                 frame = None
             if frame is not None:
                 process_and_display(frame, "WEBCAM_CAPTURE", conf_threshold)
     else:
         st.caption("Live analysis updates as people enter or leave view. Each face keeps a stable ID as it moves.")
         frame_skip = st.slider(
-            "CLASSIFIER FRAME SKIP", 1, 10, 1,
+            "Classifier frame skip", 1, 10, 1,
             help="Run age/gender/emotion/race/recognition/etc. classifiers every Nth frame "
             "instead of every frame. Face detection and the hand/face-landmark overlays "
             "still run every frame, so the video stays smooth. These classifiers' outputs "
@@ -1256,7 +1263,7 @@ with tab_webcam:
         face_tracker = _get_face_tracker()
         liveness_tracker = _get_liveness_tracker()
         reset_col, voice_col = st.columns([1, 2])
-        if reset_col.button("RESET TRACKING IDS", key="reset_tracking_ids"):
+        if reset_col.button("Reset tracking IDs", key="reset_tracking_ids"):
             face_tracker.reset()
             liveness_tracker.reset()
 
@@ -1264,13 +1271,13 @@ with tab_webcam:
         # didn't ask for just by opening the webcam tab, so it needs its own explicit opt-in
         # rather than riding along with LIVE mode's existing camera request.
         enable_voice_fusion = voice_col.checkbox(
-            "Enable voice+face fusion (uses microphone)", value=False, key="enable_voice_fusion",
+            "Enable microphone-assisted fusion (experimental)", value=False, key="enable_voice_fusion",
             help="Heuristic only: cross-checks mic loudness against the largest face's emotion "
                  "label. Not a trained speech-emotion model -- see src/inference.py's "
                  "VoiceFaceFusion docstring for why.",
         )
         voice_fusion = _get_voice_fusion() if enable_voice_fusion else None
-        if voice_fusion is not None and voice_col.button("RESET VOICE BUFFER", key="reset_voice_buffer"):
+        if voice_fusion is not None and voice_col.button("Reset voice buffer", key="reset_voice_buffer"):
             voice_fusion.reset()
         gallery_snapshot = dict(st.session_state.get("gallery", {}))
 
@@ -1351,12 +1358,12 @@ with tab_webcam:
         if voice_fusion is not None:
             status = voice_fusion.get_latest_status()
             if status is None:
-                st.caption("[ VOICE FUSION ] waiting for audio + a detected face...")
+                st.caption("Microphone fusion is waiting for audio and a detected face…")
             else:
                 consistency_text = status["consistency"] or "n/a (emotion label not categorized)"
                 st.caption(
-                    f"[ VOICE FUSION ] mic: {status['voice_arousal']} | largest face emotion: "
-                    f"{status['emotion']} | {consistency_text}"
+                    f"Microphone fusion: {status['voice_arousal']}; largest face emotion: "
+                    f"{status['emotion']}; consistency: {consistency_text}."
                 )
 
         live_info = st.empty()
@@ -1365,19 +1372,19 @@ with tab_webcam:
             with LIVE_STATE_LOCK:
                 live_snapshot = dict(LIVE_STATE)
             if live_snapshot["error"]:
-                live_info.error(f"[ LIVE FRAME ERROR ] {live_snapshot['error']}")
+                live_info.error(f"Live frame error: {live_snapshot['error']}")
             elif live_snapshot["faces"]:
                 with live_info.container():
-                    st.markdown("#### Live face info")
+                    st.markdown("#### Live face details")
                     for face in live_snapshot["faces"]:
                         st.markdown(_target_card_html(face), unsafe_allow_html=True)
             else:
-                live_info.caption("[ LIVE ] waiting for a detected face...")
+                live_info.caption("Waiting for a detected face…")
             with LIVE_METRICS_LOCK:
                 live_metrics = list(LIVE_METRICS)
             intervals = np.diff([item["timestamp"] for item in live_metrics[-30:]])
             fps = 1.0 / float(np.mean(intervals)) if len(intervals) and np.mean(intervals) > 0 else 0.0
-            live_fps.metric("LIVE FPS", f"LIVE FPS: {fps:.1f}")
+            live_fps.metric("Live FPS", f"{fps:.1f}")
             time.sleep(0.25)
         with LIVE_METRICS_LOCK:
             live_metrics = list(LIVE_METRICS)
