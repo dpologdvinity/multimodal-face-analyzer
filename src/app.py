@@ -264,63 +264,71 @@ except Exception as e:
     st.error(f"[SYSTEM ERROR] Failed to load models: {e}")
     st.stop()
 
-def _model_checkboxes(label: str, nets: dict) -> set:
+def _model_checkboxes(label: str, nets: dict, container=None) -> set:
     """Render one checkbox per loaded model for a feature; return the set of checked keys."""
     active = set()
     if not nets:
         return active
-    st.sidebar.markdown(f"**{label}**")
+    container = container if container is not None else st.sidebar
+    container.markdown(f"**{label}**")
     for key in nets:
-        if st.sidebar.checkbox(key.upper(), value=True, key=f"chk_{label}_{key}"):
+        if container.checkbox(key.upper(), value=True, key=f"chk_{label}_{key}"):
             active.add(key)
     return active
 
 
-def _landmark_enable_button(label: str, nets: dict, state_key: str) -> set:
+def _landmark_enable_button(label: str, nets: dict, state_key: str, container=None) -> set:
     """Expose one clear on/off control for each landmark family."""
     if not nets:
         return set()
+    container = container if container is not None else st.sidebar
     enabled = st.session_state.setdefault(state_key, True)
     button_label = f"DISABLE {label}" if enabled else f"ENABLE {label}"
-    st.sidebar.markdown(f"**{label}**")
-    if st.sidebar.button(button_label, key=f"enable_{state_key}", use_container_width=True):
+    container.markdown(f"**{label}**")
+    if container.button(button_label, key=f"enable_{state_key}", use_container_width=True):
         st.session_state[state_key] = not enabled
         st.rerun()
-    st.sidebar.caption("Enabled" if enabled else "Disabled")
+    container.caption("Enabled" if enabled else "Disabled")
     return set(nets) if enabled else set()
 
 
 st.sidebar.markdown("### MODEL SELECTION")
 
-active_face_detector = "yolo" if models.yolo_face_nets else "ssd"
-_face_detector_options = (
-    (["yolo"] if models.yolo_face_nets else [])
-    + ["ssd"]
-    + (["scrfd"] if models.scrfd_face_nets else [])
-    + (["retinaface"] if models.retinaface_nets else [])
-)
-if len(_face_detector_options) > 1:
-    active_face_detector = st.sidebar.selectbox(
-        "FACE DETECTOR", _face_detector_options, index=_face_detector_options.index(active_face_detector),
-        help="Exactly one detector runs per frame -- yolo is the default YOLOv8-Face detector when loaded; ssd is the always-available TensorFlow SSD/ResNet-10 fallback; scrfd and retinaface are alternatives.",
+with st.sidebar.expander("DETECTION", expanded=True):
+    active_face_detector = "yolo" if models.yolo_face_nets else "ssd"
+    _face_detector_options = (
+        (["yolo"] if models.yolo_face_nets else [])
+        + ["ssd"]
+        + (["scrfd"] if models.scrfd_face_nets else [])
+        + (["retinaface"] if models.retinaface_nets else [])
     )
+    if len(_face_detector_options) > 1:
+        active_face_detector = st.selectbox(
+            "FACE DETECTOR", _face_detector_options, index=_face_detector_options.index(active_face_detector),
+            help="Exactly one detector runs per frame -- yolo is the default YOLOv8-Face detector when loaded; ssd is the always-available TensorFlow SSD/ResNet-10 fallback; scrfd and retinaface are alternatives.",
+        )
 
-active_age = _model_checkboxes("AGE", models.age_nets)
-active_gender = _model_checkboxes("GENDER", models.gender_nets)
-active_race = _model_checkboxes("RACE", models.race_nets)
-active_emotion = _model_checkboxes("EMOTION", models.emotion_nets)
-active_liveness = _model_checkboxes("LIVENESS", models.liveness_nets)
-if models.liveness_nets:
-    st.sidebar.caption("Liveness only runs in Webcam / LIVE -- a single image has no blinks to check.")
-active_recognition = _model_checkboxes("RECOGNITION", models.recognition_nets)
-active_glasses = _model_checkboxes("GLASSES", models.glasses_nets)
-active_mask = _model_checkboxes("MASK", models.mask_nets)
-active_hair_color = _model_checkboxes("HAIR COLOR", models.hair_color_nets)
-active_eye_color = _model_checkboxes("EYE COLOR", models.eye_color_nets)
-active_colorization = _model_checkboxes("AUTO-COLORIZE B&W", models.colorization_nets)
-active_face_landmarks = _landmark_enable_button("FACE LANDMARKS", models.face_landmarks_nets, "face_landmarks_enabled")
-active_hands = _landmark_enable_button("HAND LANDMARKS", models.hand_nets, "hand_landmarks_enabled")
-active_gaze = _model_checkboxes("GAZE", models.gaze_nets)
+with st.sidebar.expander("CLASSIFICATION", expanded=True):
+    active_age = _model_checkboxes("AGE", models.age_nets, st)
+    active_gender = _model_checkboxes("GENDER", models.gender_nets, st)
+    active_race = _model_checkboxes("RACE", models.race_nets, st)
+    active_emotion = _model_checkboxes("EMOTION", models.emotion_nets, st)
+    active_glasses = _model_checkboxes("GLASSES", models.glasses_nets, st)
+    active_mask = _model_checkboxes("MASK", models.mask_nets, st)
+    active_hair_color = _model_checkboxes("HAIR COLOR", models.hair_color_nets, st)
+    active_eye_color = _model_checkboxes("EYE COLOR", models.eye_color_nets, st)
+
+with st.sidebar.expander("IDENTITY & BIOMETRICS", expanded=False):
+    active_recognition = _model_checkboxes("RECOGNITION", models.recognition_nets, st)
+    active_liveness = _model_checkboxes("LIVENESS", models.liveness_nets, st)
+    if models.liveness_nets:
+        st.caption("Liveness only runs in Webcam / LIVE -- a single image has no blinks to check.")
+    active_gaze = _model_checkboxes("GAZE", models.gaze_nets, st)
+
+with st.sidebar.expander("LANDMARKS & EXPERIMENTAL", expanded=False):
+    active_colorization = _model_checkboxes("AUTO-COLORIZE B&W", models.colorization_nets, st)
+    active_face_landmarks = _landmark_enable_button("FACE LANDMARKS", models.face_landmarks_nets, "face_landmarks_enabled", st)
+    active_hands = _landmark_enable_button("HAND LANDMARKS", models.hand_nets, "hand_landmarks_enabled", st)
 
 
 def _reset_adjustments(prefixes: tuple[str, ...]) -> None:
