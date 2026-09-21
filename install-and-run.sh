@@ -350,7 +350,6 @@ set_additional_classification_models "$REPLY_MODEL"
 prompt_feature "ADDITIONAL FEATURES" 0 \
     "eccv16|colorization - eccv16|$BASE_PACKAGES" \
     "facemesh|face landmarks - mediapipe|$BASE_PACKAGES,+mediapipe" \
-    "mpi|body pose - mpi|$BASE_PACKAGES" \
     "deep3d|3d reconstruction - deep3d|$BASE_PACKAGES,+torch,+torchvision,+scipy" \
     "franunet|age progression - franunet|$BASE_PACKAGES,+torch,+torchvision" \
     "mediapipe|hand landmarks - mediapipe|$BASE_PACKAGES,+mediapipe"
@@ -360,7 +359,6 @@ set_additional_feature_models() {
     AGE_PROGRESSION_MODEL=""
     FACE_LANDMARKS_MODEL=""
     HAND_MODEL=""
-    POSE_MODEL=""
     local model
     IFS=',' read -ra models <<< "$1"
     for model in "${models[@]:-}"; do
@@ -369,7 +367,6 @@ set_additional_feature_models() {
             deep3d) RECONSTRUCTION_3D_MODEL="deep3d" ;;
             franunet) AGE_PROGRESSION_MODEL="franunet" ;;
             mediapipe) HAND_MODEL="mediapipe" ;;
-            mpi) POSE_MODEL="mpi" ;;
             facemesh) FACE_LANDMARKS_MODEL="mediapipe" ;;
         esac
     done
@@ -427,7 +424,6 @@ echo "  RECOGNITION_MODEL=${RECOGNITION_MODEL}" >&2
 echo "  GLASSES_MODEL=${GLASSES_MODEL}" >&2
 echo "  MASK_MODEL=${MASK_MODEL}" >&2
 echo "  COLORIZATION_MODEL=${COLORIZATION_MODEL}" >&2
-echo "  POSE_MODEL=${POSE_MODEL}" >&2
 echo "  HAND_MODEL=${HAND_MODEL}" >&2
 echo "  RECONSTRUCTION_3D_MODEL=${RECONSTRUCTION_3D_MODEL}" >&2
 echo "  YOLO_FACE_MODEL=${YOLO_FACE_MODEL}" >&2
@@ -511,7 +507,7 @@ echo "Running at http://localhost:${PORT}" >&2
 echo "Press Ctrl-C to stop Streamlit." >&2
 export AGE_MODEL GENDER_MODEL RACE_MODEL EMOTION_MODEL RECOGNITION_MODEL \
     DROWSINESS_MODEL FACE_LANDMARKS_MODEL LIVENESS_MODEL \
-    GLASSES_MODEL MASK_MODEL HAIR_COLOR_MODEL COLORIZATION_MODEL POSE_MODEL HAND_MODEL \
+    GLASSES_MODEL MASK_MODEL HAIR_COLOR_MODEL COLORIZATION_MODEL HAND_MODEL \
     RECONSTRUCTION_3D_MODEL AGE_PROGRESSION_MODEL YOLO_FACE_MODEL \
     SCRFD_FACE_MODEL RETINAFACE_MODEL
 exec "${VENV_PYTHON}" -m streamlit run src/app.py \
