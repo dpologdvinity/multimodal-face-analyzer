@@ -1386,11 +1386,16 @@ def _margin_align(frame_bgr: np.ndarray, box: tuple[int, int, int, int], output_
     return cv2.warpAffine(frame_bgr, m, (output_size, output_size), borderValue=0.0)
 
 
-FAIRFACE_LANDMARK_INDICES = (33, 263, 1, 61, 291)  # left eye, right eye, nose, mouth corners
+# dlib's five-point chip uses FOUR eye corners and the nose, not ArcFace's eye centers
+# and mouth corners. Order: image-right outer/inner, image-left outer/inner, nose.
+FAIRFACE_LANDMARK_INDICES = (263, 362, 33, 133, 1)
+# dlib/image_transforms/interpolation.h::get_face_chip_details, padding=0.25 as in
+# dchen236/FairFace/predict.py. MediaPipe supplies approximate corresponding landmarks.
 FAIRFACE_REFERENCE_LANDMARKS = np.array([
-    [38.2946, 51.6963], [73.5318, 51.5014], [56.0252, 71.7366],
-    [41.5493, 92.3655], [70.7299, 92.2041],
-], dtype=np.float32)
+    [0.8595674595992, 0.2134981538014], [0.6460604764104, 0.2289674387677],
+    [0.1205750620789, 0.2137274526848], [0.3340850613712, 0.2290642403242],
+    [0.4901123135679, 0.6277975316475],
+], dtype=np.float64)
 
 
 def fairface_landmarks_from_mediapipe(
@@ -1400,22 +1405,35 @@ def fairface_landmarks_from_mediapipe(
     if len(points) <= max(FAIRFACE_LANDMARK_INDICES) or width <= 0 or height <= 0:
         return None
     selected = np.asarray([points[index] for index in FAIRFACE_LANDMARK_INDICES], dtype=np.float32)
+    if selected.shape != (5, 2) or not np.isfinite(selected).all() or np.any((selected < 0) | (selected > 1)):
+        return None
     selected *= np.array([width, height], dtype=np.float32)
-    return selected if np.isfinite(selected).all() else None
+    return selected
 
 
 def align_face_with_landmarks(
     frame_bgr: np.ndarray, landmarks: np.ndarray, output_size: int,
 ) -> np.ndarray | None:
     """Align a face to FairFace's five-point reference, or return None for invalid input."""
-    source = np.asarray(landmarks, dtype=np.float32)
+    source = np.asarray(landmarks, dtype=np.float64)
     if source.shape != (5, 2) or not np.isfinite(source).all():
         return None
-    target = FAIRFACE_REFERENCE_LANDMARKS * (output_size / 112.0)
-    matrix, inliers = cv2.estimateAffinePartial2D(source, target, method=cv2.LMEDS)
-    if matrix is None or inliers is None or int(inliers.sum()) < 3:
+    if np.linalg.matrix_rank(source - source.mean(axis=0)) < 2:
         return None
-    return cv2.warpAffine(frame_bgr, matrix, (output_size, output_size), borderValue=0.0)
+    target = (FAIRFACE_REFERENCE_LANDMARKS + 0.25) / 1.5 * output_size
+    # Fit an orientation-preserving similarity from chip coordinates to source pixels,
+    # using all five points. No shear, reflection, or random outlier subset.
+    design = np.zeros((10, 4), dtype=np.float64)
+    design[0::2, :2] = np.column_stack((target[:, 0], -target[:, 1]))
+    design[1::2, :2] = np.column_stack((target[:, 1], target[:, 0]))
+    design[0::2, 2] = 1
+    design[1::2, 3] = 1
+    a, b, tx, ty = np.linalg.lstsq(design, source.reshape(-1), rcond=None)[0]
+    if a*a + b*b < 1e-12:
+        return None
+    matrix = np.array([[a, -b, tx], [b, a, ty]])
+    return cv2.warpAffine(frame_bgr, matrix, (output_size, output_size),
+                          flags=cv2.INTER_LINEAR | cv2.WARP_INVERSE_MAP, borderValue=0.0)
 
 
 def _estimate_roll_angle(face_bgr: np.ndarray, eye_cascade) -> float | None:
@@ -1590,9 +1608,8 @@ def _fairface_forward(
 
 
 def predict_race_fairface(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int], landmarks=None) -> str:
-    # FairFace's own pipeline aligns on 5-point landmarks (dlib, padding=0.25); we have no
-    # landmark model, so approximate with the same margin via a bbox-centered crop (padding=0.25
-    # each side ~= a 1.5x margin), instead of an arbitrary fixed-pixel-padding crop+resize.
+    # Use the dlib chip geometry when corresponding MediaPipe landmarks are available;
+    # retain the bbox approximation when the optional landmarker cannot supply them.
     logits = _fairface_forward(net, frame_bgr, box, "race_output", landmarks)
     return _format_race_label(_softmax(logits), RACE_LABELS_FAIRFACE)
 
