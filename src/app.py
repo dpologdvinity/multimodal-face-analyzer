@@ -27,7 +27,11 @@ LIVE_STATE_LOCK = threading.Lock()
 IMAGE_DISPLAY_WIDTH = 900
 
 # Page setup and visual system
-st.set_page_config(page_title="MULTIMODAL_FACE_ANALYZER", layout="wide")
+st.set_page_config(
+    page_title="Multimodal Face Analyzer",
+    page_icon=":material/face:",
+    layout="wide",
+)
 
 THEME_MARKER_CLASSES = {
     "Light cyberpunk": "light-theme",
@@ -374,7 +378,12 @@ st.markdown(
         font-family: 'Space Grotesk', sans-serif;
         letter-spacing: -0.01em;
     }
-    .stApp p, .stApp label, .stApp span { color: var(--text); }
+    .stApp,
+    .stApp [data-testid="stMarkdownContainer"] p,
+    .stApp [data-testid="stWidgetLabel"] p,
+    .stApp [data-testid="stFileUploader"] label {
+        color: var(--text);
+    }
     .stApp [data-testid="stCaptionContainer"] p { color: var(--muted); }
     .app-hero {
         display: flex;
@@ -434,6 +443,16 @@ st.markdown(
         background: var(--surface);
         padding: 1rem;
     }
+    div[data-testid="stFileUploader"] [data-testid="stFileUploaderDropzone"] {
+        background: var(--surface-raised);
+        border-color: var(--line);
+    }
+    div[data-testid="stFileUploader"] button {
+        background: var(--accent) !important;
+        border-color: var(--accent) !important;
+        color: var(--base) !important;
+    }
+    div[data-testid="stFileUploader"] button * { color: var(--base) !important; }
     div[data-testid="stExpander"] {
         border: 1px solid var(--line);
         border-radius: 10px;
@@ -664,7 +683,7 @@ def _landmark_enable_button(label: str, nets: dict, state_key: str, container=No
     container.markdown(f"**{label}**")
     if help:
         container.caption(help)
-    if container.button(button_label, key=f"enable_{state_key}", use_container_width=True):
+    if container.button(button_label, key=f"enable_{state_key}", width="stretch"):
         st.session_state[state_key] = not enabled
         st.rerun()
     container.caption("Enabled" if enabled else "Disabled")
@@ -1336,7 +1355,7 @@ with tab_webcam:
                 latency_frame = pd.DataFrame(latency_rows)
                 summary = latency_frame.groupby("Model", as_index=False)["Latency (ms)"].mean()
                 summary["Latency (ms)"] = summary["Latency (ms)"].round(1)
-                st.dataframe(summary, hide_index=True, use_container_width=True)
+                st.dataframe(summary, hide_index=True, width="stretch")
             emotion_rows = []
             start_time = live_metrics[0]["timestamp"]
             for item in live_metrics:
