@@ -167,8 +167,10 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 COPY src/ src/
 COPY models/opencv_face_detector.pbtxt models/opencv_face_detector_uint8.pb models/
 
-# Per-feature model files are hard-linked into the reduced build context by
-# build-and-run.sh, so unselected weights never enter this Docker build.
+# BuildKit resolves bind-mount sources at solve time, before conditional RUN logic executes,
+# so every file bound here must exist in the repo (even for builds that don't select it).
+# build-and-run.sh hard-links only selected model files into the build context to avoid
+# staging >3GB of unused weights. Unselected models skip the cp line but the bind succeeds.
 RUN --mount=type=bind,source=models,target=/tmp/models \
     set -e; \
     age_csv=",$AGE_MODEL,"; gender_csv=",$GENDER_MODEL,"; emotion_csv=",$EMOTION_MODEL,"; \

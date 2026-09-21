@@ -68,7 +68,8 @@ if ! "$PYTHON_BIN" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3,
 fi
 
 # prompt_feature FEATURE_NAME DEFAULT_SELECTION "key|label|package[,package...]" ...
-# Options must be given in the same order as build-and-run.sh.
+# Option order and defaults must exactly match build-and-run.sh so both scripts behave identically.
+# When --hidden is set, filters to show only options that would install new packages.
 # Sets REPLY_MODEL to a comma-separated list of selected model keys.
 prompt_feature() {
     local feature_name="$1"
@@ -81,6 +82,9 @@ prompt_feature() {
     local zero_label="none"
     [ "$feature_name" = "FACE DETECTION" ] && zero_label="ssd"
 
+    # --hidden mode filters to show only options that install new packages (marked with +),
+    # hiding already-installed backends. This lets users quickly re-run the script to toggle
+    # additional features without retracing their dependency footprint.
     if [ "$HIDDEN" = true ]; then
         visible_entries=()
         for entry in "${entries[@]}"; do
@@ -488,8 +492,10 @@ if [ "$NEED_SCIPY" = true ]; then
     "${PIP[@]}" install scipy
 fi
 
-# Some optional packages install another OpenCV distribution. Reinstall the one
-# compatible with the selected features, matching the Docker build behavior.
+# mivolo pulls in opencv-python and mediapipe pulls in opencv-contrib-python, both >=5.0.
+# First one to win causes Caffe support loss. Uninstall all variants and reinstall the one
+# needed (opencv-contrib-python-headless if lbph is selected, otherwise the smaller
+# opencv-python-headless), matching Docker build behavior. See Dockerfile's opencv comment.
 OPENCV_PACKAGE="opencv-python-headless"
 if csv_has "$RECOGNITION_MODEL" lbph; then
     OPENCV_PACKAGE="opencv-contrib-python-headless"

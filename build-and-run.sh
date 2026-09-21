@@ -290,6 +290,10 @@ stage_model "$SCRFD_FACE_MODEL" scrfd scrfd_2.5g_bnkps.onnx
 stage_model "$RETINAFACE_MODEL" retinaface retinaface_mobilenet0.25.onnx
 stage_model "$AGE_PROGRESSION_MODEL" franunet face_reaging_unet.pth
 
+# Reduce Docker build context from >3GB (all models/) to just the selected weights by
+# hard-linking only requested files into a temporary build context. BuildKit then reads
+# the minimized tree, avoiding large data transfer to the daemon and layer bloat.
+# See Dockerfile's bind-mount comment for why every file must exist (even if not selected).
 echo "" >&2
 echo "Building ${IMAGE_TAG} with:" >&2
 echo "  AGE_MODEL=${AGE_MODEL}" >&2
