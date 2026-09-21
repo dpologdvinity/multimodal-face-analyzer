@@ -221,8 +221,13 @@ st.markdown(
         letter-spacing: 0;
         color: var(--line);
     }
-    body:has(.brutalist-theme) .app-hero p { color: var(--line); }
-    body:has(.brutalist-theme) *,
+body:has(.brutalist-theme) .app-hero p { color: var(--line); }
+body:has(.brutalist-theme) .app-hero-readout strong,
+body:has(.brutalist-theme) div[data-testid="stFileUploader"] button,
+body:has(.brutalist-theme) div[data-testid="stFileUploader"] button * {
+    color: var(--line) !important;
+}
+body:has(.brutalist-theme) *,
     body:has(.brutalist-theme) .stButton button,
     body:has(.brutalist-theme) .stDownloadButton button,
     body:has(.brutalist-theme) [data-baseweb] {
