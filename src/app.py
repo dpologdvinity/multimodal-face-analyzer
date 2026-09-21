@@ -32,10 +32,13 @@ THEME_MARKER_CLASSES = {
     "Amber Terminal": "amber-theme",
     "Synthwave": "synthwave-theme",
     "Phosphor Green": "phosphor-theme",
+    "Brutalist": "brutalist-theme",
 }
 
 theme = st.sidebar.selectbox(
-    "THEME", ["Dark cyberpunk", "Light cyberpunk", "Amber Terminal", "Synthwave", "Phosphor Green"], key="theme"
+    "THEME",
+    ["Dark cyberpunk", "Light cyberpunk", "Amber Terminal", "Synthwave", "Phosphor Green", "Brutalist"],
+    key="theme",
 )
 
 st.markdown(
@@ -163,6 +166,63 @@ st.markdown(
     body:has(.phosphor-theme) .app-hero p::before { content: "# "; }
     body:has(.phosphor-theme) .block-container {
         padding-top: 1.2rem;
+    }
+
+    body:has(.brutalist-theme) {
+        --base: #f5f3ee;
+        --surface: #ffffff;
+        --surface-raised: #ffffff;
+        --line: #0a0a0a;
+        --text: #0a0a0a;
+        --muted: #3a3a3a;
+        --accent: #ffe500;
+        --alert: #ff3b30;
+    }
+    body:has(.brutalist-theme) .stApp {
+        background: var(--base);
+        font-family: 'IBM Plex Mono', monospace !important;
+    }
+    body:has(.brutalist-theme) .app-hero {
+        border: 4px solid var(--line);
+        border-left: 4px solid var(--line);
+        background: var(--accent);
+        box-shadow: 8px 8px 0 var(--line);
+        padding: 1.2rem 1.5rem;
+        margin: 0 0 2.5rem;
+    }
+    body:has(.brutalist-theme) .app-hero h1 {
+        text-transform: uppercase;
+        font-weight: 700;
+        letter-spacing: 0;
+        color: var(--line);
+    }
+    body:has(.brutalist-theme) .app-hero p { color: var(--line); }
+    body:has(.brutalist-theme) *,
+    body:has(.brutalist-theme) .stButton button,
+    body:has(.brutalist-theme) .stDownloadButton button,
+    body:has(.brutalist-theme) [data-baseweb] {
+        border-radius: 0 !important;
+    }
+    body:has(.brutalist-theme) .stButton button,
+    body:has(.brutalist-theme) .stDownloadButton button {
+        border: 3px solid var(--line) !important;
+        box-shadow: 4px 4px 0 var(--line) !important;
+        font-weight: 700;
+        text-transform: uppercase;
+    }
+    body:has(.brutalist-theme) section[data-testid="stSidebar"] {
+        background: var(--base) !important;
+        border-right: 4px solid var(--line) !important;
+    }
+    body:has(.brutalist-theme) div[data-testid="stTabs"] [data-baseweb="tab-list"] {
+        border-bottom: 4px solid var(--line);
+        gap: 0;
+    }
+    body:has(.brutalist-theme) button[role="tab"] {
+        border: 3px solid var(--line) !important;
+        border-bottom: none !important;
+        text-transform: uppercase;
+        font-weight: 700;
     }
 
     .stApp {
