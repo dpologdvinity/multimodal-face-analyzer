@@ -1455,7 +1455,7 @@ def _estimate_roll_angle(face_bgr: np.ndarray, eye_cascade) -> float | None:
 
 def _rotate_region(frame_bgr: np.ndarray, box: tuple[int, int, int, int], angle_deg: float, pad_factor: float = 0.8) -> tuple[np.ndarray, tuple[int, int, int, int]]:
     """Crop a generously padded region around box from frame_bgr, rotate it level by
-    -angle_deg around the box center, and return (rotated_region, box_in_region_coords).
+    angle_deg around the box center, and return (rotated_region, box_in_region_coords).
     Padding is large enough that rotating the box never clips its corners."""
     x1, y1, x2, y2 = box
     w, h = x2 - x1, y2 - y1
@@ -1466,7 +1466,8 @@ def _rotate_region(frame_bgr: np.ndarray, box: tuple[int, int, int, int], angle_
     region = frame_bgr[ry1:ry2, rx1:rx2]
     local_box = (x1 - rx1, y1 - ry1, x2 - rx1, y2 - ry1)
     lcx, lcy = (local_box[0] + local_box[2]) / 2.0, (local_box[1] + local_box[3]) / 2.0
-    m = cv2.getRotationMatrix2D((lcx, lcy), -angle_deg, 1.0)
+    # atan2 uses downward-positive image y. OpenCV's positive rotation levels that slope.
+    m = cv2.getRotationMatrix2D((lcx, lcy), angle_deg, 1.0)
     rotated = cv2.warpAffine(region, m, (region.shape[1], region.shape[0]), borderMode=cv2.BORDER_REPLICATE)
     return rotated, local_box
 
@@ -2503,7 +2504,8 @@ def analyze_frame(
                 elif key == "mivolo":
                     value = predict_age_mivolo(net, face, body)
                 else:
-                    value = predict_age_insightface(net, crop_frame, (cx1, cy1, cx2, cy2))
+                    # Attribute.get uses the original detector box with rotation=0.
+                    value = predict_age_insightface(net, frame, (x1, y1, x2, y2))
                 pairs.append((key, value))
                 _record_model_latency(metrics, "age", key, started)
             return pairs
@@ -2524,7 +2526,7 @@ def analyze_frame(
                 elif key == "mivolo":
                     value = predict_gender_mivolo(net, face, body)
                 else:
-                    value = predict_gender_insightface(net, crop_frame, (cx1, cy1, cx2, cy2))
+                    value = predict_gender_insightface(net, frame, (x1, y1, x2, y2))
                 pairs.append((key, value))
                 _record_model_latency(metrics, "gender", key, started)
             return pairs
