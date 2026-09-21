@@ -139,7 +139,9 @@ except ImportError:
     FACE_REAGING_SUPPORTED = False
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-MODEL_DIR = BASE_DIR / "models"
+# Overridable so a git worktree (checked out with GIT_LFS_SKIP_SMUDGE=1, i.e. holding LFS
+# pointer files rather than real weights) can share the main checkout's 3GB models/ directory.
+MODEL_DIR = Path(os.environ.get("FACE_ANALYZER_MODEL_DIR") or (BASE_DIR / "models"))
 
 FACE_PROTO = MODEL_DIR / "opencv_face_detector.pbtxt"
 FACE_MODEL = MODEL_DIR / "opencv_face_detector_uint8.pb"
