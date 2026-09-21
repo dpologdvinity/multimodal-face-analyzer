@@ -21,6 +21,11 @@ from contextlib import nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 
+os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")  # silence TF INFO/WARNING banners (oneDNN, cpu_feature_guard) before TF import
+os.environ.setdefault("TF_ENABLE_ONEDNN_OPTS", "0")
+os.environ.setdefault("CUDA_VISIBLE_DEVICES", "-1")  # no GPU in this environment; skip cuInit probe entirely rather than logging its failure
+os.environ.setdefault("GLOG_minloglevel", "2")  # silence glog/absl banners emitted by mediapipe's C++ backend
+
 import cv2
 import numpy as np
 
