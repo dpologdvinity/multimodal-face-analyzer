@@ -15,13 +15,17 @@ class _FakeMiVOLO:
 
 
 class MiVOLOBodyContextTests(unittest.TestCase):
+    """Verify MiVOLO age/gender uses face+body context and crops bounds correctly."""
+
     def test_body_crop_expands_around_face_and_clamps_to_frame(self):
+        """Ensure body crop expands face box with margin and clamps to frame bounds."""
         self.assertEqual(
             body_crop_bounds((40, 30, 80, 70), (200, 200)),
             (10, 10, 110, 190),
         )
 
     def test_mivolo_predictors_use_face_and_body_inputs(self):
+        """Confirm both age and gender predictors pass face and body crops to model."""
         net = _FakeMiVOLO()
         face = np.zeros((40, 40, 3), dtype=np.uint8)
         body = np.ones((180, 100, 3), dtype=np.uint8)
@@ -29,6 +33,7 @@ class MiVOLOBodyContextTests(unittest.TestCase):
         self.assertEqual(predict_age_mivolo(net, face, body), "31")
         self.assertEqual(predict_gender_mivolo(net, face, body), "Male")
         self.assertEqual(len(net.calls), 2)
+        # Each predictor calls the model once; verify both pass same face/body objects
         self.assertIs(net.calls[0][0], face)
         self.assertIs(net.calls[0][1], body)
 
