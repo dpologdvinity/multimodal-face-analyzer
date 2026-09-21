@@ -1190,6 +1190,27 @@ def crop_region(frame: np.ndarray, x1: int, y1: int, x2: int, y2: int) -> np.nda
     return frame[y1:y2, x1:x2]
 
 
+def face_crop_bounds(
+    box: tuple[int, int, int, int], frame_shape: tuple[int, int], padding_ratio: float = 0.1,
+) -> tuple[int, int, int, int]:
+    """Return a detector crop with scale-relative context, using exclusive bounds.
+
+    The Caffe age model is sensitive to how much surrounding context occupies its fixed 227x227
+    input. A fixed pixel margin makes that context dominate small faces and disappear around
+    large faces, so keep the framing proportionate to the detected face instead.
+    """
+    x1, y1, x2, y2 = box
+    frame_height, frame_width = frame_shape
+    face_width, face_height = max(0, x2 - x1), max(0, y2 - y1)
+    padding = max(1, round(max(face_width, face_height) * padding_ratio))
+    return (
+        max(0, x1 - padding),
+        max(0, y1 - padding),
+        min(frame_width, x2 + padding),
+        min(frame_height, y2 + padding),
+    )
+
+
 def apply_geometric_transform(region: np.ndarray, transform_type: str, **params) -> np.ndarray:
     """Apply one geometric transform to a cropped region. Matches the matrices in
     ideas/transform.md / ideas/geo-transform.md directly (translation, reflection, rotation,
@@ -2451,10 +2472,9 @@ def analyze_frame(
             if angle is not None and abs(angle) > 3:  # skip work for near-level faces
                 crop_frame, (cx1, cy1, cx2, cy2) = _rotate_region(frame, (x1, y1, x2, y2), angle)
 
-        y1_crop = max(0, cy1 - 20)
-        y2_crop = min(cy2 + 20, crop_frame.shape[0])
-        x1_crop = max(0, cx1 - 20)
-        x2_crop = min(cx2 + 20, crop_frame.shape[1])
+        x1_crop, y1_crop, x2_crop, y2_crop = face_crop_bounds(
+            (cx1, cy1, cx2, cy2), crop_frame.shape[:2],
+        )
 
         face = crop_frame[y1_crop:y2_crop, x1_crop:x2_crop]
         if face.size == 0:
