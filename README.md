@@ -46,7 +46,7 @@ Face detection is required; age, gender, race, and emotion are each independentl
 | `scrfd` (web app only) | ONNX (onnxruntime) | bounding box            |
 | `retinaface` (web app only) | ONNX (onnxruntime) | bounding box            |
 
-SSD/ResNet-10 is the original detector and is always required as the fallback. `yolo` (YOLOv8-Face, `models/yolov8n_face.onnx`, [yakhyo/yolov8-face-onnx-inference](https://github.com/yakhyo/yolov8-face-onnx-inference), no explicit upstream license -- same treatment as DAN/SSR-Net), `scrfd` (SCRFD, `models/scrfd_2.5g_bnkps.onnx`, [deepinsight/insightface](https://github.com/deepinsight/insightface/tree/master/detection/scrfd), 2.5GF `bnkps` checkpoint, **non-commercial research-only weights** -- same license posture as this repo's insightface age/gender backend), and `retinaface` (RetinaFace, `models/retinaface_mobilenet0.25.onnx`, [biubug6/Pytorch_Retinaface](https://github.com/biubug6/Pytorch_Retinaface)'s mobilenet0.25 backbone -- MIT-licensed, re-exported by [AMD's Ryzen AI model zoo](https://huggingface.co/amd/retinaface) under Apache 2.0, the only unambiguously permissive face-detector option in this repo) are selectable in the web app, with YOLO first whenever its model is loaded. Exactly one detector runs per frame; running two and merging their boxes would just produce duplicate/overlapping faces, not a meaningfully combined result. All three verified with a real photo (`known_people/Barack_Obama.jpg`): correctly detect and localize the face.
+SSD/ResNet-10 is the original detector and is always required as the fallback. `yolo` (YOLOv8-Face, `models/yolov8n_face.onnx`, [yakhyo/yolov8-face-onnx-inference](https://github.com/yakhyo/yolov8-face-onnx-inference), no explicit upstream license -- same treatment as DAN/SSR-Net), `scrfd` (SCRFD, `models/scrfd_2.5g_bnkps.onnx`, [deepinsight/insightface](https://github.com/deepinsight/insightface/tree/master/detection/scrfd), 2.5GF `bnkps` checkpoint, **non-commercial research-only weights**), and `retinaface` (RetinaFace, `models/retinaface_mobilenet0.25.onnx`, [biubug6/Pytorch_Retinaface](https://github.com/biubug6/Pytorch_Retinaface)'s mobilenet0.25 backbone -- MIT-licensed, re-exported by [AMD's Ryzen AI model zoo](https://huggingface.co/amd/retinaface) under Apache 2.0, the only unambiguously permissive face-detector option in this repo) are selectable in the web app, with YOLO first whenever its model is loaded. Exactly one detector runs per frame; running two and merging their boxes would just produce duplicate/overlapping faces, not a meaningfully combined result. All three verified with a real photo (`known_people/Barack_Obama.jpg`): correctly detect and localize the face.
 
 **All three need `onnxruntime`, not this repo's usual `cv2.dnn` ONNX path.** For `yolo`, verified directly: this specific ONNX export fails to load under `cv2.dnn` on both OpenCV 4.10 and 5.0 (`Mixed input data types` error in its DFL box-decode subgraph -- an ONNX importer limitation, not a version-pin issue). The decode math (DFL softmax + sigmoid + NMS) is otherwise a faithful port of upstream's own `models/yolov8.py`, using `cv2.dnn.NMSBoxes` in place of their `torchvision.ops.nms` to avoid pulling in `torchvision` just for this. `scrfd` is run through onnxruntime too, for one consistent non-cv2.dnn detector code path rather than mixing conventions -- its own multi-output (score/bbox/kps per stride) anchor format is decoded via straightforward distance-to-bbox regression (no DFL needed, this checkpoint regresses distances directly), matching upstream's own `tools/scrfd.py`. `retinaface` likewise -- unlike `yolo`/`scrfd`'s dynamic square input, this checkpoint takes a fixed 608x640 NHWC input; boxes are decoded against precomputed anchor priors using the same variance-scaled regression as upstream's own `utils/box_utils.py`.
 
@@ -55,7 +55,6 @@ SSD/ResNet-10 is the original detector and is always required as the fallback. `
 | Backend       | Framework         | Output                         |
 | ------------- | ----------------- | ------------------------------ |
 | `caffe`       | Caffe (cv2.dnn)   | bucketed range, e.g. `(25-32)` |
-| `insightface` | ONNX (cv2.dnn)    | continuous age, e.g. `31`      |
 | `ssrnet`      | PyTorch           | continuous age, e.g. `31`      |
 | `fairface`    | ONNX (cv2.dnn)    | bucketed range, e.g. `20-29` (9 buckets) |
 | `dex`         | Caffe (cv2.dnn)   | continuous age, e.g. `31` (expected value over 101 classes) |
@@ -63,7 +62,7 @@ SSD/ResNet-10 is the original detector and is always required as the fallback. `
 
 Checkbox per built model in the web app sidebar. Default: `caffe`.
 
-When at least two continuous age backends are active (`insightface`, `ssrnet`, `dex`, or
+When at least two continuous age backends are active (`ssrnet`, `dex`, or
 `mivolo`) and their numeric outputs are within 10 years, the UI also shows a median consensus
 while retaining every individual model result. Bucketed ages, explicit DEX uncertainty, and
 disagreements remain individual-only. The 10-year gate is a conservative display heuristic,
@@ -75,13 +74,6 @@ The similarity crop uses [FairFace's padding of 0.25](https://github.com/dchen23
 MediaPipe is an approximation of the original dlib landmark detector, not an identical
 replacement. Missing or degenerate landmarks retain the bbox crop. Geometry and pipeline
 tests verify the contract; accuracy gains still require a labeled photo benchmark.
-
-InsightFace's **age/gender** model uses the original frame and detector box at 1.5x margin,
-96x96 raw RGB, with normalization embedded in this ONNX export. Its
-[attribute model](https://github.com/deepinsight/insightface/blob/master/python-package/insightface/model_zoo/attribute.py)
-does not use the ArcFace landmark template used by face recognition. Landmark warping or
-the shared Haar roll correction would change that input contract. Other classifiers' shared
-roll correction rotates in the direction that levels the detected eye line.
 
 `dex` (Deep EXpectation, Rothe et al. ICCV 2015) is a VGG-16 trained on IMDB-WIKI, a heavy age option (513MB caffemodel). **Research/academic-use license** (ETH Zurich, IMDB-WIKI-derived) -- not for commercial deployments without independent licensing.
 
@@ -101,12 +93,11 @@ heuristic, not a confidence interval or proof that narrower predictions are corr
 | Backend            | Framework            | Output            |
 | ------------------ | -------------------- | ----------------- |
 | Levi & Hassner CNN | Caffe (cv2.dnn)       | `Male` / `Female` |
-| `insightface`      | ONNX (cv2.dnn)        | `Male` / `Female` |
 | `deepface`         | Keras/TensorFlow      | `Male` / `Female` |
 | `fairface`         | ONNX (cv2.dnn)        | `Male` / `Female` |
 | `mivolo`           | PyTorch/timm ViT      | `Male` / `Female` |
 
-`insightface` shares one small ONNX file (`models/insightface_genderage.onnx`) with the insightface age backend -- one model, two feature outputs. **Non-commercial research-use-only license** (CelebA-derived); not for commercial deployments. `deepface` shares its VGGFace backbone code (`src/nets/deepface_common.py`) with the deepface race backend, but is a separate 537MB weight file (`models/deepface_gender.h5`) and needs TensorFlow like deepface race does. `fairface` shares one ONNX file (`models/fairface_7class.onnx`) across all three of age, gender, and race -- one model, three feature outputs (named `age_output`/`gender_output`/`race_output` in the same graph).
+`deepface` shares its VGGFace backbone code (`src/nets/deepface_common.py`) with the deepface race backend, but is a separate 537MB weight file (`models/deepface_gender.h5`) and needs TensorFlow like deepface race does. `fairface` shares one ONNX file (`models/fairface_7class.onnx`) across all three of age, gender, and race -- one model, three feature outputs (named `age_output`/`gender_output`/`race_output` in the same graph).
 
 `mivolo` (Apache 2.0, WildChlamydia/MiVOLO) shares its 110MB checkpoint with the mivolo age backend -- one model, two feature outputs. Face-only mode (no body context). Web app only.
 
@@ -212,9 +203,9 @@ Without both gated files present, this feature shows as offline (`RECONSTRUCTION
 | ---------- | --------- | -------------------------------- |
 | `franunet` | PyTorch U-Net | before/after face-crop image pair (downloadable PNG) |
 
-An `AGE PROGRESSION` button per detected face, wired to [timroelofs123/face_reaging](https://github.com/timroelofs123/face_reaging) (MIT-licensed code), a U-Net reproducing Disney Research's FRAN paper. Given a source age and target age (both user-entered, 0-100), the network predicts a residual that's added onto the face crop (resized to the model's native 512x512, then resized back), producing an aged/de-aged version of the same crop. Pretrained weights (`best_unet_model.pth` -> bundled here as `models/face_reaging_unet.pth`) are downloaded directly from [Hugging Face](https://huggingface.co/timroelofs123/face_re-aging), loadable with plain `torch.load` -- no training or gated download needed, unlike this repo's 3D Reconstruction or InsightFace models.
+An `AGE PROGRESSION` button per detected face, wired to [timroelofs123/face_reaging](https://github.com/timroelofs123/face_reaging) (MIT-licensed code), a U-Net reproducing Disney Research's FRAN paper. Given a source age and target age (both user-entered, 0-100), the network predicts a residual that's added onto the face crop (resized to the model's native 512x512, then resized back), producing an aged/de-aged version of the same crop. Pretrained weights (`best_unet_model.pth` -> bundled here as `models/face_reaging_unet.pth`) are downloaded directly from [Hugging Face](https://huggingface.co/timroelofs123/face_re-aging), loadable with plain `torch.load` -- no training or gated download needed, unlike this repo's 3D Reconstruction model.
 
-**License caveat -- non-commercial, and NOT just a training-data footnote:** the U-Net's `DownLayer`/`UpLayer` blocks use `BlurPool` (anti-aliased strided downsampling), vendored here from Adobe's [antialiased-cnns](https://github.com/adobe/antialiased-cnns) (see `src/nets/face_reaging_model.py`). antialiased-cnns is licensed **Creative Commons Attribution-NonCommercial-ShareAlike 4.0** -- non-commercial only, and share-alike (redistributions/adaptations must carry the same license). This is a *required inference-time component of the network architecture itself*, not merely a caveat about what data the weights were trained on. Separately, the pretrained weights were trained on FFHQ images re-aged via SAM (built on StyleGAN2, NVIDIA's own non-commercial research license), so the training-data provenance also traces back through a non-commercial-licensed tool. Net effect: treat this whole feature as **non-commercial/research use only**, same category as InsightFace's age/gender model already in this repo, but with a stronger justification (a direct architectural dependency, not just lineage).
+**License caveat -- non-commercial, and NOT just a training-data footnote:** the U-Net's `DownLayer`/`UpLayer` blocks use `BlurPool` (anti-aliased strided downsampling), vendored here from Adobe's [antialiased-cnns](https://github.com/adobe/antialiased-cnns) (see `src/nets/face_reaging_model.py`). antialiased-cnns is licensed **Creative Commons Attribution-NonCommercial-ShareAlike 4.0** -- non-commercial only, and share-alike (redistributions/adaptations must carry the same license). This is a *required inference-time component of the network architecture itself*, not merely a caveat about what data the weights were trained on. Separately, the pretrained weights were trained on FFHQ images re-aged via SAM (built on StyleGAN2, NVIDIA's own non-commercial research license), so the training-data provenance also traces back through a non-commercial-licensed tool. Net effect: treat this whole feature as **non-commercial/research use only**.
 
 ### Liveness / anti-spoofing
 
@@ -344,12 +335,12 @@ Open **SELECT REGION & TRANSFORM** beneath an uploaded image or webcam snapshot,
 
 Each detected face has an **Edit face** expander containing its sliders, **IMAGE OP** selector, and **APPLY IMAGE OP** button. The filters stay hidden until that expander opens. Operations act on that face's displayed crop; the result can be downloaded as a PNG. Intensity, sharpen, and denoise expose a method selector. These operations need no model files or Docker build arguments. CNN and GAN denoising are not included because trained weights are not supplied.
 
-Model provenance: DAN, SSR-Net, and DeepFace's race model are vendored research code (`src/nets/`). DAN and SSR-Net have no explicit upstream license file (research/educational use). DeepFace (race, gender, and recognition/`deepface_vgg.h5`) is MIT. FairFace's ONNX conversion is MIT (underlying dataset CC BY 4.0). InsightFace's model is non-commercial research use only (see Gender above). Face-Mask-Detection is MIT; the glasses detector's license is unstated. HSEmotion (HSE-asavchenko/EmotiEffLib) code is Apache-2.0; its AffectNet-8 fine-tuned weight has the same research/educational provenance as DAN. The age-reaging U-Net (`franunet`) is MIT-licensed code, but its BlurPool component (vendored from Adobe's antialiased-cnns) is CC BY-NC-SA 4.0 -- non-commercial use only (see Age Progression / Regression above).
+Model provenance: DAN, SSR-Net, and DeepFace's race model are vendored research code (`src/nets/`). DAN and SSR-Net have no explicit upstream license file (research/educational use). DeepFace (race, gender, and recognition/`deepface_vgg.h5`) is MIT. FairFace's ONNX conversion is MIT (underlying dataset CC BY 4.0). Face-Mask-Detection is MIT; the glasses detector's license is unstated. HSEmotion (HSE-asavchenko/EmotiEffLib) code is Apache-2.0; its AffectNet-8 fine-tuned weight has the same research/educational provenance as DAN. The age-reaging U-Net (`franunet`) is MIT-licensed code, but its BlurPool component (vendored from Adobe's antialiased-cnns) is CC BY-NC-SA 4.0 -- non-commercial use only (see Age Progression / Regression above).
 
 ## Performance
 
 - **Classifier frame skip (webcam LIVE mode only):** a `CLASSIFIER FRAME SKIP` slider (1-10, default 1 = every frame) above the LIVE video feed runs age/gender/emotion/race/recognition/glasses/mask/hair-color/eye-color classifiers every Nth frame instead of every frame. Face detection and the pose/hand/face-landmark overlays still run every frame, so the video itself stays smooth. This is safe to skip freely: those classifiers' outputs aren't otherwise drawn onto the LIVE video (per-face text cards only exist for Image upload / webcam SNAPSHOT), so there's no visible staleness to interpolate around -- skipping only reduces CPU load.
-- **Per-face result caching:** `src/inference.py` memoizes most per-face classifier calls (age, gender, emotion, race, expression, glasses, mask, eye color, and the recognition embedding step) keyed on a hash of the exact preprocessed face-crop bytes fed to that model, not a face-identity embedding -- an embedding hash isn't a stable cache key for an adjusted or re-cropped face, but identical input bytes always produce identical deterministic output, so hashing the input itself is correct with no accuracy risk. This mainly helps Streamlit's rerun-the-whole-script-on-any-widget-change model: toggling one unrelated sidebar option no longer recomputes every classifier for every face from scratch. `fairface` and `insightface` (which key off the full frame + box rather than an isolated face crop) and the identity **match** step (which must stay live since the gallery can change between calls) are intentionally not cached. The cache is bounded (LRU-evicted, 2048 entries) and shared process-wide.
+- **Per-face result caching:** `src/inference.py` memoizes most per-face classifier calls (age, gender, emotion, race, expression, glasses, mask, eye color, and the recognition embedding step) keyed on a hash of the exact preprocessed face-crop bytes fed to that model, not a face-identity embedding -- an embedding hash isn't a stable cache key for an adjusted or re-cropped face, but identical input bytes always produce identical deterministic output, so hashing the input itself is correct with no accuracy risk. This mainly helps Streamlit's rerun-the-whole-script-on-any-widget-change model: toggling one unrelated sidebar option no longer recomputes every classifier for every face from scratch. `fairface` (which key off the full frame + box rather than an isolated face crop) and the identity **match** step (which must stay live since the gallery can change between calls) are intentionally not cached. The cache is bounded (LRU-evicted, 2048 entries) and shared process-wide.
 
 ---
 
@@ -367,7 +358,6 @@ multimodal-face-analyzer/
 │   ├── age_deploy.prototxt / age_net.caffemodel # age: caffe backend
 │   ├── ssrnet_morph2.pth                        # age: ssrnet backend
 │   ├── gender_deploy.prototxt / gender_net.caffemodel
-│   ├── insightface_genderage.onnx               # age + gender: insightface backend
 │   ├── mivolo_v2.safetensors / _config.json     # age + gender: mivolo backend
 │   ├── dan_affecnet7.pth                        # emotion: dan backend
 │   ├── efficientnet_b0_fer.onnx                 # emotion: efficientnet backend
@@ -512,8 +502,8 @@ detector fallback while YOLO, SCRFD, and RetinaFace are additive choices:
 
 ```bash
 docker build \
-  --build-arg AGE_MODEL=caffe,insightface,fairface,dex,ssrnet,mivolo \
-  --build-arg GENDER_MODEL=caffe,insightface,fairface,deepface,mivolo \
+  --build-arg AGE_MODEL=caffe,fairface,dex,ssrnet,mivolo \
+  --build-arg GENDER_MODEL=caffe,fairface,deepface,mivolo \
   --build-arg EMOTION_MODEL=efficientnet,ferplus,hsemotion,mini_xception,dan \
   --build-arg RACE_MODEL=fairface,deepface \
   --build-arg FACE_LANDMARKS_MODEL=mediapipe \
@@ -533,8 +523,8 @@ docker build \
 
 | Build arg           | Options (default first)          |
 | -------------------- | -------------------------------- |
-| `AGE_MODEL`        | `caffe`, `insightface`, `fairface`, `dex`, `ssrnet`, `mivolo` |
-| `GENDER_MODEL`     | `caffe`, `insightface`, `fairface`, `deepface`, `mivolo` |
+| `AGE_MODEL`        | `caffe`, `fairface`, `dex`, `ssrnet`, `mivolo` |
+| `GENDER_MODEL`     | `caffe`, `fairface`, `deepface`, `mivolo` |
 | `EMOTION_MODEL`    | `efficientnet`, `ferplus`, `hsemotion`, `mini_xception`, `dan` |
 | `RACE_MODEL`       | `fairface`, `deepface`                   |
 | `FACE_LANDMARKS_MODEL` | `mediapipe`                        |

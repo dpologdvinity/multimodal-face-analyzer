@@ -7,9 +7,9 @@ class AgeConsensusTests(unittest.TestCase):
     def test_consensus_uses_only_close_continuous_predictions(self):
         self.assertEqual(
             inference.conservative_age_consensus(
-                [("caffe", "25-32"), ("insightface", "31"), ("ssrnet", "33"), ("mivolo", "32")]
+                [("caffe", "25-32"), ("ssrnet", "33"), ("mivolo", "32")]
             ),
-            "32 (3 models agree within 2y)",
+            "32 (2 models agree within 1y)",
         )
 
     def test_consensus_rejects_disagreement_and_single_model(self):

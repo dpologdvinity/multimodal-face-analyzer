@@ -4,8 +4,8 @@ FROM python:3.11-slim
 # Per-feature model selection. Each ARG takes a comma-separated list of model
 # keys for that feature, or an empty string for "none". Options, in
 # quickest-to-build order (default is the first/quickest):
-#   AGE_MODEL:        caffe, insightface, ssrnet, fairface, dex, mivolo (default: caffe)
-#   GENDER_MODEL:      caffe, insightface, deepface, fairface, mivolo (default: caffe)
+#   AGE_MODEL:        caffe, ssrnet, fairface, dex, mivolo (default: caffe)
+#   GENDER_MODEL:      caffe, deepface, fairface, mivolo (default: caffe)
 #   EMOTION_MODEL:     efficientnet, ferplus, mini_xception, dan, hsemotion (default: efficientnet)
 #   RACE_MODEL:        fairface, deepface           (default: fairface)
 #   FACE_LANDMARKS_MODEL: mediapipe                 (default: mediapipe)
@@ -28,8 +28,7 @@ FROM python:3.11-slim
 # YOLOv8-Face export, verified against both OpenCV 4.10 and 5.0; SCRFD's and RetinaFace's own
 # multi-output anchor formats are likewise handled via onnxruntime for the same "one non-cv2.dnn
 # ONNX code path" consistency). SCRFD's weights (deepinsight/insightface's 2.5GF bnkps
-# checkpoint) are non-commercial research-only, same license posture as this repo's insightface
-# age/gender backend. RetinaFace's weights (biubug6/Pytorch_Retinaface's mobilenet0.25 backbone,
+# checkpoint) are non-commercial research-only. RetinaFace's weights (biubug6/Pytorch_Retinaface's mobilenet0.25 backbone,
 # MIT-licensed, re-exported by AMD's Ryzen AI model zoo under Apache 2.0) are the only
 # face-detector option in this repo with an unambiguous permissive license -- see README.
 # lbph (Local Binary Patterns Histogram, opencv-contrib's cv2.face module) needs
@@ -49,9 +48,7 @@ FROM python:3.11-slim
 # antialiased-cnns, which is CC BY-NC-SA 4.0 (non-commercial) -- a required inference-time
 # dependency, not just a training-data provenance caveat like this repo's other NC-flagged
 # models. See README.
-# insightface's genderage.onnx provides BOTH age and gender from one file
-# (non-commercial research license -- see README). deepface's race model
-# needs TensorFlow (~200-400MB) and a 513MB weight file, much heavier
+# deepface's race model needs TensorFlow (~200-400MB) and a 513MB weight file, much heavier
 # than fairface -- only pulled in if requested. mask also needs TensorFlow
 # (Keras .h5 weights); glasses are plain ONNX.
 # e.g. --build-arg AGE_MODEL=caffe,ssrnet builds both age backends so the web
@@ -179,8 +176,6 @@ RUN --mount=type=bind,source=models,target=/tmp/models \
     case "$age_csv" in *,caffe,*) cp /tmp/models/age_deploy.prototxt /tmp/models/age_net.caffemodel models/ ;; esac; \
     case "$age_csv" in *,ssrnet,*) cp /tmp/models/ssrnet_morph2.pth models/ ;; esac; \
     case "$gender_csv" in *,caffe,*) cp /tmp/models/gender_deploy.prototxt /tmp/models/gender_net.caffemodel models/ ;; esac; \
-    case "$age_csv" in *,insightface,*) cp /tmp/models/insightface_genderage.onnx models/ ;; esac; \
-    case "$gender_csv" in *,insightface,*) cp /tmp/models/insightface_genderage.onnx models/ ;; esac; \
     case "$age_csv" in *,fairface,*) cp /tmp/models/fairface_7class.onnx models/ ;; esac; \
     case "$gender_csv" in *,fairface,*) cp /tmp/models/fairface_7class.onnx models/ ;; esac; \
     case "$age_csv" in *,dex,*) cp /tmp/models/dex_age.prototxt /tmp/models/dex_age.caffemodel models/ ;; esac; \

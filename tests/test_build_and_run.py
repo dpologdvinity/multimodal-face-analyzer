@@ -52,8 +52,8 @@ class BuildPromptFormattingTests(unittest.TestCase):
         self.assertIn("\033[1;32m* 0) ssd\033[0m", output)
         self.assertIn("\033[1;33m  1) yolo\033[0m", output)
         self.assertIn("\033[1;32m* 1) caffe\033[0m", output)
-        self.assertIn("\033[1;32m  4) dex\033[0m", output)
-        self.assertIn("\033[1;33m  5) ssrnet\033[0m", output)
+        self.assertIn("\033[1;32m  3) dex\033[0m", output)
+        self.assertIn("\033[1;33m  4) ssrnet\033[0m", output)
         self.assertIn("\033[1;32m  3) hsemotion\033[0m", output)
         self.assertIn("\033[1;33m  4) mini_xception\033[0m", output)
         self.assertIn("\033[1;33m  3) 3d reconstruction - deep3d\033[0m", output)
@@ -66,7 +66,7 @@ class BuildPromptFormattingTests(unittest.TestCase):
 
     def test_reordered_choices_still_forward_the_selected_build_models(self):
         """Verify selected model indices map correctly to docker build args."""
-        selections = ["2", "5", "4", "2", "5", "0", "0", "3"]
+        selections = ["2", "4", "3", "2", "5", "0", "0", "3"]
         output = self._run_build(selections)
 
         self.assertIn("SCRFD_FACE_MODEL=scrfd", output)
@@ -124,7 +124,7 @@ class BuildPromptFormattingTests(unittest.TestCase):
             )
 
     def test_shared_model_is_staged_once_for_multiple_features(self):
-        """Verify insightface_genderage.onnx appears once when both age and gender select it."""
+        """Verify fairface_7class.onnx appears once when age and gender both select it."""
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
             fake_bin = temp_path / "bin"
@@ -158,7 +158,7 @@ class BuildPromptFormattingTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(
                 manifest.read_text().splitlines(),
-                ["haarcascade_eye.xml", "insightface_genderage.onnx", "opencv_face_detector.pbtxt", "opencv_face_detector_uint8.pb"],
+                ["fairface_7class.onnx", "haarcascade_eye.xml", "opencv_face_detector.pbtxt", "opencv_face_detector_uint8.pb"],
             )
 
 
