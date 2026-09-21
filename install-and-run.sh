@@ -324,13 +324,11 @@ RECOGNITION_MODEL="$REPLY_MODEL"
 prompt_feature "ADDITIONAL CLASSIFICATIONS" 0 \
     "haarcascade|drowsiness - haarcascade|$BASE_PACKAGES" \
     "bisenet|facial hair - bisenet|$BASE_PACKAGES" \
-    "blendshapes|expressions - blendshapes|$BASE_PACKAGES,+mediapipe" \
     "mediapipe|liveness - mediapipe|$BASE_PACKAGES,+mediapipe" \
     "mobilenet|glasses - mobilenet|$BASE_PACKAGES,+onnxruntime" \
     "mobilenetv2|mask - mobilenetv2|$BASE_PACKAGES,+tensorflow-cpu,+tf-keras" \
     "colorimetric|hair color - colorimetric|"
 set_additional_classification_models() {
-    EXPRESSION_MODEL=""
     DROWSINESS_MODEL=""
     LIVENESS_MODEL=""
     FACIAL_HAIR_MODEL=""
@@ -341,7 +339,6 @@ set_additional_classification_models() {
     IFS=',' read -ra models <<< "$1"
     for model in "${models[@]:-}"; do
         case "$model" in
-            blendshapes) EXPRESSION_MODEL="blendshapes" ;;
             haarcascade) DROWSINESS_MODEL="haarcascade" ;;
             mediapipe) LIVENESS_MODEL="mediapipe" ;;
             bisenet) FACIAL_HAIR_MODEL="bisenet" ;;
@@ -355,6 +352,7 @@ set_additional_classification_models "$REPLY_MODEL"
 
 prompt_feature "ADDITIONAL FEATURES" 0 \
     "eccv16|colorization - eccv16|$BASE_PACKAGES" \
+    "facemesh|face landmarks - mediapipe|$BASE_PACKAGES,+mediapipe" \
     "mpi|body pose - mpi|$BASE_PACKAGES" \
     "deep3d|3d reconstruction - deep3d|$BASE_PACKAGES,+torch,+torchvision,+scipy" \
     "franunet|age progression - franunet|$BASE_PACKAGES,+torch,+torchvision" \
@@ -363,6 +361,7 @@ set_additional_feature_models() {
     COLORIZATION_MODEL=""
     RECONSTRUCTION_3D_MODEL=""
     AGE_PROGRESSION_MODEL=""
+    FACE_LANDMARKS_MODEL=""
     HAND_MODEL=""
     POSE_MODEL=""
     local model
@@ -374,6 +373,7 @@ set_additional_feature_models() {
             franunet) AGE_PROGRESSION_MODEL="franunet" ;;
             mediapipe) HAND_MODEL="mediapipe" ;;
             mpi) POSE_MODEL="mpi" ;;
+            facemesh) FACE_LANDMARKS_MODEL="mediapipe" ;;
         esac
     done
 }
@@ -402,7 +402,7 @@ if csv_has "$RACE_MODEL" deepface || csv_has "$GENDER_MODEL" deepface \
     || csv_has "$MASK_MODEL" mobilenetv2; then
     NEED_TENSORFLOW=true
 fi
-if csv_has "$EXPRESSION_MODEL" blendshapes || csv_has "$LIVENESS_MODEL" mediapipe \
+if csv_has "$FACE_LANDMARKS_MODEL" mediapipe || csv_has "$LIVENESS_MODEL" mediapipe \
     || csv_has "$HAND_MODEL" mediapipe; then
     NEED_MEDIAPIPE=true
 fi
@@ -424,7 +424,7 @@ echo "  GENDER_MODEL=${GENDER_MODEL}" >&2
 echo "  EMOTION_MODEL=${EMOTION_MODEL}" >&2
 echo "  DROWSINESS_MODEL=${DROWSINESS_MODEL}" >&2
 echo "  RACE_MODEL=${RACE_MODEL}" >&2
-echo "  EXPRESSION_MODEL=${EXPRESSION_MODEL}" >&2
+echo "  FACE_LANDMARKS_MODEL=${FACE_LANDMARKS_MODEL}" >&2
 echo "  LIVENESS_MODEL=${LIVENESS_MODEL}" >&2
 echo "  RECOGNITION_MODEL=${RECOGNITION_MODEL}" >&2
 echo "  FACIAL_HAIR_MODEL=${FACIAL_HAIR_MODEL}" >&2
@@ -514,7 +514,7 @@ echo "" >&2
 echo "Running at http://localhost:${PORT}" >&2
 echo "Press Ctrl-C to stop Streamlit." >&2
 export AGE_MODEL GENDER_MODEL RACE_MODEL EMOTION_MODEL RECOGNITION_MODEL \
-    DROWSINESS_MODEL EXPRESSION_MODEL LIVENESS_MODEL FACIAL_HAIR_MODEL \
+    DROWSINESS_MODEL FACE_LANDMARKS_MODEL LIVENESS_MODEL FACIAL_HAIR_MODEL \
     GLASSES_MODEL MASK_MODEL HAIR_COLOR_MODEL COLORIZATION_MODEL POSE_MODEL HAND_MODEL \
     RECONSTRUCTION_3D_MODEL AGE_PROGRESSION_MODEL YOLO_FACE_MODEL \
     SCRFD_FACE_MODEL RETINAFACE_MODEL

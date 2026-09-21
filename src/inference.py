@@ -123,7 +123,7 @@ DEEPFACE_RECOGNITION_MODEL = MODEL_DIR / "deepface_vgg.h5"
 DEX_PROTO = MODEL_DIR / "dex_age.prototxt"
 DEX_MODEL = MODEL_DIR / "dex_age.caffemodel"
 MIVOLO_MODEL = MODEL_DIR / "mivolo_v2.safetensors"
-BLENDSHAPES_MODEL = MODEL_DIR / "face_landmarker.task"
+FACE_LANDMARKER_MODEL = MODEL_DIR / "face_landmarker.task"
 BISENET_MODEL = MODEL_DIR / "bisenet_face_parsing.onnx"
 SKIN_TONE_MODEL = MODEL_DIR / "skin_tone_mobilenetv2.h5"
 GLASSES_MODEL = MODEL_DIR / "glasses_detector.onnx"
@@ -178,7 +178,6 @@ FAIRFACE_AGE_LABELS = ["0-2", "3-9", "10-19", "20-29", "30-39", "40-49", "50-59"
 EMOTION_MODEL_OPTIONS = ["efficientnet", "ferplus", "mini_xception", "dan", "hsemotion"]
 DROWSINESS_MODEL_OPTIONS = ["haarcascade"]
 RACE_MODEL_OPTIONS = ["fairface", "deepface"]
-EXPRESSION_MODEL_OPTIONS = ["blendshapes"]
 LIVENESS_MODEL_OPTIONS = ["mediapipe"]
 RECOGNITION_MODEL_OPTIONS = ["vggface", "lbph"]
 FACE_DETECTOR_OPTIONS = ["ssd", "yolo", "scrfd", "retinaface"]  # ssd is the original required detector, always on
@@ -218,7 +217,7 @@ MPI_POSE_PAIRS = [
     (14, 8), (8, 9), (9, 10), (14, 11), (11, 12), (12, 13),
 ]
 MPI_POSE_NUM_POINTS = 15
-FACE_LANDMARKS_MODEL_OPTIONS = ["blendshapes"]  # reuses the same FaceLandmarker model as Expression
+FACE_LANDMARKS_MODEL_OPTIONS = ["mediapipe"]
 HAND_MODEL_OPTIONS = ["mediapipe"]
 RECONSTRUCTION_3D_MODEL_OPTIONS = ["deep3d"]
 # Standard MediaPipe 21-point hand skeleton (HandLandmark enum order, see ideas/hands.md)
@@ -300,7 +299,6 @@ class Models:
     emotion_nets: dict = field(default_factory=dict)
     drowsiness_nets: dict = field(default_factory=dict)
     race_nets: dict = field(default_factory=dict)
-    expression_nets: dict = field(default_factory=dict)
     liveness_nets: dict = field(default_factory=dict)
     recognition_nets: dict = field(default_factory=dict)
     facial_hair_nets: dict = field(default_factory=dict)
@@ -326,7 +324,7 @@ class Models:
             name for name, nets in [
                 ("AGE", self.age_nets), ("GENDER", self.gender_nets),
                 ("EMOTION", self.emotion_nets), ("DROWSINESS", self.drowsiness_nets),
-                ("RACE", self.race_nets), ("EXPRESSION", self.expression_nets),
+                ("RACE", self.race_nets),
                 ("LIVENESS", self.liveness_nets),
                 ("GAZE", self.gaze_nets),
                 ("RECOGNITION", self.recognition_nets), ("FACIAL_HAIR", self.facial_hair_nets),
@@ -448,26 +446,24 @@ def load_models() -> Models:
     if EYE_CASCADE_FILE.exists():
         eye_color_nets["colorimetric"] = drowsiness_nets["haarcascade"] if "haarcascade" in drowsiness_nets else cv2.CascadeClassifier(str(EYE_CASCADE_FILE))
 
-    expression_nets = {}
     liveness_nets = {}
     face_landmarks_nets = {}
     gaze_nets = {}
     face_landmarker_selected = (
-        native_model_selected("EXPRESSION_MODEL", "blendshapes")
+        native_model_selected("FACE_LANDMARKS_MODEL", "mediapipe")
         or native_model_selected("LIVENESS_MODEL", "mediapipe")
     )
-    if face_landmarker_selected and MEDIAPIPE_SUPPORTED and BLENDSHAPES_MODEL.exists():
+    if face_landmarker_selected and MEDIAPIPE_SUPPORTED and FACE_LANDMARKER_MODEL.exists():
         options = mp.tasks.vision.FaceLandmarkerOptions(
-            base_options=mp.tasks.BaseOptions(model_asset_path=str(BLENDSHAPES_MODEL)),
-            output_face_blendshapes=True,
+            base_options=mp.tasks.BaseOptions(model_asset_path=str(FACE_LANDMARKER_MODEL)),
+            output_face_blendshapes=native_model_selected("LIVENESS_MODEL", "mediapipe"),
             running_mode=mp.tasks.vision.RunningMode.IMAGE,
         )
         landmarker = mp.tasks.vision.FaceLandmarker.create_from_options(options)
-        if native_model_selected("EXPRESSION_MODEL", "blendshapes"):
-            expression_nets["blendshapes"] = landmarker
         if native_model_selected("LIVENESS_MODEL", "mediapipe"):
             liveness_nets["mediapipe"] = landmarker
-        face_landmarks_nets["blendshapes"] = landmarker  # same model instance, two features
+        if native_model_selected("FACE_LANDMARKS_MODEL", "mediapipe"):
+            face_landmarks_nets["mediapipe"] = landmarker
         gaze_nets["mediapipe"] = landmarker
 
     facial_hair_nets = {}
@@ -534,7 +530,7 @@ def load_models() -> Models:
         age_progression_nets["franunet"] = build_face_reaging_model(str(FACE_REAGING_MODEL))
 
     return Models(
-        face_net, age_nets, gender_nets, emotion_nets, drowsiness_nets, race_nets, expression_nets, liveness_nets, recognition_nets,
+        face_net, age_nets, gender_nets, emotion_nets, drowsiness_nets, race_nets, liveness_nets, recognition_nets,
         facial_hair_nets, skin_tone_nets, glasses_nets, mask_nets, hair_color_nets, eye_color_nets, colorization_nets,
         pose_nets, face_landmarks_nets, hand_nets, reconstruction_3d_nets, yolo_face_nets, scrfd_face_nets, retinaface_nets,
         gaze_nets, age_progression_nets,
@@ -1105,7 +1101,7 @@ def _emotion_arousal_category(emotion_label: str) -> str | None:
         return "high"
     if label in EMOTION_LOW_AROUSAL_LABELS:
         return "low"
-    return None  # composite labels (e.g. blendshapes' "jawOpen 0.82, ...") aren't mapped
+    return None  # composite labels are not mapped to arousal categories
 
 
 def fuse_voice_and_emotion(voice_arousal: str, emotion_label: str) -> str | None:
@@ -2021,34 +2017,6 @@ def predict_texture_artifact_score(face_bgr: np.ndarray) -> float:
     return texture_artifact_score(sample.tolist())
 
 
-def predict_expression_blendshapes(landmarker, face_bgr: np.ndarray, result=None) -> str:
-    """Predict facial expression via MediaPipe's BlendShapes (52 continuous muscle coefficients).
-    Returns the top 3 highest-scoring blendshapes as a comma-separated string,
-    or 'no landmarks' if no face is detected."""
-    result = result if result is not None else _detect_face_landmarker(landmarker, face_bgr)
-
-    if not result.face_blendshapes or len(result.face_blendshapes) == 0:
-        return "no landmarks"
-
-    blendshapes = result.face_blendshapes[0]
-    # Sort by score descending
-    sorted_blendshapes = sorted(blendshapes, key=lambda x: x.score, reverse=True)
-
-    # Take top 3, skip "_neutral" if present
-    top_blendshapes = []
-    for bs in sorted_blendshapes:
-        if bs.category_name != "_neutral":
-            top_blendshapes.append(bs)
-        if len(top_blendshapes) >= 3:
-            break
-
-    if not top_blendshapes:
-        return "no landmarks"
-
-    # Format as "name1 0.82, name2 0.15, name3 0.09"
-    return ", ".join(f"{bs.category_name} {bs.score:.2f}" for bs in top_blendshapes)
-
-
 BISENET_HAIR_CLASS = 17  # CelebAMask-HQ 19-class scheme (yakhyo/face-parsing's own utils/prepare_labels.py
 # attribute order, 1-indexed after background=0): skin, l_brow, r_brow, l_eye, r_eye, eye_g, l_ear, r_ear,
 # ear_r, nose, mouth, u_lip, l_lip, neck, neck_l, cloth, hair, hat -- there is NO separate beard/facial-hair
@@ -2192,8 +2160,7 @@ def predict_eye_color_colorimetric(eye_cascade, face_bgr: np.ndarray) -> str:
 
 
 def predict_face_landmarks_mediapipe(landmarker, face_bgr: np.ndarray, result=None) -> list[tuple[float, float]] | None:
-    """MediaPipe FaceLandmarker (same model instance as Expression's blendshapes backend --
-    one model, two features, same pattern as insightface/fairface elsewhere in this file).
+    """MediaPipe FaceLandmarker face-mesh points used by the landmark and gaze features.
     Returns 468 (x, y) points normalized to [0, 1] within face_bgr, or None if no face found."""
     result = result if result is not None else _detect_face_landmarker(landmarker, face_bgr)
     if not result.face_landmarks:
@@ -2271,12 +2238,12 @@ def _record_model_latency(metrics: dict | None, feature: str, model: str, starte
 
 def run_3d_reconstruction(models: "Models", face_bgr: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
     """Deep3DFaceRecon_pytorch-based 3D reconstruction (see src/nets/deep3d_recon.py) for one
-    face crop. Reuses the same FaceLandmarker instance as Expression/Face Landmarks to derive
+    face crop. Reuses the same FaceLandmarker instance as Face Landmarks to derive
     the 5-point alignment landmarks this pipeline needs. Returns (vertices, faces, per-vertex
     RGB colors) or None if the deep3d model, the BFM data, or the face landmarker aren't
     available, or if no face landmarks were found in this crop."""
     bundle = models.reconstruction_3d_nets.get("deep3d")
-    landmarker = models.face_landmarks_nets.get("blendshapes")
+    landmarker = models.face_landmarks_nets.get("mediapipe")
     if bundle is None or landmarker is None:
         return None
 
@@ -2379,7 +2346,6 @@ def analyze_frame(
     active_emotion: set,
     active_drowsiness: set,
     active_race: set,
-    active_expression: set,
     active_recognition: set,
     gallery: dict,
     active_facial_hair: set,
@@ -2497,7 +2463,7 @@ def analyze_frame(
         if face_adjustments and any(face_adjustments.values()):
             face = apply_image_adjustments(face, face_adjustments)
 
-        # Expression, gaze, head pose, and drawn landmarks all consume the
+        # Gaze, head pose, and drawn landmarks all consume the
         # same MediaPipe FaceLandmarker result. Detect once before dispatching
         # feature tasks so the shared model is not run repeatedly per crop.
         # Liveness only makes sense with a stable track to watch blinks across frames --
@@ -2508,12 +2474,11 @@ def analyze_frame(
         liveness_net = models.liveness_nets.get("mediapipe") if run_liveness else None
         face_landmarker = (
             liveness_net if liveness_net is not None
-            else models.face_landmarks_nets.get("blendshapes")
+            else models.face_landmarks_nets.get("mediapipe")
         )
         needs_face_landmarks = (
-            "blendshapes" in active_expression
-            or "mediapipe" in active_gaze
-            or "blendshapes" in active_face_landmarks
+            "mediapipe" in active_gaze
+            or "mediapipe" in active_face_landmarks
             or face_landmarker is not None
         )
         landmarker_result = (
@@ -2534,7 +2499,7 @@ def analyze_frame(
         # both documented/verified safe for this, see their own docstrings/comments), so they
         # run concurrently on _INFERENCE_EXECUTOR instead of one after another. Shared model
         # instances (e.g. one fairface/insightface net backing both age and gender, or one
-        # MediaPipe landmarker backing expression/gaze/face_landmarks) are made safe for this
+        # MediaPipe landmarker backing gaze/face_landmarks is made safe for this
         # by _lock_for(), applied at each net's actual setInput/forward/predict/detect call
         # site (see the top of this file) -- concurrent calls onto the SAME net serialize
         # there, while calls onto DIFFERENT nets still overlap for real.
@@ -2613,20 +2578,6 @@ def analyze_frame(
                 value = predict_race_fairface(net, crop_frame, (cx1, cy1, cx2, cy2)) if key == "fairface" else _cached_face_predict("race", key, face, predict_race_deepface, net, face)
                 pairs.append((key, value))
                 _record_model_latency(metrics, "race", key, started)
-            return pairs
-
-        def _expression_task():
-            pairs = []
-            for key in active_expression:
-                net = models.expression_nets.get(key)
-                if net is None:
-                    continue
-                started = time.perf_counter()
-                value = _cached_face_predict(
-                    "expression", key, face, predict_expression_blendshapes, net, face, landmarker_result
-                )
-                pairs.append((key, value))
-                _record_model_latency(metrics, "expression", key, started)
             return pairs
 
         def _gaze_task():
@@ -2774,7 +2725,6 @@ def analyze_frame(
             "gender": _INFERENCE_EXECUTOR.submit(_gender_task),
             "emotion": _INFERENCE_EXECUTOR.submit(_emotion_task),
             "race": _INFERENCE_EXECUTOR.submit(_race_task),
-            "expression": _INFERENCE_EXECUTOR.submit(_expression_task),
             "gaze": _INFERENCE_EXECUTOR.submit(_gaze_task),
             "head_pose": _INFERENCE_EXECUTOR.submit(_head_pose_task),
             "recognition": _INFERENCE_EXECUTOR.submit(_recognition_task),
@@ -2792,7 +2742,6 @@ def analyze_frame(
         gender_pairs = futures["gender"].result()
         emotion_pairs = futures["emotion"].result()
         race_pairs = futures["race"].result()
-        expression_pairs = futures["expression"].result()
         gaze_pairs = futures["gaze"].result()
         head_pose_pairs = futures["head_pose"].result()
         recognition_pairs, face_embedding = futures["recognition"].result()
@@ -2822,8 +2771,8 @@ def analyze_frame(
         display_id = track_id if track_id is not None else idx
         draw_outlined_text(annotated_frame, str(display_id), (x1, max(20, y1 - 10)), (0, 255, 255))
 
-        landmarks_net = models.face_landmarks_nets.get("blendshapes")
-        if landmarks_net is not None and "blendshapes" in active_face_landmarks:
+        landmarks_net = models.face_landmarks_nets.get("mediapipe")
+        if landmarks_net is not None and "mediapipe" in active_face_landmarks:
             landmark_points = predict_face_landmarks_mediapipe(landmarks_net, face, landmarker_result)
             if landmark_points is not None:
                 draw_face_landmarks(annotated_frame, landmark_points, (x1, y1, x2, y2))
@@ -2834,7 +2783,7 @@ def analyze_frame(
 
         raw_columns = _gather_face_results({
             "age": age_pairs, "gender": gender_pairs, "race": race_pairs, "emotion": emotion_pairs,
-            "expression": expression_pairs, "gaze": gaze_pairs, "identity": recognition_pairs, "facial_hair": facial_hair_pairs,
+            "gaze": gaze_pairs, "identity": recognition_pairs, "facial_hair": facial_hair_pairs,
             "eye_contact": [("derived", value) for value in eye_contact], "head_pose": head_pose_pairs,
             "skin_tone": skin_tone_pairs, "glasses": glasses_pairs, "mask": mask_pairs,
             "hair_color": hair_color_pairs, "eye_color": eye_color_pairs, "drowsiness": drowsy_pairs,
@@ -2844,7 +2793,7 @@ def analyze_frame(
             {"Feature": feature.replace("_", " ").upper(), "Model": model, "Output": str(value)}
             for feature, pairs in {
                 "age": age_pairs, "gender": gender_pairs, "race": race_pairs, "emotion": emotion_pairs,
-                "expression": expression_pairs, "gaze": gaze_pairs, "identity": recognition_pairs,
+                "gaze": gaze_pairs, "identity": recognition_pairs,
                 "eye contact": [("derived", value) for value in eye_contact],
                 "head pose": head_pose_pairs,
                 "facial hair": facial_hair_pairs, "skin tone": skin_tone_pairs, "glasses": glasses_pairs,
@@ -2863,7 +2812,6 @@ def analyze_frame(
             "gender": _format_results(gender_pairs),
             "race": _format_results(race_pairs),
             "emotion": _format_results(emotion_pairs),
-            "expression": _format_results(expression_pairs),
             "gaze": _format_results(gaze_pairs),
             "eye_contact": eye_contact,
             "head_pose": _format_results(head_pose_pairs),

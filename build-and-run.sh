@@ -165,13 +165,11 @@ RECOGNITION_MODEL="$REPLY_MODEL"
 prompt_feature "ADDITIONAL CLASSIFICATIONS" 0 \
     "haarcascade|drowsiness - haarcascade|green" \
     "bisenet|facial hair - bisenet|green" \
-    "blendshapes|expressions - blendshapes|orange" \
     "mediapipe|liveness - mediapipe|orange" \
     "mobilenet|glasses - mobilenet|orange" \
     "mobilenetv2|mask - mobilenetv2|orange" \
     "colorimetric|hair color - colorimetric|green"
 set_additional_classification_models() {
-    EXPRESSION_MODEL=""
     DROWSINESS_MODEL=""
     LIVENESS_MODEL=""
     FACIAL_HAIR_MODEL=""
@@ -182,7 +180,6 @@ set_additional_classification_models() {
     IFS=',' read -ra models <<< "$1"
     for model in "${models[@]:-}"; do
         case "$model" in
-            blendshapes) EXPRESSION_MODEL="blendshapes" ;;
             haarcascade) DROWSINESS_MODEL="haarcascade" ;;
             mediapipe) LIVENESS_MODEL="mediapipe" ;;
             bisenet) FACIAL_HAIR_MODEL="bisenet" ;;
@@ -196,6 +193,7 @@ set_additional_classification_models "$REPLY_MODEL"
 
 prompt_feature "ADDITIONAL FEATURES" 0 \
     "eccv16|colorization - eccv16|green" \
+    "facemesh|face landmarks - mediapipe|orange" \
     "mpi|body pose - mpi|green" \
     "deep3d|3d reconstruction - deep3d|orange" \
     "franunet|age progression - franunet|orange" \
@@ -206,6 +204,7 @@ set_additional_feature_models() {
     AGE_PROGRESSION_MODEL=""
     HAND_MODEL=""
     POSE_MODEL=""
+    FACE_LANDMARKS_MODEL=""
     local model
     IFS=',' read -ra models <<< "$1"
     for model in "${models[@]:-}"; do
@@ -215,6 +214,7 @@ set_additional_feature_models() {
             franunet) AGE_PROGRESSION_MODEL="franunet" ;;
             mediapipe) HAND_MODEL="mediapipe" ;;
             mpi) POSE_MODEL="mpi" ;;
+            facemesh) FACE_LANDMARKS_MODEL="mediapipe" ;;
         esac
     done
 }
@@ -286,7 +286,7 @@ stage_model "$EMOTION_MODEL" mini_xception mini_xception_fer.h5
 stage_model "$DROWSINESS_MODEL" haarcascade haarcascade_eye.xml
 stage_model "$RACE_MODEL" fairface fairface_7class.onnx
 stage_model "$RACE_MODEL" deepface deepface_race.h5
-stage_model "$EXPRESSION_MODEL" blendshapes face_landmarker.task
+stage_model "$FACE_LANDMARKS_MODEL" facemesh face_landmarker.task
 stage_model "$LIVENESS_MODEL" mediapipe face_landmarker.task
 stage_model "$RECOGNITION_MODEL" vggface deepface_vgg.h5
 stage_model "$FACIAL_HAIR_MODEL" bisenet bisenet_face_parsing.onnx
@@ -308,7 +308,7 @@ echo "  GENDER_MODEL=${GENDER_MODEL}" >&2
 echo "  EMOTION_MODEL=${EMOTION_MODEL}" >&2
 echo "  DROWSINESS_MODEL=${DROWSINESS_MODEL}" >&2
 echo "  RACE_MODEL=${RACE_MODEL}" >&2
-echo "  EXPRESSION_MODEL=${EXPRESSION_MODEL}" >&2
+echo "  FACE_LANDMARKS_MODEL=${FACE_LANDMARKS_MODEL}" >&2
 echo "  LIVENESS_MODEL=${LIVENESS_MODEL}" >&2
 echo "  RECOGNITION_MODEL=${RECOGNITION_MODEL}" >&2
 echo "  FACIAL_HAIR_MODEL=${FACIAL_HAIR_MODEL}" >&2
@@ -331,7 +331,7 @@ docker build \
     --build-arg EMOTION_MODEL="$EMOTION_MODEL" \
     --build-arg DROWSINESS_MODEL="$DROWSINESS_MODEL" \
     --build-arg RACE_MODEL="$RACE_MODEL" \
-    --build-arg EXPRESSION_MODEL="$EXPRESSION_MODEL" \
+    --build-arg FACE_LANDMARKS_MODEL="$FACE_LANDMARKS_MODEL" \
     --build-arg LIVENESS_MODEL="$LIVENESS_MODEL" \
     --build-arg RECOGNITION_MODEL="$RECOGNITION_MODEL" \
     --build-arg FACIAL_HAIR_MODEL="$FACIAL_HAIR_MODEL" \

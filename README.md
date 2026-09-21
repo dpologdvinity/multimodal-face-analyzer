@@ -6,13 +6,13 @@
 ![Streamlit](https://img.shields.io/badge/Streamlit-UI-00ff66?style=flat-square&logo=streamlit&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Ready-00ff66?style=flat-square&logo=docker&logoColor=white)
 
-> Computer vision pipeline for face detection with age, gender, race, emotion, expression (blendshapes), gaze, drowsiness, facial hair, glasses, mask, and hair/eye color inference. A containerized Streamlit web app.
+> Computer vision pipeline for face detection with age, gender, race, emotion, gaze, drowsiness, facial hair, glasses, mask, and hair/eye color inference. A containerized Streamlit web app.
 
 ---
 
 ## Key Features
 
-- **Multi-model face analysis:** face detection, age, gender, race, emotion, expression (blendshapes), gaze, drowsiness, facial hair, glasses, face mask, colorimetric hair/eye color, face landmarks, plus whole-frame auto-colorization, body pose estimation, and hand landmarks -- most features have 2+ selectable model backends.
+- **Multi-model face analysis:** face detection, age, gender, race, emotion, gaze, drowsiness, facial hair, glasses, face mask, colorimetric hair/eye color, face landmarks, plus whole-frame auto-colorization, body pose estimation, and hand landmarks -- most features have 2+ selectable model backends.
 - **Image adjustments:** 11 Lightroom-style sliders (exposure, contrast, shadows/highlights, saturation/vibrance, sharpness, noise reduction, etc.) for the whole image, all face crops before classification, and each detected face's preview separately.
 - **Face details on hover:** Hover or focus a detected face box in the annotated image to see its analysis results; full face cards remain below the image.
 - **Identity search:** SEARCH button per detected face, matching against bundled reference photos (`known_people/`, a few famous people out of the box) plus an optional user-specified directory. Local matching only, no live internet search.
@@ -21,7 +21,7 @@
 - **YOLO / SCRFD / RetinaFace face detectors:** selectable per-frame via a sidebar dropdown; YOLO is the default when loaded, with the required SSD/ResNet-10 detector as the fallback.
 - **LBPH recognition:** `cv2.face.LBPHFaceRecognizer`-based alternative to VGGFace, trains from scratch on your own enrolled photos -- no pretrained weights to source. The trained recognizer is cached by the enrolled gallery's file fingerprint and retrains only after enrollment or gallery-file changes.
 - **Age progression/regression:** AGE PROGRESSION button per detected face (U-Net re-aging network, [timroelofs123/face_reaging](https://github.com/timroelofs123/face_reaging)), outputs a before/after image pair for a chosen source/target age. **Non-commercial use only** -- see below.
-- **Docker-packaged Streamlit app:** `src/app.py`, all features including race and expression.
+- **Docker-packaged Streamlit app:** `src/app.py`, all features including race and gaze.
 - **Build-time feature toggles:** disable any model at Docker build time to shrink the image (see [Docker](#docker-web-app)).
 - **Graceful degradation:** any model missing at runtime (file or dependency not present) is skipped, not a crash -- the rest of the pipeline keeps working.
 - **Input validation:** empty or invalid image uploads show a clear error, and LBPH enrollment names are restricted to safe single directory names.
@@ -35,7 +35,7 @@
 
 ## Models
 
-Face detection is required; age, gender, race, emotion, expression, and drowsiness are each independently optional -- if a model's file(s) or dependencies aren't present, that feature is skipped and the rest still runs.
+Face detection is required; age, gender, race, emotion, and drowsiness are each independently optional -- if a model's file(s) or dependencies aren't present, that feature is skipped and the rest still runs.
 
 ### Face Detection
 
@@ -102,21 +102,13 @@ If the top-2 predicted classes are within 10 percentage points of each other, bo
 
 Note the class label order (and count) differs between backends -- each is tracked as a separate constant, never assumed to match. `mini_xception` is tiny (853KB, oarriaga/face_classification, MIT) but needs TensorFlow like the deepface models. `ferplus` is the official ONNX Model Zoo emotion model (MIT, 35MB, no extra framework -- pure cv2.dnn ONNX), used in place of a third-party PyTorch checkpoint for security reasons (no untrusted pickle deserialization). `hsemotion` (HSE-asavchenko/EmotiEffLib, Apache-2.0 code, 16MB EfficientNet-B0 backbone) is pretrained on VGGFace2 and fine-tuned on AffectNet-8 -- same AffectNet-derived weight provenance as `dan` (research/educational use, no explicit commercial weight license); pure cv2.dnn ONNX, no extra framework, no torch needed.
 
-### Expression (web app only)
-
-| Backend        | Framework | Output                                                             |
-| -------------- | --------- | ------------------------------------------------------------------ |
-| `blendshapes`  | MediaPipe | Top 3 facial muscle coefficients, e.g. `mouthSmileLeft 0.82, jawOpen 0.15, browDownRight 0.09` |
-
-Raw output of Google's MediaPipe Face Landmarker (Apache 2.0), a separate feature from Emotion. BlendShapes outputs 52 continuous facial-muscle-movement coefficients (e.g. mouthSmileLeft, browDownRight, jawOpen, eyeBlinkLeft, etc.) tracking individual facial movements, whereas Emotion backends predict discrete emotion classes (angry, happy, sad, etc.). There is no validated mapping from blendshapes to emotion labels, so Expression surfaces the raw top-N-scoring blendshape coefficients as-is.
-
 ### Gaze (web app only)
 
 | Backend | Framework | Output |
 | ------- | --------- | ------ |
 | `mediapipe` | MediaPipe Face Landmarker | coarse direction such as `left/level` or `center/down` |
 
-Gaze reuses the same Face Landmarker model as Expression and Face Landmarks. It estimates
+Gaze reuses the same Face Landmarker model as Face Landmarks. It estimates
 coarse direction from iris and eye geometry within each face crop; the result is an attention
 cue, not a calibrated eye tracker.
 
@@ -291,13 +283,13 @@ CMU OpenPose's MPI single-person body pose model (`models/pose_deploy_linevec_fa
 
 **ACADEMIC/NON-COMMERCIAL RESEARCH USE ONLY** (Carnegie Mellon University's OpenPose license) -- same treatment as the `dex` age and `insightface` age/gender backends: not for commercial deployments without independent licensing. The original CMU model-hosting server (`posefs1.perception.cs.cmu.edu`) referenced in `ideas/pose.md` is offline; the weight file was sourced from a Hugging Face mirror instead (same file, verified by size).
 
-### Face Landmarks (web app only, no build ARG of its own)
+### Face Landmarks (web app only)
 
 | Backend        | Framework | Output                                    |
 | --------------- | --------- | -------------------------------------------- |
-| `blendshapes`  | MediaPipe | 468-point face mesh overlay, drawn per face |
+| `mediapipe`   | MediaPipe | 468-point face mesh overlay, drawn per face |
 
-Reuses the exact same `FaceLandmarker` model instance as Expression's blendshapes backend (`models/face_landmarker.task`) -- one loaded model, two independent toggles, same pattern as `insightface` sharing one ONNX file for age+gender. No separate build ARG: it's available whenever `EXPRESSION_MODEL=blendshapes` is built in. Draws 468 small dots per detected face directly onto the shared annotated image (unlike text attributes, landmarks are inherently visual). Toggle in the sidebar (`FACE LANDMARKS`).
+Uses MediaPipe's `FaceLandmarker` (`models/face_landmarker.task`) and draws 468 small dots per detected face directly onto the shared annotated image. Toggle in the sidebar (`FACE LANDMARKS`).
 
 ### Hand Landmarks (web app only)
 
@@ -387,7 +379,7 @@ multimodal-face-analyzer/
 │   ├── deepface_race.h5                         # race: deepface backend
 │   ├── deepface_gender.h5                       # gender: deepface backend
 │   ├── deepface_vgg.h5                          # recognition: vggface backend
-│   ├── face_landmarker.task                     # expression: blendshapes backend
+│   ├── face_landmarker.task                     # face landmarks, gaze, and liveness
 │   ├── haarcascade_eye.xml                      # drowsiness + eye color
 │   ├── bisenet_face_parsing.onnx                # facial hair: bisenet backend
 │   ├── glasses_detector.onnx                    # glasses: mobilenet backend
@@ -530,7 +522,7 @@ docker build \
   --build-arg EMOTION_MODEL=efficientnet,ferplus,hsemotion,mini_xception,dan \
   --build-arg DROWSINESS_MODEL=haarcascade \
   --build-arg RACE_MODEL=fairface,deepface \
-  --build-arg EXPRESSION_MODEL=blendshapes \
+  --build-arg FACE_LANDMARKS_MODEL=mediapipe \
   --build-arg LIVENESS_MODEL=mediapipe \
   --build-arg RECOGNITION_MODEL=vggface,lbph \
   --build-arg FACIAL_HAIR_MODEL=bisenet \
@@ -554,7 +546,7 @@ docker build \
 | `EMOTION_MODEL`    | `efficientnet`, `ferplus`, `hsemotion`, `mini_xception`, `dan` |
 | `DROWSINESS_MODEL` | `haarcascade`                            |
 | `RACE_MODEL`       | `fairface`, `deepface`                   |
-| `EXPRESSION_MODEL` | `blendshapes`                            |
+| `FACE_LANDMARKS_MODEL` | `mediapipe`                        |
 | `LIVENESS_MODEL` | `mediapipe` (reuses `face_landmarker.task`) |
 | `RECOGNITION_MODEL` | `vggface`, `lbph`                       |
 | `FACIAL_HAIR_MODEL` | `bisenet`                               |
@@ -569,7 +561,7 @@ docker build \
 | `RETINAFACE_MODEL` | `retinaface` (additive -- SSD stays required/always on) |
 | `AGE_PROGRESSION_MODEL` | `franunet` (non-commercial use only, see [Age Progression / Regression](#age-progression--regression-web-app-only-non-commercial-use-only)) |
 
-There's no `SKIN_TONE_MODEL` build ARG -- see [Skin Tone](#skin-tone-web-app-only-no-working-backend-currently-shipped) above. Hair Color and Eye Color are colorimetric heuristics with no model file and thus no build ARG either -- they're always available in the web app (Eye Color additionally needs `haarcascade_eye.xml`, already required for Drowsiness). Face Landmarks has no build ARG -- it rides along with `EXPRESSION_MODEL=blendshapes`; Liveness uses its own `LIVENESS_MODEL=mediapipe` ARG while reusing the same model file.
+There's no `SKIN_TONE_MODEL` build ARG -- see [Skin Tone](#skin-tone-web-app-only-no-working-backend-currently-shipped) above. Hair Color and Eye Color are colorimetric heuristics with no model file and thus no build ARG either -- they're always available in the web app (Eye Color additionally needs `haarcascade_eye.xml`, already required for Drowsiness). Face Landmarks uses `FACE_LANDMARKS_MODEL=mediapipe`; Liveness uses its own `LIVENESS_MODEL=mediapipe` ARG while reusing the same model file.
 
 Multiple models per feature (e.g. `AGE_MODEL=caffe,ssrnet`) can be built in together -- the web app sidebar shows a checkbox per built model, and checking more than one for the same feature runs and displays all of them at once.
 
@@ -581,8 +573,8 @@ installed for `deep3d` alone, to load `.mat` files). `tensorflow-cpu`/`tf-keras`
 deepface's 513MB weight file) are only installed if `deepface`, `mini_xception`, `vggface`, and/or
 `mask` are requested -- deepface race remains by far the heaviest single option in the repo (note:
 `mivolo` at ~110MB checkpoint plus ultralytics/timm dependencies is the second-heaviest, still much
-lighter than deepface's full stack). `mediapipe` is only installed if the `blendshapes` expression
-backend is requested. `onnxruntime` is installed if `yolo`/`scrfd`/`retinaface` (face detector) or
+lighter than deepface's full stack). `mediapipe` is only installed if face landmarks, liveness,
+or hand landmarks are requested. `onnxruntime` is installed if `yolo`/`scrfd`/`retinaface` (face detector) or
 `mobilenet` (glasses) is requested. `opencv-contrib-python-headless` replaces the default
 `opencv-python-headless` only if `lbph` is requested (needed for `cv2.face`).
 

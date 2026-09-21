@@ -312,7 +312,6 @@ active_gender = _model_checkboxes("GENDER", models.gender_nets)
 active_race = _model_checkboxes("RACE", models.race_nets)
 active_emotion = _model_checkboxes("EMOTION", models.emotion_nets)
 active_drowsiness = _model_checkboxes("DROWSINESS", models.drowsiness_nets)
-active_expression = _model_checkboxes("EXPRESSION", models.expression_nets)
 active_liveness = _model_checkboxes("LIVENESS", models.liveness_nets)
 if models.liveness_nets:
     st.sidebar.caption("Liveness only runs in Webcam / LIVE -- a single image has no blinks to check.")
@@ -508,7 +507,7 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
     frame, was_colorized = inference.maybe_colorize(models, frame, active_colorization)
 
     annotated_frame, cropped_faces, any_drowsy, has_faces, pose_detected, hands_detected = inference.analyze_frame(
-        models, frame, conf_threshold, active_age, active_gender, active_emotion, active_drowsiness, active_race, active_expression,
+        models, frame, conf_threshold, active_age, active_gender, active_emotion, active_drowsiness, active_race,
         active_recognition, st.session_state.get("gallery", {}),
         active_facial_hair, active_skin_tone, active_glasses, active_mask, active_hair_color, active_eye_color,
         active_pose, active_face_landmarks, active_hands, active_gaze,
@@ -819,8 +818,7 @@ with tab_webcam:
                     active_emotion if run_classifiers else _NO_MODELS,
                     active_drowsiness if run_classifiers else _NO_MODELS,
                     active_race if run_classifiers else _NO_MODELS,
-                    active_expression if run_classifiers else _NO_MODELS,
-                    active_recognition if run_classifiers else _NO_MODELS, gallery_snapshot,
+                active_recognition if run_classifiers else _NO_MODELS, gallery_snapshot,
                     active_facial_hair if run_classifiers else _NO_MODELS,
                     active_skin_tone if run_classifiers else _NO_MODELS,
                     active_glasses if run_classifiers else _NO_MODELS,
