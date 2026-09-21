@@ -14,9 +14,9 @@ class LandmarkControlTests(unittest.TestCase):
     def test_remaining_landmark_groups_have_explicit_enable_buttons(self):
         """Ensure FACE and HAND landmark toggles exist via sidebar buttons."""
         self.assertIn("def _landmark_enable_button", APP_SOURCE)
-        self.assertIn('"FACE LANDMARKS"', APP_SOURCE)
-        self.assertIn('"HAND LANDMARKS"', APP_SOURCE)
-        self.assertNotIn('"BODY LANDMARKS"', APP_SOURCE)
+        self.assertIn('"Face landmarks"', APP_SOURCE)
+        self.assertIn('"Hand landmarks"', APP_SOURCE)
+        self.assertNotIn('"Body landmarks"', APP_SOURCE)
 
     def test_enable_button_works_in_sidebar_and_expander(self):
         # Execute the real UI helper without importing the app or loading its models.

@@ -46,3 +46,15 @@ def test_result_actions_use_clear_labels():
     assert '"Download results as JSON"' in APP_SOURCE
     assert '"Download results as CSV"' in APP_SOURCE
     assert '"Scan all faces for recognition"' in APP_SOURCE
+
+
+def test_results_explain_model_limits():
+    assert "These outputs are model estimates, not biometric proof." in APP_SOURCE
+    assert "Do not use them as the sole basis for high-impact decisions." in APP_SOURCE
+
+
+def test_live_controls_use_readable_status_labels():
+    assert 'st.segmented_control("Capture mode"' in APP_SOURCE
+    assert '"Classifier frame skip"' in APP_SOURCE
+    assert 'live_fps.metric("Live FPS", f"{fps:.1f}")' in APP_SOURCE
+    assert "Waiting for a detected face…" in APP_SOURCE
