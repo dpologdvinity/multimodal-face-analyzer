@@ -5,6 +5,7 @@ more model backends are added.
 """
 from __future__ import annotations
 
+import contextlib
 import functools
 import itertools
 import json
@@ -12,6 +13,7 @@ import os
 import hashlib
 import random
 import sqlite3
+import sys
 import threading
 import time
 from collections import OrderedDict
@@ -25,6 +27,27 @@ os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")  # silence TF INFO/WARNING ba
 os.environ.setdefault("TF_ENABLE_ONEDNN_OPTS", "0")
 os.environ.setdefault("CUDA_VISIBLE_DEVICES", "-1")  # no GPU in this environment; skip cuInit probe entirely rather than logging its failure
 os.environ.setdefault("GLOG_minloglevel", "2")  # silence glog/absl banners emitted by mediapipe's C++ backend
+
+
+@contextlib.contextmanager
+def _silence_native_logs():
+    """Redirect the process's real stderr fd during noisy native-lib calls.
+
+    TF/absl/glog emit some startup banners (oneDNN, cudart_stub, mediapipe
+    graph setup) straight to the OS-level stderr fd before Python-side log
+    level env vars (TF_CPP_MIN_LOG_LEVEL, GLOG_minloglevel) take effect, so
+    those env vars alone don't silence them -- only an fd-level redirect does.
+    """
+    fd = sys.stderr.fileno()
+    saved_fd = os.dup(fd)
+    devnull_fd = os.open(os.devnull, os.O_WRONLY)
+    try:
+        os.dup2(devnull_fd, fd)
+        yield
+    finally:
+        os.dup2(saved_fd, fd)
+        os.close(devnull_fd)
+        os.close(saved_fd)
 
 import warnings
 
@@ -59,31 +82,35 @@ except ImportError:  # app.py runs with src/ on sys.path in the container
     from model_selection import native_model_selected
 
 try:
-    import torch
-    from nets.dan_model import DAN
-    from nets.ssrnet_model import SSRNet
+    with _silence_native_logs():
+        import torch
+        from nets.dan_model import DAN
+        from nets.ssrnet_model import SSRNet
     TORCH_SUPPORTED = True
 except ImportError:
     TORCH_SUPPORTED = False
 
 try:
-    from nets.deepface_race import build_race_model
-    from nets.deepface_gender import build_gender_model
-    from nets.deepface_recognition import build_recognition_model
-    from nets.mini_xception_model import build_mini_xception
-    from nets.mask_model import build_mask_model
+    with _silence_native_logs():
+        from nets.deepface_race import build_race_model
+        from nets.deepface_gender import build_gender_model
+        from nets.deepface_recognition import build_recognition_model
+        from nets.mini_xception_model import build_mini_xception
+        from nets.mask_model import build_mask_model
     TF_SUPPORTED = True
 except ImportError:
     TF_SUPPORTED = False
 
 try:
-    from nets.mivolo.inference_wrapper import MiVOLOInference
+    with _silence_native_logs():
+        from nets.mivolo.inference_wrapper import MiVOLOInference
     MIVOLO_SUPPORTED = True
 except ImportError:
     MIVOLO_SUPPORTED = False
 
 try:
-    import mediapipe as mp
+    with _silence_native_logs():
+        import mediapipe as mp
     MEDIAPIPE_SUPPORTED = True
 except ImportError:
     MEDIAPIPE_SUPPORTED = False
@@ -95,16 +122,18 @@ except ImportError:
     ONNXRUNTIME_SUPPORTED = False
 
 try:
-    from nets.deep3d_recon import (
-        build_deep3d_recon_model, ParametricFaceModel, load_lm3d_template,
-        landmarks_5pt_from_mediapipe, reconstruct_face_3d, mesh_to_obj_str,
-    )
+    with _silence_native_logs():
+        from nets.deep3d_recon import (
+            build_deep3d_recon_model, ParametricFaceModel, load_lm3d_template,
+            landmarks_5pt_from_mediapipe, reconstruct_face_3d, mesh_to_obj_str,
+        )
     TORCHVISION_SUPPORTED = True
 except ImportError:
     TORCHVISION_SUPPORTED = False
 
 try:
-    from nets.face_reaging_model import build_face_reaging_model, age_progress_face
+    with _silence_native_logs():
+        from nets.face_reaging_model import build_face_reaging_model, age_progress_face
     FACE_REAGING_SUPPORTED = True
 except ImportError:
     FACE_REAGING_SUPPORTED = False
@@ -458,7 +487,8 @@ def load_models() -> Models:
             output_face_blendshapes=native_model_selected("LIVENESS_MODEL", "mediapipe"),
             running_mode=mp.tasks.vision.RunningMode.IMAGE,
         )
-        landmarker = mp.tasks.vision.FaceLandmarker.create_from_options(options)
+        with _silence_native_logs():
+            landmarker = mp.tasks.vision.FaceLandmarker.create_from_options(options)
         if native_model_selected("LIVENESS_MODEL", "mediapipe"):
             liveness_nets["mediapipe"] = landmarker
         if native_model_selected("FACE_LANDMARKS_MODEL", "mediapipe"):
@@ -491,7 +521,8 @@ def load_models() -> Models:
             num_hands=2,
             running_mode=mp.tasks.vision.RunningMode.IMAGE,
         )
-        hand_nets["mediapipe"] = mp.tasks.vision.HandLandmarker.create_from_options(hand_options)
+        with _silence_native_logs():
+            hand_nets["mediapipe"] = mp.tasks.vision.HandLandmarker.create_from_options(hand_options)
 
     reconstruction_3d_nets = {}
     if native_model_selected("RECONSTRUCTION_3D_MODEL", "deep3d") and TORCHVISION_SUPPORTED and DEEP3D_RECON_MODEL.exists() and BFM_MODEL_PATH.exists() and BFM_LM3D_PATH.exists():
