@@ -12,7 +12,7 @@ class AppPresentationSourceTests(unittest.TestCase):
 
         self.assertIn('@st.dialog("IMAGE PREVIEW", width="large")', source)
         self.assertIn("width: int = IMAGE_DISPLAY_WIDTH", source)
-        self.assertIn('st.button("🔍"', source)
+        self.assertIn('st.button("Open image"', source)
 
 
 if __name__ == "__main__":

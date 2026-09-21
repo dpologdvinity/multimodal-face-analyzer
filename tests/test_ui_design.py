@@ -32,3 +32,17 @@ def test_navigation_and_settings_use_sentence_case():
         '### Control panel',
     ):
         assert label in APP_SOURCE
+
+
+def test_results_have_visual_summary_and_visible_face_details():
+    assert '.metric("Faces detected"' in APP_SOURCE
+    assert '.metric("Models active"' in APP_SOURCE
+    assert 'st.markdown("### Face details")' in APP_SOURCE
+    assert "Hover or tap a face box for a quick preview. Review full details below." in APP_SOURCE
+
+
+def test_result_actions_use_clear_labels():
+    assert '"Open image"' in APP_SOURCE
+    assert '"Download results as JSON"' in APP_SOURCE
+    assert '"Download results as CSV"' in APP_SOURCE
+    assert '"Scan all faces for recognition"' in APP_SOURCE
