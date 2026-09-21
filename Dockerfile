@@ -7,7 +7,6 @@ FROM python:3.11-slim
 #   AGE_MODEL:        caffe, insightface, ssrnet, fairface, dex, mivolo (default: caffe)
 #   GENDER_MODEL:      caffe, insightface, deepface, fairface, mivolo (default: caffe)
 #   EMOTION_MODEL:     efficientnet, ferplus, mini_xception, dan, hsemotion (default: efficientnet)
-#   DROWSINESS_MODEL:  haarcascade                  (default: haarcascade)
 #   RACE_MODEL:        fairface, deepface           (default: fairface)
 #   FACE_LANDMARKS_MODEL: mediapipe                 (default: mediapipe)
 #   LIVENESS_MODEL:    mediapipe                     (default: mediapipe)
@@ -68,7 +67,6 @@ FROM python:3.11-slim
 ARG AGE_MODEL=caffe
 ARG GENDER_MODEL=caffe
 ARG EMOTION_MODEL=efficientnet
-ARG DROWSINESS_MODEL=haarcascade
 ARG RACE_MODEL=fairface
 ARG FACE_LANDMARKS_MODEL=mediapipe
 ARG LIVENESS_MODEL=mediapipe
@@ -160,8 +158,8 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # ultralytics (mivolo) pulls in opencv-python, and mediapipe pulls in a DIFFERENT
 # package, opencv-contrib-python, both >=5.0 -- pip happily installs both alongside
 # opencv-python-headless, and whichever's "cv2" package wins the import silently lacks
-# Caffe support (removed in OpenCV 5.0), breaking caffe/dex age, caffe gender, and
-# haarcascade drowsiness (all use cv2.dnn.readNetFromCaffe/CascadeClassifier). Uninstall
+# Caffe support (removed in OpenCV 5.0), breaking caffe/dex age and caffe gender.
+# Uninstall
 # every opencv variant before reinstalling the one pinned version, so there's no
 # ambiguity about which package's cv2 gets imported. lbph (recognition) needs cv2.face,
 # which only ships in the "contrib" build -- swap the pinned package for that build (still
@@ -182,7 +180,7 @@ COPY models/opencv_face_detector.pbtxt models/opencv_face_detector_uint8.pb mode
 RUN --mount=type=bind,source=models,target=/tmp/models \
     set -e; \
     age_csv=",$AGE_MODEL,"; gender_csv=",$GENDER_MODEL,"; emotion_csv=",$EMOTION_MODEL,"; \
-    drowsiness_csv=",$DROWSINESS_MODEL,"; race_csv=",$RACE_MODEL,"; face_landmarks_csv=",$FACE_LANDMARKS_MODEL,"; liveness_csv=",$LIVENESS_MODEL,"; recognition_csv=",$RECOGNITION_MODEL,"; \
+    race_csv=",$RACE_MODEL,"; face_landmarks_csv=",$FACE_LANDMARKS_MODEL,"; liveness_csv=",$LIVENESS_MODEL,"; recognition_csv=",$RECOGNITION_MODEL,"; \
     glasses_csv=",$GLASSES_MODEL,"; mask_csv=",$MASK_MODEL,"; colorization_csv=",$COLORIZATION_MODEL,"; pose_csv=",$POSE_MODEL,"; hand_csv=",$HAND_MODEL,"; recon3d_csv=",$RECONSTRUCTION_3D_MODEL,"; yolo_face_csv=",$YOLO_FACE_MODEL,"; scrfd_face_csv=",$SCRFD_FACE_MODEL,"; retinaface_csv=",$RETINAFACE_MODEL,"; age_progression_csv=",$AGE_PROGRESSION_MODEL,"; \
     case "$age_csv" in *,caffe,*) cp /tmp/models/age_deploy.prototxt /tmp/models/age_net.caffemodel models/ ;; esac; \
     case "$age_csv" in *,ssrnet,*) cp /tmp/models/ssrnet_morph2.pth models/ ;; esac; \
@@ -198,7 +196,7 @@ RUN --mount=type=bind,source=models,target=/tmp/models \
     case "$emotion_csv" in *,ferplus,*) cp /tmp/models/emotion_ferplus.onnx models/ ;; esac; \
     case "$emotion_csv" in *,hsemotion,*) cp /tmp/models/hsemotion_enet_b0_8_best_vgaf.onnx models/ ;; esac; \
     case "$emotion_csv" in *,mini_xception,*) cp /tmp/models/mini_xception_fer.h5 models/ ;; esac; \
-    case "$drowsiness_csv" in *,haarcascade,*) cp /tmp/models/haarcascade_eye.xml models/ ;; esac; \
+    cp /tmp/models/haarcascade_eye.xml models/; \
     case "$race_csv" in *,fairface,*) cp /tmp/models/fairface_7class.onnx models/ ;; esac; \
     case "$race_csv" in *,deepface,*) cp /tmp/models/deepface_race.h5 models/ ;; esac; \
     case "$age_csv" in *,mivolo,*) cp /tmp/models/mivolo_v2.safetensors /tmp/models/mivolo_v2_config.json models/ ;; esac; \

@@ -171,8 +171,6 @@ st.markdown(
     .target-card-row:last-child { border-bottom: none; }
     .target-card-row .k { color: var(--muted); }
     .target-card-row .v { color: var(--text); text-align: right; overflow-wrap: anywhere; }
-    .target-card-status-alert { color: var(--accent) !important; }
-    .target-card-status-drowsy { color: var(--alert) !important; }
     .face-hover-image {
         position: relative;
         width: min(100%, 900px);
@@ -311,7 +309,6 @@ active_age = _model_checkboxes("AGE", models.age_nets)
 active_gender = _model_checkboxes("GENDER", models.gender_nets)
 active_race = _model_checkboxes("RACE", models.race_nets)
 active_emotion = _model_checkboxes("EMOTION", models.emotion_nets)
-active_drowsiness = _model_checkboxes("DROWSINESS", models.drowsiness_nets)
 active_liveness = _model_checkboxes("LIVENESS", models.liveness_nets)
 if models.liveness_nets:
     st.sidebar.caption("Liveness only runs in Webcam / LIVE -- a single image has no blinks to check.")
@@ -411,10 +408,6 @@ def _target_card_html(face: dict) -> str:
         model = result["Model"]
         label = feature if model == "derived" else f"{feature} ({model})"
         rows += f'<div class="target-card-row"><span class="k">{escape(label)}</span><span class="v">{escape(result["Output"])}</span></div>'
-    if face["status"] is not None:
-        status_class = "target-card-status-drowsy" if face["drowsy"] else "target-card-status-alert"
-        dot = "●"
-        rows += f'<div class="target-card-row"><span class="k">STATUS</span><span class="v {status_class}">{dot} {escape(face["status"])}</span></div>'
     if not rows:
         rows = '<div class="target-card-row"><span class="k">STATUS</span><span class="v">no model output</span></div>'
     return f'<div class="target-card"><div class="target-card-id">FACE {face["idx"]:02d}</div>{rows}</div>'
@@ -505,8 +498,8 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
     frame = _render_photo_editor(frame, identifier, "global_adj", "SOURCE PHOTO")
     frame, was_colorized = inference.maybe_colorize(models, frame, active_colorization)
 
-    annotated_frame, cropped_faces, any_drowsy, has_faces, pose_detected, hands_detected = inference.analyze_frame(
-        models, frame, conf_threshold, active_age, active_gender, active_emotion, active_drowsiness, active_race,
+    annotated_frame, cropped_faces, has_faces, pose_detected, hands_detected = inference.analyze_frame(
+        models, frame, conf_threshold, active_age, active_gender, active_emotion, active_race,
         active_recognition, st.session_state.get("gallery", {}),
         active_skin_tone, active_glasses, active_mask, active_hair_color, active_eye_color,
         active_pose, active_face_landmarks, active_hands, active_gaze,
@@ -547,9 +540,6 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
     export_col_json, export_col_csv = st.columns(2)
     export_col_json.download_button("DOWNLOAD RESULTS JSON", export_json, f"{identifier}_results.json", "application/json", key=f"json_dl_{identifier}")
     export_col_csv.download_button("DOWNLOAD RESULTS CSV", csv_buffer.getvalue(), f"{identifier}_results.csv", "text/csv", key=f"csv_dl_{identifier}")
-
-    if any_drowsy:
-        st.error("[ALERT] DROWSINESS DETECTED -- SUBJECT EYES CLOSED")
 
     if enable_crowd_count:
         with st.expander(f"CROWD COUNT: {len(cropped_faces)} face(s) detected", expanded=False):
@@ -810,12 +800,11 @@ with tab_webcam:
                 img, _ = inference.maybe_colorize(models, img, active_colorization)
                 frame_counter["n"] += 1
                 run_classifiers = frame_counter["n"] % frame_skip == 0
-                annotated_frame, cropped_faces, _, _, _, _ = inference.analyze_frame(
+                annotated_frame, cropped_faces, _, _, _ = inference.analyze_frame(
                     models, img, conf_threshold,
                     active_age if run_classifiers else _NO_MODELS,
                     active_gender if run_classifiers else _NO_MODELS,
                     active_emotion if run_classifiers else _NO_MODELS,
-                    active_drowsiness if run_classifiers else _NO_MODELS,
                     active_race if run_classifiers else _NO_MODELS,
                 active_recognition if run_classifiers else _NO_MODELS, gallery_snapshot,
                     active_skin_tone if run_classifiers else _NO_MODELS,
@@ -833,7 +822,7 @@ with tab_webcam:
                 metrics["frame_ms"] = (time.perf_counter() - frame_started) * 1000
                 metrics["timestamp"] = time.monotonic()
                 live_faces = [
-                    {key: face[key] for key in ("idx", "model_results", "status", "drowsy")}
+                    {key: face[key] for key in ("idx", "model_results")}
                     for face in cropped_faces
                 ]
                 with LIVE_METRICS_LOCK:
@@ -865,7 +854,7 @@ with tab_webcam:
             return frame
 
         webrtc_ctx = webrtc_streamer(
-            key="live-drowsiness-feed",
+            key="live-face-feed",
             video_frame_callback=_video_frame_callback,
             audio_frame_callback=_audio_frame_callback if enable_voice_fusion else None,
             media_stream_constraints={"video": True, "audio": enable_voice_fusion},

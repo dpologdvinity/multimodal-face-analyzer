@@ -108,7 +108,6 @@ AGE_PROTO = MODEL_DIR / "age_deploy.prototxt"
 AGE_MODEL = MODEL_DIR / "age_net.caffemodel"
 GENDER_PROTO = MODEL_DIR / "gender_deploy.prototxt"
 GENDER_MODEL = MODEL_DIR / "gender_net.caffemodel"
-EYE_CASCADE_FILE = MODEL_DIR / "haarcascade_eye.xml"
 EMOTION_MODEL = MODEL_DIR / "dan_affecnet7.pth"
 SSRNET_MODEL = MODEL_DIR / "ssrnet_morph2.pth"
 INSIGHTFACE_MODEL = MODEL_DIR / "insightface_genderage.onnx"
@@ -151,7 +150,6 @@ EMOTION_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 EMOTION_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 SSRNET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 SSRNET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
-MIN_EYES_OPEN = 2
 RACE_LABELS_FAIRFACE = ['White', 'Black', 'Latino_Hispanic', 'East Asian', 'Southeast Asian', 'Indian', 'Middle Eastern']
 RACE_LABELS_DEEPFACE = ['asian', 'indian', 'black', 'white', 'middle eastern', 'latino hispanic']
 RACE_CLOSE_MARGIN = 0.10  # show top-2 race classes together if within this probability margin
@@ -175,7 +173,6 @@ AGE_MODEL_OPTIONS = ["caffe", "insightface", "ssrnet", "fairface", "dex", "mivol
 GENDER_MODEL_OPTIONS = ["caffe", "insightface", "deepface", "fairface", "mivolo"]
 FAIRFACE_AGE_LABELS = ["0-2", "3-9", "10-19", "20-29", "30-39", "40-49", "50-59", "60-69", "70+"]
 EMOTION_MODEL_OPTIONS = ["efficientnet", "ferplus", "mini_xception", "dan", "hsemotion"]
-DROWSINESS_MODEL_OPTIONS = ["haarcascade"]
 RACE_MODEL_OPTIONS = ["fairface", "deepface"]
 LIVENESS_MODEL_OPTIONS = ["mediapipe"]
 RECOGNITION_MODEL_OPTIONS = ["vggface", "lbph"]
@@ -294,7 +291,6 @@ class Models:
     age_nets: dict = field(default_factory=dict)
     gender_nets: dict = field(default_factory=dict)
     emotion_nets: dict = field(default_factory=dict)
-    drowsiness_nets: dict = field(default_factory=dict)
     race_nets: dict = field(default_factory=dict)
     liveness_nets: dict = field(default_factory=dict)
     recognition_nets: dict = field(default_factory=dict)
@@ -319,7 +315,7 @@ class Models:
         return [
             name for name, nets in [
                 ("AGE", self.age_nets), ("GENDER", self.gender_nets),
-                ("EMOTION", self.emotion_nets), ("DROWSINESS", self.drowsiness_nets),
+                ("EMOTION", self.emotion_nets),
                 ("RACE", self.race_nets),
                 ("LIVENESS", self.liveness_nets),
                 ("GAZE", self.gaze_nets),
@@ -339,7 +335,7 @@ class Models:
 
 def load_models() -> Models:
     """Load every model whose file(s)/dependencies are present. Face detection is required;
-    age, gender, emotion, and drowsiness are each optional per-model-key -- a model is only
+    age, gender, and emotion are each optional per-model-key -- a model is only
     present in its feature's dict if it loaded successfully, so the app degrades gracefully
     to whichever models were built in. Which of the loaded models are actually used per frame
     is chosen at runtime by the caller (see analyze_frame's active_* arguments)."""
@@ -412,10 +408,6 @@ def load_models() -> Models:
     if native_model_selected("EMOTION_MODEL", "hsemotion") and HSEMOTION_MODEL.exists():
         emotion_nets["hsemotion"] = cv2.dnn.readNetFromONNX(str(HSEMOTION_MODEL))
 
-    drowsiness_nets = {}
-    if native_model_selected("DROWSINESS_MODEL", "haarcascade") and EYE_CASCADE_FILE.exists():
-        drowsiness_nets["haarcascade"] = cv2.CascadeClassifier(str(EYE_CASCADE_FILE))
-
     fairface_net = None
     if FAIRFACE_MODEL.exists():
         fairface_net = cv2.dnn.readNetFromONNX(str(FAIRFACE_MODEL))
@@ -431,16 +423,16 @@ def load_models() -> Models:
         race_nets["deepface"] = build_race_model(str(DEEPFACE_RACE_MODEL))
 
     # Colorimetric heuristics need no model file, no dependency beyond OpenCV -- always
-    # available. hair_color has no further precondition; eye_color reuses the same
-    # haarcascade_eye.xml as drowsiness, so it's gated on that file existing.
+    # available. hair_color has no further precondition; eye_color uses OpenCV's eye
+    # cascade when that file is present.
     hair_color_nets = (
         {"colorimetric": True}
         if native_model_selected("HAIR_COLOR_MODEL", "colorimetric")
         else {}
     )
     eye_color_nets = {}
-    if EYE_CASCADE_FILE.exists():
-        eye_color_nets["colorimetric"] = drowsiness_nets["haarcascade"] if "haarcascade" in drowsiness_nets else cv2.CascadeClassifier(str(EYE_CASCADE_FILE))
+    if (eye_cascade_file := MODEL_DIR / "haarcascade_eye.xml").exists():
+        eye_color_nets["colorimetric"] = cv2.CascadeClassifier(str(eye_cascade_file))
 
     liveness_nets = {}
     face_landmarks_nets = {}
@@ -522,7 +514,7 @@ def load_models() -> Models:
         age_progression_nets["franunet"] = build_face_reaging_model(str(FACE_REAGING_MODEL))
 
     return Models(
-        face_net, age_nets, gender_nets, emotion_nets, drowsiness_nets, race_nets, liveness_nets, recognition_nets,
+        face_net, age_nets, gender_nets, emotion_nets, race_nets, liveness_nets, recognition_nets,
         skin_tone_nets, glasses_nets, mask_nets, hair_color_nets, eye_color_nets, colorization_nets,
         pose_nets, face_landmarks_nets, hand_nets, reconstruction_3d_nets, yolo_face_nets, scrfd_face_nets, retinaface_nets,
         gaze_nets, age_progression_nets,
@@ -1533,14 +1525,6 @@ def predict_emotion_hsemotion(net, face_bgr: np.ndarray) -> str:
     return EMOTION_LABELS_HSEMOTION[int(np.argmax(logits))]
 
 
-def detect_drowsiness_haarcascade(eye_cascade, face_bgr: np.ndarray) -> bool:
-    """Return True if fewer than MIN_EYES_OPEN eyes are visible (eyes likely closed)."""
-    face_gray = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2GRAY)
-    with _lock_for(eye_cascade):
-        eyes = eye_cascade.detectMultiScale(face_gray, scaleFactor=1.1, minNeighbors=6, minSize=(20, 20))
-    return len(eyes) < MIN_EYES_OPEN
-
-
 def _format_results(pairs: list[tuple[str, str]]) -> list[str]:
     """Plain values only -- no model-name prefix, even with multiple models active per feature."""
     return [value for _, value in pairs]
@@ -2085,7 +2069,7 @@ def predict_hair_color_colorimetric(frame_bgr: np.ndarray, box: tuple[int, int, 
 
 
 def predict_eye_color_colorimetric(eye_cascade, face_bgr: np.ndarray) -> str:
-    """Heuristic (not ML): locate the largest detected eye via the drowsiness Haar
+    """Heuristic (not ML): locate the largest detected eye via the OpenCV eye
     cascade, sample the center 40% of its box (avoiding sclera/eyelid), and bucket
     the median HSV into EYE_COLOR_LABELS. Rough by nature -- lighting/pose-sensitive."""
     face_gray = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2GRAY)
@@ -2308,7 +2292,6 @@ def analyze_frame(
     active_age: set,
     active_gender: set,
     active_emotion: set,
-    active_drowsiness: set,
     active_race: set,
     active_recognition: set,
     gallery: dict,
@@ -2375,8 +2358,6 @@ def analyze_frame(
         face_boxes = detect_faces(models.face_net, frame, conf_threshold)
     track_ids = tracker.update(face_boxes) if tracker is not None else [None] * len(face_boxes)
     cropped_faces = []
-    any_drowsy = False
-
     pose_detected = False
     pose_net = models.pose_nets.get("mpi")
     if pose_net is not None and "mpi" in active_pose:
@@ -2396,15 +2377,15 @@ def analyze_frame(
     need_blob227 = ("caffe" in active_age and "caffe" in models.age_nets) or \
                    ("caffe" in active_gender and "caffe" in models.gender_nets)
 
-    eye_cascade = models.drowsiness_nets.get("haarcascade")
+    eye_cascade = models.eye_color_nets.get("colorimetric")
 
     # Trained once per frame, not once per face -- LBPH has no persisted model, retraining per
     # face would multiply an already-nontrivial cost by the face count for no benefit.
     lbph_trained = train_lbph_recognizer() if "lbph" in active_recognition and models.recognition_nets.get("lbph") else None
 
     for idx, ((x1, y1, x2, y2), track_id) in enumerate(zip(face_boxes, track_ids), 1):
-        # Correct in-plane roll (tilted head) before cropping/classifying, using the same
-        # eye cascade as drowsiness detection -- no new model/dependency. crop_frame/cx*/cy*
+        # Correct in-plane roll (tilted head) before cropping/classifying, using the eye
+        # cascade when available. crop_frame/cx*/cy*
         # are the rotation-corrected region+box; x1..y2 stay untouched for the box overlay
         # drawn on annotated_frame further below.
         crop_frame, (cx1, cy1, cx2, cy2) = frame, (x1, y1, x2, y2)
@@ -2648,18 +2629,6 @@ def analyze_frame(
                 _record_model_latency(metrics, "eye_color", key, started)
             return pairs
 
-        def _drowsiness_task():
-            pairs = []
-            for key in active_drowsiness:
-                net = models.drowsiness_nets.get(key)
-                if net is None:
-                    continue
-                started = time.perf_counter()
-                drowsy = _cached_face_predict("drowsiness", key, face, detect_drowsiness_haarcascade, net, face)
-                pairs.append((key, "DROWSY" if drowsy else "ALERT"))
-                _record_model_latency(metrics, "drowsiness", key, started)
-            return pairs
-
         def _liveness_task():
             if not run_liveness:
                 return [], None
@@ -2684,7 +2653,6 @@ def analyze_frame(
             "mask": _INFERENCE_EXECUTOR.submit(_mask_task),
             "hair_color": _INFERENCE_EXECUTOR.submit(_hair_color_task),
             "eye_color": _INFERENCE_EXECUTOR.submit(_eye_color_task),
-            "drowsiness": _INFERENCE_EXECUTOR.submit(_drowsiness_task),
             "liveness": _INFERENCE_EXECUTOR.submit(_liveness_task),
         }
 
@@ -2700,16 +2668,12 @@ def analyze_frame(
         mask_pairs = futures["mask"].result()
         hair_color_pairs = futures["hair_color"].result()
         eye_color_pairs = futures["eye_color"].result()
-        drowsy_pairs = futures["drowsiness"].result()
         liveness_pairs, liveness_result = futures["liveness"].result()
 
         if metrics is not None and emotion_pairs:
             metrics.setdefault("emotion_samples", []).extend(
                 {"model": key, "emotion": value} for key, value in emotion_pairs
             )
-
-        face_drowsy = any(value == "DROWSY" for _, value in drowsy_pairs)
-        any_drowsy = any_drowsy or face_drowsy
 
         # Attribute text is intentionally NOT drawn on the shared image -- with several faces
         # close together, per-face text overlaps illegibly. The box + a small index number is
@@ -2726,8 +2690,6 @@ def analyze_frame(
             if landmark_points is not None:
                 draw_face_landmarks(annotated_frame, landmark_points, (x1, y1, x2, y2))
 
-        drowsy_parts = _format_results(drowsy_pairs)
-        status = drowsy_parts[0] if len(drowsy_parts) == 1 else (", ".join(drowsy_parts) if drowsy_parts else None)
         eye_contact = [f"{key}=yes" if value.startswith("center/") else f"{key}=no" for key, value in gaze_pairs]
 
         raw_columns = _gather_face_results({
@@ -2735,7 +2697,7 @@ def analyze_frame(
             "gaze": gaze_pairs, "identity": recognition_pairs,
             "eye_contact": [("derived", value) for value in eye_contact], "head_pose": head_pose_pairs,
             "skin_tone": skin_tone_pairs, "glasses": glasses_pairs, "mask": mask_pairs,
-            "hair_color": hair_color_pairs, "eye_color": eye_color_pairs, "drowsiness": drowsy_pairs,
+            "hair_color": hair_color_pairs, "eye_color": eye_color_pairs,
             "liveness": liveness_pairs,
         })
         model_results = [
@@ -2747,7 +2709,7 @@ def analyze_frame(
                 "head pose": head_pose_pairs,
                 "skin tone": skin_tone_pairs, "glasses": glasses_pairs,
                 "mask": mask_pairs, "hair color": hair_color_pairs, "eye color": eye_color_pairs,
-                "drowsiness": drowsy_pairs, "liveness": liveness_pairs,
+                "liveness": liveness_pairs,
             }.items()
             for model, value in pairs
         ]
@@ -2779,11 +2741,9 @@ def analyze_frame(
             "embedding": face_embedding.tolist() if face_embedding is not None else None,
             "raw_columns": raw_columns,
             "model_results": model_results,
-            "status": status,
-            "drowsy": face_drowsy if drowsy_pairs else None,
         })
 
-    return annotated_frame, cropped_faces, any_drowsy, bool(face_boxes), pose_detected, hands_detected
+    return annotated_frame, cropped_faces, bool(face_boxes), pose_detected, hands_detected
 
 
 AGGREGATE_FEATURES = ("age", "gender", "race")  # demographic breakdown scope for crowd counting

@@ -322,13 +322,11 @@ prompt_feature "RECOGNITION" 0 \
 RECOGNITION_MODEL="$REPLY_MODEL"
 
 prompt_feature "ADDITIONAL CLASSIFICATIONS" 0 \
-    "haarcascade|drowsiness - haarcascade|$BASE_PACKAGES" \
     "mediapipe|liveness - mediapipe|$BASE_PACKAGES,+mediapipe" \
     "mobilenet|glasses - mobilenet|$BASE_PACKAGES,+onnxruntime" \
     "mobilenetv2|mask - mobilenetv2|$BASE_PACKAGES,+tensorflow-cpu,+tf-keras" \
     "colorimetric|hair color - colorimetric|"
 set_additional_classification_models() {
-    DROWSINESS_MODEL=""
     LIVENESS_MODEL=""
     GLASSES_MODEL=""
     MASK_MODEL=""
@@ -337,7 +335,6 @@ set_additional_classification_models() {
     IFS=',' read -ra models <<< "$1"
     for model in "${models[@]:-}"; do
         case "$model" in
-            haarcascade) DROWSINESS_MODEL="haarcascade" ;;
             mediapipe) LIVENESS_MODEL="mediapipe" ;;
             mobilenet) GLASSES_MODEL="mobilenet" ;;
             mobilenetv2) MASK_MODEL="mobilenetv2" ;;
@@ -419,7 +416,6 @@ echo "Selected models:" >&2
 echo "  AGE_MODEL=${AGE_MODEL}" >&2
 echo "  GENDER_MODEL=${GENDER_MODEL}" >&2
 echo "  EMOTION_MODEL=${EMOTION_MODEL}" >&2
-echo "  DROWSINESS_MODEL=${DROWSINESS_MODEL}" >&2
 echo "  RACE_MODEL=${RACE_MODEL}" >&2
 echo "  FACE_LANDMARKS_MODEL=${FACE_LANDMARKS_MODEL}" >&2
 echo "  LIVENESS_MODEL=${LIVENESS_MODEL}" >&2
@@ -510,7 +506,7 @@ echo "" >&2
 echo "Running at http://localhost:${PORT}" >&2
 echo "Press Ctrl-C to stop Streamlit." >&2
 export AGE_MODEL GENDER_MODEL RACE_MODEL EMOTION_MODEL RECOGNITION_MODEL \
-    DROWSINESS_MODEL FACE_LANDMARKS_MODEL LIVENESS_MODEL \
+    FACE_LANDMARKS_MODEL LIVENESS_MODEL \
     GLASSES_MODEL MASK_MODEL HAIR_COLOR_MODEL COLORIZATION_MODEL POSE_MODEL HAND_MODEL \
     RECONSTRUCTION_3D_MODEL AGE_PROGRESSION_MODEL YOLO_FACE_MODEL \
     SCRFD_FACE_MODEL RETINAFACE_MODEL

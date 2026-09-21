@@ -163,13 +163,11 @@ prompt_feature "RECOGNITION" 0 \
 RECOGNITION_MODEL="$REPLY_MODEL"
 
 prompt_feature "ADDITIONAL CLASSIFICATIONS" 0 \
-    "haarcascade|drowsiness - haarcascade|green" \
     "mediapipe|liveness - mediapipe|orange" \
     "mobilenet|glasses - mobilenet|orange" \
     "mobilenetv2|mask - mobilenetv2|orange" \
     "colorimetric|hair color - colorimetric|green"
 set_additional_classification_models() {
-    DROWSINESS_MODEL=""
     LIVENESS_MODEL=""
     GLASSES_MODEL=""
     MASK_MODEL=""
@@ -178,7 +176,6 @@ set_additional_classification_models() {
     IFS=',' read -ra models <<< "$1"
     for model in "${models[@]:-}"; do
         case "$model" in
-            haarcascade) DROWSINESS_MODEL="haarcascade" ;;
             mediapipe) LIVENESS_MODEL="mediapipe" ;;
             mobilenet) GLASSES_MODEL="mobilenet" ;;
             mobilenetv2) MASK_MODEL="mobilenetv2" ;;
@@ -280,7 +277,7 @@ stage_model "$EMOTION_MODEL" efficientnet efficientnet_b0_fer.onnx
 stage_model "$EMOTION_MODEL" ferplus emotion_ferplus.onnx
 stage_model "$EMOTION_MODEL" hsemotion hsemotion_enet_b0_8_best_vgaf.onnx
 stage_model "$EMOTION_MODEL" mini_xception mini_xception_fer.h5
-stage_model "$DROWSINESS_MODEL" haarcascade haarcascade_eye.xml
+link_model haarcascade_eye.xml
 stage_model "$RACE_MODEL" fairface fairface_7class.onnx
 stage_model "$RACE_MODEL" deepface deepface_race.h5
 stage_model "$FACE_LANDMARKS_MODEL" facemesh face_landmarker.task
@@ -302,7 +299,6 @@ echo "Building ${IMAGE_TAG} with:" >&2
 echo "  AGE_MODEL=${AGE_MODEL}" >&2
 echo "  GENDER_MODEL=${GENDER_MODEL}" >&2
 echo "  EMOTION_MODEL=${EMOTION_MODEL}" >&2
-echo "  DROWSINESS_MODEL=${DROWSINESS_MODEL}" >&2
 echo "  RACE_MODEL=${RACE_MODEL}" >&2
 echo "  FACE_LANDMARKS_MODEL=${FACE_LANDMARKS_MODEL}" >&2
 echo "  LIVENESS_MODEL=${LIVENESS_MODEL}" >&2
@@ -324,7 +320,6 @@ docker build \
     --build-arg AGE_MODEL="$AGE_MODEL" \
     --build-arg GENDER_MODEL="$GENDER_MODEL" \
     --build-arg EMOTION_MODEL="$EMOTION_MODEL" \
-    --build-arg DROWSINESS_MODEL="$DROWSINESS_MODEL" \
     --build-arg RACE_MODEL="$RACE_MODEL" \
     --build-arg FACE_LANDMARKS_MODEL="$FACE_LANDMARKS_MODEL" \
     --build-arg LIVENESS_MODEL="$LIVENESS_MODEL" \

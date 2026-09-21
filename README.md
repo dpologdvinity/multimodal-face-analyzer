@@ -6,13 +6,13 @@
 ![Streamlit](https://img.shields.io/badge/Streamlit-UI-00ff66?style=flat-square&logo=streamlit&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Ready-00ff66?style=flat-square&logo=docker&logoColor=white)
 
-> Computer vision pipeline for face detection with age, gender, race, emotion, gaze, drowsiness, glasses, mask, and hair/eye color inference. A containerized Streamlit web app.
+> Computer vision pipeline for face detection with age, gender, race, emotion, gaze, glasses, mask, and hair/eye color inference. A containerized Streamlit web app.
 
 ---
 
 ## Key Features
 
-- **Multi-model face analysis:** face detection, age, gender, race, emotion, gaze, drowsiness, glasses, face mask, colorimetric hair/eye color, face landmarks, plus whole-frame auto-colorization, body pose estimation, and hand landmarks -- most features have 2+ selectable model backends.
+- **Multi-model face analysis:** face detection, age, gender, race, emotion, gaze, glasses, face mask, colorimetric hair/eye color, face landmarks, plus whole-frame auto-colorization, body pose estimation, and hand landmarks -- most features have 2+ selectable model backends.
 - **Image adjustments:** 11 Lightroom-style sliders (exposure, contrast, shadows/highlights, saturation/vibrance, sharpness, noise reduction, etc.) for the whole image, all face crops before classification, and each detected face's preview separately.
 - **Face details on hover:** Hover or focus a detected face box in the annotated image to see its analysis results; full face cards remain below the image.
 - **Identity search:** SEARCH button per detected face, matching against bundled reference photos (`known_people/`, a few famous people out of the box) plus an optional user-specified directory. Local matching only, no live internet search.
@@ -35,7 +35,7 @@
 
 ## Models
 
-Face detection is required; age, gender, race, emotion, and drowsiness are each independently optional -- if a model's file(s) or dependencies aren't present, that feature is skipped and the rest still runs.
+Face detection is required; age, gender, race, and emotion are each independently optional -- if a model's file(s) or dependencies aren't present, that feature is skipped and the rest still runs.
 
 ### Face Detection
 
@@ -187,12 +187,6 @@ An `AGE PROGRESSION` button per detected face, wired to [timroelofs123/face_reag
 
 **License caveat -- non-commercial, and NOT just a training-data footnote:** the U-Net's `DownLayer`/`UpLayer` blocks use `BlurPool` (anti-aliased strided downsampling), vendored here from Adobe's [antialiased-cnns](https://github.com/adobe/antialiased-cnns) (see `src/nets/face_reaging_model.py`). antialiased-cnns is licensed **Creative Commons Attribution-NonCommercial-ShareAlike 4.0** -- non-commercial only, and share-alike (redistributions/adaptations must carry the same license). This is a *required inference-time component of the network architecture itself*, not merely a caveat about what data the weights were trained on. Separately, the pretrained weights were trained on FFHQ images re-aged via SAM (built on StyleGAN2, NVIDIA's own non-commercial research license), so the training-data provenance also traces back through a non-commercial-licensed tool. Net effect: treat this whole feature as **non-commercial/research use only**, same category as InsightFace's age/gender model already in this repo, but with a stronger justification (a direct architectural dependency, not just lineage).
 
-### Drowsiness
-
-| Backend                   | Framework | Output             |
-| ------------------------- | --------- | ------------------ |
-| Haar cascade eye detector | OpenCV    | `DROWSY` / `ALERT` |
-
 ### Liveness / anti-spoofing
 
 Liveness has one `mediapipe` backend. It reuses `models/face_landmarker.task`, selected by
@@ -255,7 +249,7 @@ No model file, no dependency, always available. Samples the region above the det
 | ---------------- | --------- | --------------------------------------------------------- |
 | `colorimetric`  | OpenCV    | `brown` / `blue` / `green` / `hazel` / `grey` / `amber`  |
 
-No model file. Reuses the same `haarcascade_eye.xml` already required for Drowsiness, so it's only available if that file is present. Locates the largest detected eye box, samples its center 40% (avoiding sclera/eyelid), and buckets the median HSV against fixed thresholds. **Also a plain colorimetric heuristic, not a trained classifier** -- same lighting/pose-sensitivity caveats as Hair Color, generally the least reliable attribute in the app.
+No model file. Reuses OpenCV's `haarcascade_eye.xml` when that file is present. Locates the largest detected eye box, samples its center 40% (avoiding sclera/eyelid), and buckets the median HSV against fixed thresholds. **Also a plain colorimetric heuristic, not a trained classifier** -- same lighting/pose-sensitivity caveats as Hair Color, generally the least reliable attribute in the app.
 
 ### Colorization (web app only, not a face attribute)
 
@@ -341,8 +335,8 @@ Model provenance: DAN, SSR-Net, and DeepFace's race model are vendored research 
 
 ## Performance
 
-- **Classifier frame skip (webcam LIVE mode only):** a `CLASSIFIER FRAME SKIP` slider (1-10, default 1 = every frame) above the LIVE video feed runs age/gender/emotion/race/recognition/skin-tone/glasses/mask/hair-color/eye-color/drowsiness classifiers every Nth frame instead of every frame. Face detection and the pose/hand/face-landmark overlays still run every frame, so the video itself stays smooth. This is safe to skip freely: those classifiers' outputs aren't otherwise drawn onto the LIVE video (per-face text cards only exist for Image upload / webcam SNAPSHOT), so there's no visible staleness to interpolate around -- skipping only reduces CPU load.
-- **Per-face result caching:** `src/inference.py` memoizes most per-face classifier calls (age, gender, emotion, race, expression, skin tone, glasses, mask, eye color, drowsiness, and the recognition embedding step) keyed on a hash of the exact preprocessed face-crop bytes fed to that model, not a face-identity embedding -- an embedding hash isn't a stable cache key for an adjusted or re-cropped face, but identical input bytes always produce identical deterministic output, so hashing the input itself is correct with no accuracy risk. This mainly helps Streamlit's rerun-the-whole-script-on-any-widget-change model: toggling one unrelated sidebar option no longer recomputes every classifier for every face from scratch. `fairface` and `insightface` (which key off the full frame + box rather than an isolated face crop) and the identity **match** step (which must stay live since the gallery can change between calls) are intentionally not cached. The cache is bounded (LRU-evicted, 2048 entries) and shared process-wide.
+- **Classifier frame skip (webcam LIVE mode only):** a `CLASSIFIER FRAME SKIP` slider (1-10, default 1 = every frame) above the LIVE video feed runs age/gender/emotion/race/recognition/skin-tone/glasses/mask/hair-color/eye-color classifiers every Nth frame instead of every frame. Face detection and the pose/hand/face-landmark overlays still run every frame, so the video itself stays smooth. This is safe to skip freely: those classifiers' outputs aren't otherwise drawn onto the LIVE video (per-face text cards only exist for Image upload / webcam SNAPSHOT), so there's no visible staleness to interpolate around -- skipping only reduces CPU load.
+- **Per-face result caching:** `src/inference.py` memoizes most per-face classifier calls (age, gender, emotion, race, expression, skin tone, glasses, mask, eye color, and the recognition embedding step) keyed on a hash of the exact preprocessed face-crop bytes fed to that model, not a face-identity embedding -- an embedding hash isn't a stable cache key for an adjusted or re-cropped face, but identical input bytes always produce identical deterministic output, so hashing the input itself is correct with no accuracy risk. This mainly helps Streamlit's rerun-the-whole-script-on-any-widget-change model: toggling one unrelated sidebar option no longer recomputes every classifier for every face from scratch. `fairface` and `insightface` (which key off the full frame + box rather than an isolated face crop) and the identity **match** step (which must stay live since the gallery can change between calls) are intentionally not cached. The cache is bounded (LRU-evicted, 2048 entries) and shared process-wide.
 
 ---
 
@@ -372,7 +366,7 @@ multimodal-face-analyzer/
 │   ├── deepface_gender.h5                       # gender: deepface backend
 │   ├── deepface_vgg.h5                          # recognition: vggface backend
 │   ├── face_landmarker.task                     # face landmarks, gaze, and liveness
-│   ├── haarcascade_eye.xml                      # drowsiness + eye color
+│   ├── haarcascade_eye.xml                      # eye color + roll alignment
 │   ├── glasses_detector.onnx                    # glasses: mobilenet backend
 │   ├── mask_detector.h5                         # mask: mobilenetv2 backend
 │   ├── colorization_deploy_v2.prototxt / colorization_release_v2.caffemodel / pts_in_hull.npy  # colorization
@@ -511,7 +505,6 @@ docker build \
   --build-arg AGE_MODEL=caffe,insightface,fairface,dex,ssrnet,mivolo \
   --build-arg GENDER_MODEL=caffe,insightface,fairface,deepface,mivolo \
   --build-arg EMOTION_MODEL=efficientnet,ferplus,hsemotion,mini_xception,dan \
-  --build-arg DROWSINESS_MODEL=haarcascade \
   --build-arg RACE_MODEL=fairface,deepface \
   --build-arg FACE_LANDMARKS_MODEL=mediapipe \
   --build-arg LIVENESS_MODEL=mediapipe \
@@ -534,7 +527,6 @@ docker build \
 | `AGE_MODEL`        | `caffe`, `insightface`, `fairface`, `dex`, `ssrnet`, `mivolo` |
 | `GENDER_MODEL`     | `caffe`, `insightface`, `fairface`, `deepface`, `mivolo` |
 | `EMOTION_MODEL`    | `efficientnet`, `ferplus`, `hsemotion`, `mini_xception`, `dan` |
-| `DROWSINESS_MODEL` | `haarcascade`                            |
 | `RACE_MODEL`       | `fairface`, `deepface`                   |
 | `FACE_LANDMARKS_MODEL` | `mediapipe`                        |
 | `LIVENESS_MODEL` | `mediapipe` (reuses `face_landmarker.task`) |
@@ -550,7 +542,7 @@ docker build \
 | `RETINAFACE_MODEL` | `retinaface` (additive -- SSD stays required/always on) |
 | `AGE_PROGRESSION_MODEL` | `franunet` (non-commercial use only, see [Age Progression / Regression](#age-progression--regression-web-app-only-non-commercial-use-only)) |
 
-There's no `SKIN_TONE_MODEL` build ARG -- see [Skin Tone](#skin-tone-web-app-only-no-working-backend-currently-shipped) above. Hair Color and Eye Color are colorimetric heuristics with no model file and thus no build ARG either -- they're always available in the web app (Eye Color additionally needs `haarcascade_eye.xml`, already required for Drowsiness). Face Landmarks uses `FACE_LANDMARKS_MODEL=mediapipe`; Liveness uses its own `LIVENESS_MODEL=mediapipe` ARG while reusing the same model file.
+There's no `SKIN_TONE_MODEL` build ARG -- see [Skin Tone](#skin-tone-web-app-only-no-working-backend-currently-shipped) above. Hair Color and Eye Color are colorimetric heuristics with no model file and thus no build ARG either -- they're always available in the web app (Eye Color additionally needs `haarcascade_eye.xml`). Face Landmarks uses `FACE_LANDMARKS_MODEL=mediapipe`; Liveness uses its own `LIVENESS_MODEL=mediapipe` ARG while reusing the same model file.
 
 Multiple models per feature (e.g. `AGE_MODEL=caffe,ssrnet`) can be built in together -- the web app sidebar shows a checkbox per built model, and checking more than one for the same feature runs and displays all of them at once.
 
