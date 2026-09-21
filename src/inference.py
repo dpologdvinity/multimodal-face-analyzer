@@ -1838,14 +1838,29 @@ def train_lbph_recognizer():
         return _LBPH_CACHE_RESULT
 
 
+# Modern phone cameras commonly produce 3000-4000px-wide photos. Every downstream detector
+# resizes its own input internally (SSD to 300x300, YOLO/SCRFD/RetinaFace to their own fixed
+# input size), so feeding them a multi-thousand-pixel source buys no detection quality -- it
+# only multiplies the cost of every full-frame op that runs BEFORE that internal resize
+# (decode, color conversion, cv2.dnn's own resize, drawing overlays, content hashing for the
+# detection/prediction caches). Capping the longer side here is quality-neutral for anything
+# feeding those fixed-size model inputs.
+MAX_UPLOAD_DIMENSION = 2000
+
+
 def decode_image_bytes(file_bytes: bytes | bytearray | np.ndarray) -> np.ndarray:
-    """Decode uploaded image bytes (JPEG/PNG/WebP/etc) into BGR ndarray."""
+    """Decode uploaded image bytes (JPEG/PNG/WebP/etc) into BGR ndarray, downscaled if huge."""
     encoded = np.asarray(bytearray(file_bytes), dtype=np.uint8)
     if encoded.size == 0:
         raise ValueError("The uploaded file is empty or could not be read.")
     frame = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
     if frame is None or frame.size == 0:
         raise ValueError("The uploaded file is not a valid supported image.")
+    height, width = frame.shape[:2]
+    longer_side = max(height, width)
+    if longer_side > MAX_UPLOAD_DIMENSION:
+        scale = MAX_UPLOAD_DIMENSION / longer_side
+        frame = cv2.resize(frame, (round(width * scale), round(height * scale)), interpolation=cv2.INTER_AREA)
     return frame
 
 
