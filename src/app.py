@@ -316,7 +316,6 @@ active_liveness = _model_checkboxes("LIVENESS", models.liveness_nets)
 if models.liveness_nets:
     st.sidebar.caption("Liveness only runs in Webcam / LIVE -- a single image has no blinks to check.")
 active_recognition = _model_checkboxes("RECOGNITION", models.recognition_nets)
-active_skin_tone = _model_checkboxes("SKIN TONE", models.skin_tone_nets)
 active_glasses = _model_checkboxes("GLASSES", models.glasses_nets)
 active_mask = _model_checkboxes("MASK", models.mask_nets)
 active_hair_color = _model_checkboxes("HAIR COLOR", models.hair_color_nets)
@@ -508,7 +507,7 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
     annotated_frame, cropped_faces, any_drowsy, has_faces, pose_detected, hands_detected = inference.analyze_frame(
         models, frame, conf_threshold, active_age, active_gender, active_emotion, active_drowsiness, active_race,
         active_recognition, st.session_state.get("gallery", {}),
-        active_skin_tone, active_glasses, active_mask, active_hair_color, active_eye_color,
+        active_glasses, active_mask, active_hair_color, active_eye_color,
         active_pose, active_face_landmarks, active_hands, active_gaze,
         {name: values[2] for name, values in inference.IMAGE_ADJUSTMENT_RANGES.items()}, face_adjustments,
         face_detector=active_face_detector,
@@ -818,7 +817,6 @@ with tab_webcam:
                     active_drowsiness if run_classifiers else _NO_MODELS,
                     active_race if run_classifiers else _NO_MODELS,
                 active_recognition if run_classifiers else _NO_MODELS, gallery_snapshot,
-                    active_skin_tone if run_classifiers else _NO_MODELS,
                     active_glasses if run_classifiers else _NO_MODELS,
                     active_mask if run_classifiers else _NO_MODELS,
                     active_hair_color if run_classifiers else _NO_MODELS,

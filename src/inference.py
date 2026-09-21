@@ -58,7 +58,6 @@ try:
     from nets.deepface_recognition import build_recognition_model
     from nets.mini_xception_model import build_mini_xception
     from nets.mask_model import build_mask_model
-    from nets.skin_tone_model import build_skin_tone_model
     TF_SUPPORTED = True
 except ImportError:
     TF_SUPPORTED = False
@@ -124,7 +123,6 @@ DEX_PROTO = MODEL_DIR / "dex_age.prototxt"
 DEX_MODEL = MODEL_DIR / "dex_age.caffemodel"
 MIVOLO_MODEL = MODEL_DIR / "mivolo_v2.safetensors"
 FACE_LANDMARKER_MODEL = MODEL_DIR / "face_landmarker.task"
-SKIN_TONE_MODEL = MODEL_DIR / "skin_tone_mobilenetv2.h5"
 GLASSES_MODEL = MODEL_DIR / "glasses_detector.onnx"
 MASK_MODEL = MODEL_DIR / "mask_detector.h5"
 COLORIZATION_PROTO = MODEL_DIR / "colorization_deploy_v2.prototxt"
@@ -197,7 +195,6 @@ RETINAFACE_MIN_SIZES = ((16, 32), (64, 128), (256, 512))
 RETINAFACE_VARIANCE = (0.1, 0.2)
 RETINAFACE_MEAN = (104, 117, 123)  # BGR, biubug6/Pytorch_Retinaface's own training-time mean
 RETINAFACE_NMS_THRESHOLD = 0.4
-SKIN_TONE_MODEL_OPTIONS = ["mobilenetv2"]
 GLASSES_MODEL_OPTIONS = ["mobilenet"]
 MASK_MODEL_OPTIONS = ["mobilenetv2"]
 HAIR_COLOR_MODEL_OPTIONS = ["colorimetric"]
@@ -245,8 +242,6 @@ IMAGE_ADJUSTMENT_RANGES = {
     "noise_reduction": (0.0, 100.0, 0.0),
 }
 
-SKIN_TONE_LABELS = ["black", "brown", "white"]  # index order per the source model's own class map
-SKIN_TONE_INPUT_SIZE = (120, 90)  # (width, height) -- this model's own idiosyncratic input shape, not 224x224
 MASK_LABELS = ["with_mask", "without_mask"]  # sklearn LabelBinarizer's alphabetical class order
 HAIR_COLOR_LABELS = ["black", "brown", "blonde", "red", "grey", "white"]
 EYE_COLOR_LABELS = ["brown", "blue", "green", "hazel", "grey", "amber"]
@@ -298,7 +293,6 @@ class Models:
     race_nets: dict = field(default_factory=dict)
     liveness_nets: dict = field(default_factory=dict)
     recognition_nets: dict = field(default_factory=dict)
-    skin_tone_nets: dict = field(default_factory=dict)
     glasses_nets: dict = field(default_factory=dict)
     mask_nets: dict = field(default_factory=dict)
     hair_color_nets: dict = field(default_factory=dict)
@@ -324,7 +318,7 @@ class Models:
                 ("LIVENESS", self.liveness_nets),
                 ("GAZE", self.gaze_nets),
                 ("RECOGNITION", self.recognition_nets),
-                ("SKIN_TONE", self.skin_tone_nets), ("GLASSES", self.glasses_nets),
+                ("GLASSES", self.glasses_nets),
                 ("MASK", self.mask_nets), ("HAIR_COLOR", self.hair_color_nets),
                 ("EYE_COLOR", self.eye_color_nets), ("COLORIZATION", self.colorization_nets),
                 ("POSE", self.pose_nets), ("FACE_LANDMARKS", self.face_landmarks_nets),
@@ -462,10 +456,6 @@ def load_models() -> Models:
             face_landmarks_nets["mediapipe"] = landmarker
         gaze_nets["mediapipe"] = landmarker
 
-    skin_tone_nets = {}
-    if TF_SUPPORTED and SKIN_TONE_MODEL.exists():
-        skin_tone_nets["mobilenetv2"] = build_skin_tone_model(str(SKIN_TONE_MODEL))
-
     glasses_nets = {}
     if native_model_selected("GLASSES_MODEL", "mobilenet") and ONNXRUNTIME_SUPPORTED and GLASSES_MODEL.exists():
         glasses_nets["mobilenet"] = onnxruntime.InferenceSession(str(GLASSES_MODEL), providers=["CPUExecutionProvider"])
@@ -523,7 +513,7 @@ def load_models() -> Models:
 
     return Models(
         face_net, age_nets, gender_nets, emotion_nets, drowsiness_nets, race_nets, liveness_nets, recognition_nets,
-        skin_tone_nets, glasses_nets, mask_nets, hair_color_nets, eye_color_nets, colorization_nets,
+        glasses_nets, mask_nets, hair_color_nets, eye_color_nets, colorization_nets,
         pose_nets, face_landmarks_nets, hand_nets, reconstruction_3d_nets, yolo_face_nets, scrfd_face_nets, retinaface_nets,
         gaze_nets, age_progression_nets,
     )
@@ -1295,7 +1285,7 @@ def apply_denoise(face_bgr: np.ndarray, method: str = "nlm") -> np.ndarray:
     preservation), or Non-Local Means (searches the whole image for similar patches, best
     texture preservation, slowest). CNN/GAN-based methods from the same doc are skipped --
     they need trained weights this repo doesn't have a source for (same category of gap as
-    skin_tone/deep3d elsewhere in this app)."""
+    deep3d elsewhere in this app)."""
     if method == "gaussian":
         return cv2.GaussianBlur(face_bgr, (5, 5), 1.5)
     if method == "median":
@@ -2009,17 +1999,6 @@ def predict_texture_artifact_score(face_bgr: np.ndarray) -> float:
     return texture_artifact_score(sample.tolist())
 
 
-def predict_skin_tone_vgg16(net, face_bgr: np.ndarray) -> str:
-    """behra527/Skin-Tone-Classification-model: MobileNetV2 backbone (despite the repo's
-    README describing VGG16), RGB, its own idiosyncratic 90x120 (h,w) input,
-    keras.applications.mobilenet_v2.preprocess_input scaling."""
-    face_rgb = cv2.cvtColor(cv2.resize(face_bgr, SKIN_TONE_INPUT_SIZE), cv2.COLOR_BGR2RGB).astype(np.float32)
-    face_norm = face_rgb / 127.5 - 1.0
-    with _lock_for(net):
-        probs = net.predict(face_norm[np.newaxis, ...], verbose=0).flatten()
-    return SKIN_TONE_LABELS[int(np.argmax(probs))]
-
-
 def predict_glasses_mobilenet(net, face_bgr: np.ndarray) -> str:
     """Sorour190/Glasses-Detector's glasses_face224.onnx: MobileNetV3-Large, 224x224 RGB,
     uint8 NHWC input (normalization baked into the ONNX graph itself), outputs a named
@@ -2312,7 +2291,6 @@ def analyze_frame(
     active_race: set,
     active_recognition: set,
     gallery: dict,
-    active_skin_tone: set,
     active_glasses: set,
     active_mask: set,
     active_hair_color: set,
@@ -2589,18 +2567,6 @@ def analyze_frame(
                 _record_model_latency(metrics, "recognition", key, started)
             return pairs, embedding
 
-        def _skin_tone_task():
-            pairs = []
-            for key in active_skin_tone:
-                net = models.skin_tone_nets.get(key)
-                if net is None:
-                    continue
-                started = time.perf_counter()
-                value = _cached_face_predict("skin_tone", key, face, predict_skin_tone_vgg16, net, face)
-                pairs.append((key, value))
-                _record_model_latency(metrics, "skin_tone", key, started)
-            return pairs
-
         def _glasses_task():
             pairs = []
             for key in active_glasses:
@@ -2679,7 +2645,6 @@ def analyze_frame(
             "gaze": _INFERENCE_EXECUTOR.submit(_gaze_task),
             "head_pose": _INFERENCE_EXECUTOR.submit(_head_pose_task),
             "recognition": _INFERENCE_EXECUTOR.submit(_recognition_task),
-            "skin_tone": _INFERENCE_EXECUTOR.submit(_skin_tone_task),
             "glasses": _INFERENCE_EXECUTOR.submit(_glasses_task),
             "mask": _INFERENCE_EXECUTOR.submit(_mask_task),
             "hair_color": _INFERENCE_EXECUTOR.submit(_hair_color_task),
@@ -2695,7 +2660,6 @@ def analyze_frame(
         gaze_pairs = futures["gaze"].result()
         head_pose_pairs = futures["head_pose"].result()
         recognition_pairs, face_embedding = futures["recognition"].result()
-        skin_tone_pairs = futures["skin_tone"].result()
         glasses_pairs = futures["glasses"].result()
         mask_pairs = futures["mask"].result()
         hair_color_pairs = futures["hair_color"].result()
@@ -2734,7 +2698,7 @@ def analyze_frame(
             "age": age_pairs, "gender": gender_pairs, "race": race_pairs, "emotion": emotion_pairs,
             "gaze": gaze_pairs, "identity": recognition_pairs,
             "eye_contact": [("derived", value) for value in eye_contact], "head_pose": head_pose_pairs,
-            "skin_tone": skin_tone_pairs, "glasses": glasses_pairs, "mask": mask_pairs,
+            "glasses": glasses_pairs, "mask": mask_pairs,
             "hair_color": hair_color_pairs, "eye_color": eye_color_pairs, "drowsiness": drowsy_pairs,
             "liveness": liveness_pairs,
         })
@@ -2745,7 +2709,7 @@ def analyze_frame(
                 "gaze": gaze_pairs, "identity": recognition_pairs,
                 "eye contact": [("derived", value) for value in eye_contact],
                 "head pose": head_pose_pairs,
-                "skin tone": skin_tone_pairs, "glasses": glasses_pairs,
+                "glasses": glasses_pairs,
                 "mask": mask_pairs, "hair color": hair_color_pairs, "eye color": eye_color_pairs,
                 "drowsiness": drowsy_pairs, "liveness": liveness_pairs,
             }.items()
@@ -2765,7 +2729,6 @@ def analyze_frame(
             "eye_contact": eye_contact,
             "head_pose": _format_results(head_pose_pairs),
             "identity": _format_results(recognition_pairs),
-            "skin_tone": _format_results(skin_tone_pairs),
             "glasses": _format_results(glasses_pairs),
             "mask": _format_results(mask_pairs),
             "hair_color": _format_results(hair_color_pairs),

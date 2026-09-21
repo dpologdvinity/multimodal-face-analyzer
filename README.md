@@ -169,7 +169,7 @@ A `3D RECON` button per detected face, wired to [sicxu/Deep3DFaceRecon_pytorch](
 
 `models/BFM/similarity_Lm3D_all.mat` (a small ~1KB landmark-alignment template) **is** bundled -- it's from the same MIT-licensed upstream repo and isn't derived from BFM09 itself.
 
-Without both gated files present, this feature shows as offline (`RECONSTRUCTION_3D` in the sidebar's OFFLINE list), same as Skin Tone. If you have legitimate access to both (e.g. you're a BFM09 registrant with the converted `.mat` file, and you've downloaded the checkpoint), drop them into `models/` at the paths above and the feature activates automatically -- no rebuild needed if using the dev-mount option in `build-and-run.sh`.
+Without both gated files present, this feature shows as offline (`RECONSTRUCTION_3D` in the sidebar's OFFLINE list). If you have legitimate access to both (e.g. you're a BFM09 registrant with the converted `.mat` file, and you've downloaded the checkpoint), drop them into `models/` at the paths above and the feature activates automatically -- no rebuild needed if using the dev-mount option in `build-and-run.sh`.
 
 **Known limitation -- no rendered preview, mesh only:** upstream's own rendering step uses [nvdiffrast](https://github.com/NVlabs/nvdiffrast), NVIDIA's differentiable rasterizer, which is GPU/CUDA-only with no CPU fallback -- incompatible with this repo's CPU-only design (same constraint documented for every other PyTorch/TensorFlow feature here). This integration skips rendering entirely and stops at mesh export, which needs no GPU: the coefficient regression and BFM linear-algebra reconstruction are both plain ResNet50 forward passes and matrix math, verified CPU-only. Open the downloaded `.obj` in Blender, MeshLab, or any online viewer to inspect it.
 
@@ -219,12 +219,6 @@ emotion measurement. With multiple faces, only the largest face is used. Uploads
 snapshots do not include audio and therefore do not use this fusion feature. Browser microphone
 permissions and a working WebRTC connection are required.
 
-### Skin Tone (web app only, no working backend currently shipped)
-
-The only known pretrained source for this attribute, [behra527/Skin-Tone-Classification-model](https://github.com/behra527/Skin-Tone-Classification-model) (`mobilenetv2_skin_tone.h5`), **ships a corrupted weight file**: its saved Keras config doesn't deserialize under current Keras 3, under the legacy `tf_keras` shim, or via a hand-reconstructed matching architecture + `load_weights()` (a nested-submodel weight-order mismatch persists even then). This was verified directly, not assumed -- all three loading paths were tried against the actual downloaded file before giving up.
-
-The Python-side plumbing (`src/inference.py`'s `skin_tone_nets`, `src/nets/skin_tone_model.py`'s `build_skin_tone_model()`, sidebar checkbox, target-card row) is fully wired and will pick up a working weight file automatically if one is dropped in as `models/skin_tone_mobilenetv2.h5` -- but no such file is bundled or built into Docker images today (no `SKIN_TONE_MODEL` build ARG exists). The feature shows as offline until a working source is found.
-
 ### Glasses (web app only)
 
 | Backend     | Framework      | Output              |
@@ -263,7 +257,7 @@ No model file. Reuses the same `haarcascade_eye.xml` already required for Drowsi
 | ---------- | --------------- | ------------------------------------ |
 | `eccv16`   | Caffe (cv2.dnn) | Colorized BGR frame, or unchanged   |
 
-Zhang et al.'s ECCV16 colorization model (`models/colorization_deploy_v2.prototxt` / `_release_v2.caffemodel` / `pts_in_hull.npy`, BSD-2-Clause, richzhang/colorization). Unlike every other feature above, this isn't a per-face attribute -- it's a whole-frame preprocessing step applied *before* face detection. If the uploaded/captured frame is auto-detected as grayscale (near-zero difference between its B/G/R channels), it's colorized in Lab space (predict `ab` from `L`, per `ideas/colorization.md`) before the rest of the pipeline runs, so downstream color-dependent attributes (skin tone, hair color, eye color) see the colorized version too. On by default; toggle off in the sidebar (`AUTO-COLORIZE B&W`) to leave grayscale images untouched. Already-color images are left alone regardless of the toggle (the grayscale check skips them).
+Zhang et al.'s ECCV16 colorization model (`models/colorization_deploy_v2.prototxt` / `_release_v2.caffemodel` / `pts_in_hull.npy`, BSD-2-Clause, richzhang/colorization). Unlike every other feature above, this isn't a per-face attribute -- it's a whole-frame preprocessing step applied *before* face detection. If the uploaded/captured frame is auto-detected as grayscale (near-zero difference between its B/G/R channels), it's colorized in Lab space (predict `ab` from `L`, per `ideas/colorization.md`) before the rest of the pipeline runs, so downstream color-dependent attributes (hair color, eye color) see the colorized version too. On by default; toggle off in the sidebar (`AUTO-COLORIZE B&W`) to leave grayscale images untouched. Already-color images are left alone regardless of the toggle (the grayscale check skips them).
 
 ### Pose Estimation (web app only, not a face attribute)
 
@@ -341,8 +335,8 @@ Model provenance: DAN, SSR-Net, and DeepFace's race model are vendored research 
 
 ## Performance
 
-- **Classifier frame skip (webcam LIVE mode only):** a `CLASSIFIER FRAME SKIP` slider (1-10, default 1 = every frame) above the LIVE video feed runs age/gender/emotion/race/recognition/skin-tone/glasses/mask/hair-color/eye-color/drowsiness classifiers every Nth frame instead of every frame. Face detection and the pose/hand/face-landmark overlays still run every frame, so the video itself stays smooth. This is safe to skip freely: those classifiers' outputs aren't otherwise drawn onto the LIVE video (per-face text cards only exist for Image upload / webcam SNAPSHOT), so there's no visible staleness to interpolate around -- skipping only reduces CPU load.
-- **Per-face result caching:** `src/inference.py` memoizes most per-face classifier calls (age, gender, emotion, race, expression, skin tone, glasses, mask, eye color, drowsiness, and the recognition embedding step) keyed on a hash of the exact preprocessed face-crop bytes fed to that model, not a face-identity embedding -- an embedding hash isn't a stable cache key for an adjusted or re-cropped face, but identical input bytes always produce identical deterministic output, so hashing the input itself is correct with no accuracy risk. This mainly helps Streamlit's rerun-the-whole-script-on-any-widget-change model: toggling one unrelated sidebar option no longer recomputes every classifier for every face from scratch. `fairface` and `insightface` (which key off the full frame + box rather than an isolated face crop) and the identity **match** step (which must stay live since the gallery can change between calls) are intentionally not cached. The cache is bounded (LRU-evicted, 2048 entries) and shared process-wide.
+- **Classifier frame skip (webcam LIVE mode only):** a `CLASSIFIER FRAME SKIP` slider (1-10, default 1 = every frame) above the LIVE video feed runs age/gender/emotion/race/recognition/glasses/mask/hair-color/eye-color/drowsiness classifiers every Nth frame instead of every frame. Face detection and the pose/hand/face-landmark overlays still run every frame, so the video itself stays smooth. This is safe to skip freely: those classifiers' outputs aren't otherwise drawn onto the LIVE video (per-face text cards only exist for Image upload / webcam SNAPSHOT), so there's no visible staleness to interpolate around -- skipping only reduces CPU load.
+- **Per-face result caching:** `src/inference.py` memoizes most per-face classifier calls (age, gender, emotion, race, expression, glasses, mask, eye color, drowsiness, and the recognition embedding step) keyed on a hash of the exact preprocessed face-crop bytes fed to that model, not a face-identity embedding -- an embedding hash isn't a stable cache key for an adjusted or re-cropped face, but identical input bytes always produce identical deterministic output, so hashing the input itself is correct with no accuracy risk. This mainly helps Streamlit's rerun-the-whole-script-on-any-widget-change model: toggling one unrelated sidebar option no longer recomputes every classifier for every face from scratch. `fairface` and `insightface` (which key off the full frame + box rather than an isolated face crop) and the identity **match** step (which must stay live since the gallery can change between calls) are intentionally not cached. The cache is bounded (LRU-evicted, 2048 entries) and shared process-wide.
 
 ---
 
@@ -386,7 +380,6 @@ multimodal-face-analyzer/
 │   │   # (no BFM_model_front.mat -- Basel Face Model, registration-gated, see README)
 │   # (no deep3d_recon_resnet50.pth -- Google-Drive-gated checkpoint, see README)
 │   # face_landmarker.task (above) is also reused for the Face Landmarks toggle
-│   # (no skin_tone_mobilenetv2.h5 -- no working weight file exists yet, see README)
 │   # (no deepface_vgg.h5 -- never committed, Recognition/Identity Search are non-functional until it's sourced)
 │
 ├── known_people/           # bundled reference photos for Identity Search (First_Last.jpg)
@@ -407,7 +400,6 @@ multimodal-face-analyzer/
         ├── deepface_gender.py
         ├── deepface_recognition.py
         ├── mask_model.py                        # mask: mobilenetv2 backend
-        ├── skin_tone_model.py                   # skin tone architecture (no working weights yet)
         ├── deep3d_recon.py                      # 3D recon (no working weights yet, see README)
         └── mivolo/                              # MiVOLO ViT (Apache 2.0)
             ├── __init__.py
@@ -550,7 +542,7 @@ docker build \
 | `RETINAFACE_MODEL` | `retinaface` (additive -- SSD stays required/always on) |
 | `AGE_PROGRESSION_MODEL` | `franunet` (non-commercial use only, see [Age Progression / Regression](#age-progression--regression-web-app-only-non-commercial-use-only)) |
 
-There's no `SKIN_TONE_MODEL` build ARG -- see [Skin Tone](#skin-tone-web-app-only-no-working-backend-currently-shipped) above. Hair Color and Eye Color are colorimetric heuristics with no model file and thus no build ARG either -- they're always available in the web app (Eye Color additionally needs `haarcascade_eye.xml`, already required for Drowsiness). Face Landmarks uses `FACE_LANDMARKS_MODEL=mediapipe`; Liveness uses its own `LIVENESS_MODEL=mediapipe` ARG while reusing the same model file.
+Hair Color and Eye Color are colorimetric heuristics with no model file and thus no build ARG either -- they're always available in the web app (Eye Color additionally needs `haarcascade_eye.xml`, already required for Drowsiness). Face Landmarks uses `FACE_LANDMARKS_MODEL=mediapipe`; Liveness uses its own `LIVENESS_MODEL=mediapipe` ARG while reusing the same model file.
 
 Multiple models per feature (e.g. `AGE_MODEL=caffe,ssrnet`) can be built in together -- the web app sidebar shows a checkbox per built model, and checking more than one for the same feature runs and displays all of them at once.
 

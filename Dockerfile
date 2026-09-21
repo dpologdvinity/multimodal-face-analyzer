@@ -57,11 +57,6 @@ FROM python:3.11-slim
 # needs TensorFlow (~200-400MB) and a 513MB weight file, much heavier
 # than fairface -- only pulled in if requested. mask also needs TensorFlow
 # (Keras .h5 weights); glasses are plain ONNX.
-# No SKIN_TONE_MODEL ARG -- the only known source for this feature
-# (behra527/Skin-Tone-Classification-model) ships a corrupted weight file
-# that doesn't load under any Keras version tried; see README's Known Issues.
-# The Python-side plumbing exists (src/inference.py) for whenever a working
-# weight file is found, but there's nothing to build into the image yet.
 # e.g. --build-arg AGE_MODEL=caffe,ssrnet builds both age backends so the web
 # app can switch between them at runtime. See build-and-run.sh for a guided
 # prompt instead of typing these by hand.
