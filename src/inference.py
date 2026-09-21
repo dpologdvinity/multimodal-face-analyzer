@@ -2517,7 +2517,10 @@ def analyze_frame(
         crop_frame, (cx1, cy1, cx2, cy2) = frame, (x1, y1, x2, y2)
         if eye_cascade is not None:
             probe = frame[max(0, y1 - 20):min(y2 + 20, frame.shape[0]), max(0, x1 - 20):min(x2 + 20, frame.shape[1])]
-            angle = _estimate_roll_angle(probe, eye_cascade) if probe.size else None
+            # Same content-addressed memoization as face detection above: identical probe
+            # bytes always yield the same angle, so a rerun with an unchanged face region
+            # (e.g. from a toggled model checkbox) skips the Haar cascade re-scan.
+            angle = _cached_face_predict("roll_angle", "haarcascade", probe, _estimate_roll_angle, probe, eye_cascade) if probe.size else None
             if angle is not None and abs(angle) > 3:  # skip work for near-level faces
                 crop_frame, (cx1, cy1, cx2, cy2) = _rotate_region(frame, (x1, y1, x2, y2), angle)
 
