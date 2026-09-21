@@ -33,18 +33,22 @@ THEME_MARKER_CLASSES = {
     "Synthwave": "synthwave-theme",
     "Phosphor Green": "phosphor-theme",
     "Brutalist": "brutalist-theme",
+    "Corporate Slate": "corporate-theme",
 }
 
 theme = st.sidebar.selectbox(
     "THEME",
-    ["Dark cyberpunk", "Light cyberpunk", "Amber Terminal", "Synthwave", "Phosphor Green", "Brutalist"],
+    [
+        "Dark cyberpunk", "Light cyberpunk", "Amber Terminal", "Synthwave", "Phosphor Green",
+        "Brutalist", "Corporate Slate",
+    ],
     key="theme",
 )
 
 st.markdown(
     """
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:wght@400;600;700&display=swap');
 
     :root {
         --base: #0b1217;
@@ -223,6 +227,66 @@ st.markdown(
         border-bottom: none !important;
         text-transform: uppercase;
         font-weight: 700;
+    }
+
+    body:has(.corporate-theme) {
+        --base: #f4f6f9;
+        --surface: #ffffff;
+        --surface-raised: #eef1f6;
+        --line: #d7dce4;
+        --text: #1c2733;
+        --muted: #5b6b7c;
+        --accent: #2f5aa8;
+        --alert: #c0392b;
+    }
+    body:has(.corporate-theme) .stApp {
+        background: var(--base);
+    }
+    body:has(.corporate-theme) .app-hero {
+        border-left: none;
+        border-bottom: 1px solid var(--line);
+        padding: 0 0 1.4rem;
+        margin: 0 0 2rem;
+    }
+    body:has(.corporate-theme) .app-hero h1 {
+        font-family: 'Source Serif 4', serif;
+        font-weight: 600;
+        letter-spacing: 0;
+        color: var(--text);
+    }
+    body:has(.corporate-theme) .stApp h2,
+    body:has(.corporate-theme) .stApp h3 {
+        font-family: 'Source Serif 4', serif;
+        font-weight: 600;
+    }
+    body:has(.corporate-theme) section[data-testid="stSidebar"] {
+        background: var(--surface) !important;
+        border-right: 1px solid var(--line) !important;
+    }
+    body:has(.corporate-theme) section[data-testid="stSidebar"] h3 {
+        color: var(--muted);
+        font-family: 'DM Sans', sans-serif;
+        text-transform: none;
+        letter-spacing: 0.02em;
+        font-weight: 600;
+    }
+    body:has(.corporate-theme) .stButton button,
+    body:has(.corporate-theme) .stDownloadButton button {
+        border-radius: 6px !important;
+        border: 1px solid var(--line) !important;
+        box-shadow: 0 1px 2px rgba(28, 39, 51, 0.08) !important;
+    }
+    body:has(.corporate-theme) [data-testid="stExpander"] {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        box-shadow: 0 1px 3px rgba(28, 39, 51, 0.06);
+    }
+    body:has(.corporate-theme) div[data-testid="stTabs"] [data-baseweb="tab-list"] {
+        border-bottom: 1px solid var(--line);
+    }
+    body:has(.corporate-theme) button[role="tab"][aria-selected="true"] {
+        color: var(--accent);
+        border-bottom: 2px solid var(--accent);
     }
 
     .stApp {
