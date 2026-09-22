@@ -900,11 +900,16 @@ if theme in THEME_MARKER_CLASSES:
     st.markdown(f'<div class="{THEME_MARKER_CLASSES[theme]}"></div>', unsafe_allow_html=True)
 
 
+def _model_result_order(row: dict) -> tuple:
+    """Sort key grouping rows by feature, with a fused answer ahead of its component models."""
+    return (row["Feature"], row["Model"] not in inference.HEADLINE_MODEL_KEYS, row["Model"])
+
+
 def _target_card_html(face: dict) -> str:
     """Render one face's results as a HUD-style dossier card (native markup, not pixel text --
     keeps results legible no matter how many faces are packed into one image)."""
     rows = ""
-    for result in sorted(face.get("model_results", []), key=lambda row: (row["Feature"], row["Model"])):
+    for result in sorted(face.get("model_results", []), key=_model_result_order):
         feature = result["Feature"]
         model = result["Model"]
         label = feature if model == "derived" else f"{feature} ({model})"
@@ -917,7 +922,7 @@ def _target_card_html(face: dict) -> str:
 def _one_line_summary(face: dict) -> str:
     """Compact always-visible label for a face box -- feature: output pairs, no model names."""
     seen = {}
-    for result in sorted(face.get("model_results", []), key=lambda row: (row["Feature"], row["Model"])):
+    for result in sorted(face.get("model_results", []), key=_model_result_order):
         seen.setdefault(result["Feature"], result["Output"])
     if not seen:
         return f"F{face['idx']:02d}"

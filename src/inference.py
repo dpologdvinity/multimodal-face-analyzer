@@ -1191,28 +1191,6 @@ def face_crop_bounds(
     )
 
 
-def body_crop_bounds(
-    box: tuple[int, int, int, int], frame_shape: tuple[int, int],
-) -> tuple[int, int, int, int]:
-    """Return a clamped upper-body context crop derived from a face detection box.
-
-    MiVOLO's bundled checkpoint is a face+person model. The detector only gives us a face box,
-    so use a generous region centered on it: a little above the head, substantially below it,
-    and wide enough to include shoulders. This is a fallback for images without a person
-    detector, but still supplies real context instead of the zero tensor used previously.
-    """
-    x1, y1, x2, y2 = box
-    frame_height, frame_width = frame_shape
-    face_width, face_height = max(0, x2 - x1), max(0, y2 - y1)
-    center_x = (x1 + x2) / 2.0
-    return (
-        max(0, round(center_x - 1.25 * face_width)),
-        max(0, round(y1 - 0.5 * face_height)),
-        min(frame_width, round(center_x + 1.25 * face_width)),
-        min(frame_height, round(y2 + 3.0 * face_height)),
-    )
-
-
 def apply_geometric_transform(region: np.ndarray, transform_type: str, **params) -> np.ndarray:
     """Apply one geometric transform to a cropped region. Matches the matrices in
     ideas/transform.md / ideas/geo-transform.md directly (translation, reflection, rotation,
@@ -1386,18 +1364,21 @@ def apply_image_op(face_bgr: np.ndarray, op: str, **params) -> np.ndarray:
     return dispatch[op](face_bgr, **params)
 
 
-def predict_gender_caffe(net, blob: np.ndarray) -> str:
-    """Predict gender from a Caffe blob via argmax."""
+def caffe_probabilities(net, blob: np.ndarray) -> np.ndarray:
+    """Class probabilities from one of the Adience Caffe heads (age or gender)."""
     with _lock_for(net):
         net.setInput(blob)
-        return GENDER_LIST[net.forward()[0].argmax()]
+        return net.forward()[0].flatten()
+
+
+def predict_gender_caffe(net, blob: np.ndarray) -> str:
+    """Predict gender from a Caffe blob via argmax."""
+    return GENDER_LIST[int(caffe_probabilities(net, blob).argmax())]
 
 
 def predict_age_caffe(net, blob: np.ndarray) -> str:
     """Predict age bucket from a Caffe blob via argmax."""
-    with _lock_for(net):
-        net.setInput(blob)
-        return AGE_LIST[net.forward()[0].argmax()]
+    return AGE_LIST[int(caffe_probabilities(net, blob).argmax())]
 
 
 def predict_age_ssrnet(net, face_bgr: np.ndarray) -> str:
@@ -1425,25 +1406,42 @@ def crop_face_dex(frame: np.ndarray, box: tuple[int, int, int, int]) -> np.ndarr
                               max(0, -left), max(0, right - width), cv2.BORDER_REPLICATE)
 
 
-def predict_age_dex(net, face_bgr: np.ndarray) -> str:
-    """Predict a continuous age with DEX (Deep EXpectation): 101-class softmax over ages 0-100,
-    decoded as an expected value (weighted sum of class centers), not argmax."""
+def dex_age_estimate(net, face_bgr: np.ndarray) -> tuple[float, float] | None:
+    """Decode DEX's 101-class softmax over ages 0-100 into (expected age, standard deviation).
+
+    Expectation, not argmax -- that decoding is what the DEX paper reports its error against.
+    Returns None for a malformed forward pass. Separate from predict_age_dex so age fusion can
+    consume the raw number instead of re-parsing the display string.
+    """
     blob = cv2.dnn.blobFromImage(face_bgr, 1.0, (224, 224), DEX_MEAN_VALUES, swapRB=False, crop=False)
     with _lock_for(net):
         net.setInput(blob)
         probs = net.forward().flatten().astype(np.float64)
     if probs.size != 101 or not np.isfinite(probs).all() or (probs < 0).any():
-        return "unknown"
+        return None
     total = probs.sum()
     if not np.isfinite(total) or total <= 0:
-        return "unknown"
+        return None
     probs /= total
     years = np.arange(101)
     age = float(probs @ years)
     spread = float(np.sqrt(probs @ ((years - age) ** 2)))
+    return age, spread
+
+
+def format_dex_age(estimate: tuple[float, float] | None) -> str:
+    """Render a DEX estimate, flagging distributions too wide to state as a single year."""
+    if estimate is None:
+        return "unknown"
+    age, spread = estimate
     if spread > DEX_MAX_AGE_SD:
         return f"uncertain (mean {age:.0f}, SD {spread:.0f})"
     return f"{age:.0f}"
+
+
+def predict_age_dex(net, face_bgr: np.ndarray) -> str:
+    """Predict a continuous age with DEX (Deep EXpectation), labelling wide distributions."""
+    return format_dex_age(dex_age_estimate(net, face_bgr))
 
 
 def _margin_align(frame_bgr: np.ndarray, box: tuple[int, int, int, int], output_size: int, margin: float) -> np.ndarray:
@@ -1551,31 +1549,32 @@ def _rotate_region(frame_bgr: np.ndarray, box: tuple[int, int, int, int], angle_
     return rotated, local_box
 
 
-def predict_age_mivolo(
-    net: MiVOLOInference, face_bgr: np.ndarray, body_bgr: np.ndarray | None = None,
-) -> str:
-    """Predict age with MiVOLO, using real body context when available."""
+def mivolo_estimate(net: MiVOLOInference, face_bgr: np.ndarray) -> tuple[float, str]:
+    """Age in years and gender label from a single MiVOLO forward pass.
+
+    Face-only. The bundled checkpoint is loaded with use_persons=False (see
+    nets/mivolo/inference_wrapper.py), whose training-time format for "no person crop" is a
+    ZERO body branch -- which is exactly what predict_face supplies. Feeding the second branch
+    a person crop guessed from the face box instead measured *worse* on the benchmark corpus
+    (89.3% vs 94.7%): without a person detector the guess is not a person box, and the model
+    was never given a non-zero body branch in this configuration.
+    """
     with _lock_for(net):
-        result = (
-            net.predict_face_with_body(face_bgr, body_bgr)
-            if body_bgr is not None else net.predict_face(face_bgr)
-        )
-        age, _, _ = result
+        age, gender, _ = net.predict_face(face_bgr)
+    # MiVOLO returns 'male'/'female' (lowercase); normalize to "Male"/"Female"
+    return float(age), ("Male" if gender == "male" else "Female")
+
+
+def predict_age_mivolo(net: MiVOLOInference, face_bgr: np.ndarray) -> str:
+    """Predict age with MiVOLO."""
+    age, _ = mivolo_estimate(net, face_bgr)
     return f"{int(round(age))}"
 
 
-def predict_gender_mivolo(
-    net: MiVOLOInference, face_bgr: np.ndarray, body_bgr: np.ndarray | None = None,
-) -> str:
-    """Predict gender with MiVOLO, using real body context when available."""
-    with _lock_for(net):
-        result = (
-            net.predict_face_with_body(face_bgr, body_bgr)
-            if body_bgr is not None else net.predict_face(face_bgr)
-        )
-        _, gender, _ = result
-    # MiVOLO returns 'male'/'female' (lowercase); normalize to "Male"/"Female"
-    return "Male" if gender == "male" else "Female"
+def predict_gender_mivolo(net: MiVOLOInference, face_bgr: np.ndarray) -> str:
+    """Predict gender with MiVOLO."""
+    _, gender = mivolo_estimate(net, face_bgr)
+    return gender
 
 
 def predict_emotion_dan(net, face_bgr: np.ndarray) -> str:
@@ -1635,45 +1634,160 @@ def _format_results(pairs: list[tuple[str, str]]) -> list[str]:
     return [value for _, value in pairs]
 
 
-CONTINUOUS_AGE_MODELS = frozenset(("ssrnet", "dex", "mivolo"))
-AGE_CONSENSUS_MAX_RANGE = 10.0  # Agreement gate in years; not a calibrated accuracy bound.
+# --- Multi-model fusion -------------------------------------------------------------------
+# Several models can be active for one feature at a time. Fusion combines them into a single
+# "fused" answer that is more accurate than any one of them, and it is that answer the UI
+# leads with (individual model outputs stay visible underneath).
+#
+# The per-model weights below are measurements, not taste: tools/benchmark.py scores every
+# backend against tools/ground_truth.json (75 hand-labelled faces across the assets/ images)
+# and the weights track those accuracies, so a backend that is materially worse than its peers
+# contributes proportionally less instead of dragging the combined answer toward its own error.
+# Re-run the benchmark after changing a model or its preprocessing and re-derive the weights.
+
+# Row names for a combined answer. Neither is a real backend; both sort ahead of the
+# individual models so the headline a user reads first is the combined one.
+FUSED_MODEL_KEY = "fused"  # several models actually combined
+BEST_MODEL_KEY = "best"    # one model picked as most reliable (age, see select_age)
+HEADLINE_MODEL_KEYS = (FUSED_MODEL_KEY, BEST_MODEL_KEY)
+
+# Age is deliberately NOT fused. Measured on the benchmark corpus: mivolo 92%, fairface 84%,
+# dex 63%, ssrnet 57%, caffe 48%. Every combination tried -- weighted median and weighted mean
+# across a wide range of weights, clipping MiVOLO into FairFace's predicted decade, and
+# overriding MiVOLO only when both others disagreed with it -- scored at or BELOW MiVOLO alone
+# (best combination 90.7%). The backends fail on the same faces (elderly read young), so
+# averaging them moves the answer without correcting it. The headline therefore names the most
+# reliable model present rather than blending toward a worse one. Re-check with
+# tools/benchmark.py if a backend changes; switch to fusion if one ever wins.
+AGE_MODEL_RELIABILITY = ("mivolo", "fairface", "dex", "caffe", "ssrnet")
+# Measured: mivolo 100%, fairface 95%, caffe 87%, deepface 84%.
+GENDER_FUSION_WEIGHTS = {"mivolo": 3.0, "fairface": 2.0, "caffe": 0.5, "deepface": 0.5}
+RACE_FUSION_WEIGHTS = {"fairface": 1.0, "deepface": 1.0}
+# Measured: dan 100%, hsemotion 100%, ferplus 98%, mini_xception 95%, efficientnet 52%.
+EMOTION_FUSION_WEIGHTS = {"dan": 3.0, "hsemotion": 3.0, "ferplus": 2.0,
+                          "mini_xception": 1.0, "efficientnet": 0.25}
+
+# Inclusive year spans behind each bucketed age model's labels, so a bucket can join a
+# numeric fusion at its midpoint. 70+/60-100 are closed at a nominal 100 for that midpoint.
+FAIRFACE_AGE_RANGES = [(0, 2), (3, 9), (10, 19), (20, 29), (30, 39),
+                       (40, 49), (50, 59), (60, 69), (70, 100)]
+AGE_LIST_RANGES = [(0, 2), (4, 6), (8, 12), (15, 20), (25, 32), (38, 43), (48, 53), (60, 100)]
+
+# Display names must not contain "/" -- _format_race_label joins a close top-2 with "/", so a
+# slash inside a single class name would read (and parse) as two separate predictions.
+RACE_CANONICAL_LABELS = {
+    "white": "White", "black": "Black", "asian": "Asian", "indian": "Indian",
+    "latino": "Latino", "middle_eastern": "Middle Eastern",
+}
+# Both race backends' own class names, mapped onto the shared canonical keys above. FairFace
+# splits Asian into East/Southeast; deepface does not, so both collapse into one "asian" key
+# rather than inventing a distinction the combined answer cannot support.
+RACE_LABEL_TO_CANONICAL = {
+    "white": "white", "black": "black", "indian": "indian",
+    "east asian": "asian", "southeast asian": "asian", "asian": "asian",
+    "latino_hispanic": "latino", "latino hispanic": "latino",
+    "middle eastern": "middle_eastern",
+}
+# Each emotion backend uses its own spelling for the same state (see the EMOTION_LABELS_*
+# constants); fusion votes over these canonical names instead.
+EMOTION_CANONICAL = {
+    "happy": "happy", "happiness": "happy", "sad": "sad", "sadness": "sad",
+    "angry": "angry", "anger": "angry", "surprise": "surprise", "fear": "fear",
+    "disgust": "disgust", "neutral": "neutral", "contempt": "contempt",
+}
 
 
-def conservative_age_consensus(age_pairs: list[tuple[str, str]]) -> str | None:
-    """Return a consensus only when at least two continuous models closely agree.
+def _weighted_median(values: list[float], weights: list[float]) -> float:
+    """Value where the cumulative weight first reaches half the total.
 
-    Bucketed ages, DEX's explicit uncertainty label, malformed values, and model disagreements
-    stay visible as individual results but do not produce a misleading combined estimate.
+    A median rather than a mean so one badly wrong model shifts the answer by at most one
+    rank instead of pulling it arbitrarily far -- age models fail by large margins, not small.
     """
-    numeric_ages = []
-    for model_key, value in age_pairs:
-        if model_key not in CONTINUOUS_AGE_MODELS:
-            continue
-        try:
-            age = float(value)
-        except (TypeError, ValueError):
-            continue
-        if np.isfinite(age) and 0 <= age <= 122:
-            numeric_ages.append(age)
-    if len(numeric_ages) < 2:
-        return None
-    spread = max(numeric_ages) - min(numeric_ages)
-    if spread > AGE_CONSENSUS_MAX_RANGE:
-        return None
-    consensus = round(float(np.median(numeric_ages)))
-    return f"{consensus} ({len(numeric_ages)} models agree within {spread:.0f}y)"
+    order = np.argsort(values)
+    sorted_values = np.asarray(values, dtype=float)[order]
+    cumulative = np.cumsum(np.asarray(weights, dtype=float)[order])
+    return float(sorted_values[int(np.searchsorted(cumulative, cumulative[-1] / 2.0))])
 
 
-def age_model_results(age_pairs: list[tuple[str, str]]) -> list[dict[str, str]]:
-    """Build display rows while retaining individual age outputs beside consensus."""
-    rows = [
-        {"Feature": "AGE", "Model": model, "Output": str(value)}
-        for model, value in age_pairs
-    ]
-    consensus = conservative_age_consensus(age_pairs)
-    if consensus is not None:
-        rows.append({"Feature": "AGE", "Model": "consensus", "Output": consensus})
-    return rows
+def select_age(estimates: dict[str, float]) -> tuple[str, str] | None:
+    """Pick the headline age: the most reliable model present, as (label, model key).
+
+    Selection rather than fusion, for the reason recorded at AGE_MODEL_RELIABILITY. Returns
+    None when only one model ran, since a "headline" identical to the sole row adds nothing.
+    """
+    usable = {key: value for key, value in estimates.items()
+              if value is not None and np.isfinite(value) and 0 <= value <= 122}
+    if len(usable) < 2:
+        return None
+    ranked = sorted(usable, key=lambda key: AGE_MODEL_RELIABILITY.index(key)
+                    if key in AGE_MODEL_RELIABILITY else len(AGE_MODEL_RELIABILITY))
+    chosen = ranked[0]
+    return f"{usable[chosen]:.0f}", chosen
+
+
+def fuse_gender(male_probabilities: dict[str, float]) -> str | None:
+    """Combine per-model P(Male) into one weighted-mean gender label."""
+    usable = {key: value for key, value in male_probabilities.items()
+              if value is not None and np.isfinite(value)}
+    if len(usable) < 2:
+        return None
+    weights = np.array([GENDER_FUSION_WEIGHTS.get(key, 1.0) for key in usable])
+    probability = float(np.array(list(usable.values())) @ weights / weights.sum())
+    return "Male" if probability >= 0.5 else "Female"
+
+
+def canonical_race_probabilities(probs: np.ndarray, labels: list[str]) -> dict[str, float]:
+    """Re-express one backend's class probabilities over the shared canonical race keys."""
+    total = float(np.sum(probs)) or 1.0
+    combined = dict.fromkeys(RACE_CANONICAL_LABELS, 0.0)
+    for label, probability in zip(labels, probs):
+        key = RACE_LABEL_TO_CANONICAL.get(label.lower())
+        if key is not None:
+            combined[key] += float(probability) / total
+    return combined
+
+
+def fuse_race(canonical_probabilities: dict[str, dict[str, float]]) -> str | None:
+    """Combine per-model canonical race distributions into one label.
+
+    Keeps _format_race_label's convention of showing a close runner-up, because the combined
+    distribution is exactly where a genuinely ambiguous face should stay visible as ambiguous.
+    """
+    if len(canonical_probabilities) < 2:
+        return None
+    weights = {key: RACE_FUSION_WEIGHTS.get(key, 1.0) for key in canonical_probabilities}
+    total_weight = sum(weights.values()) or 1.0
+    blended = {
+        canonical: sum(distribution.get(canonical, 0.0) * weights[model]
+                       for model, distribution in canonical_probabilities.items()) / total_weight
+        for canonical in RACE_CANONICAL_LABELS
+    }
+    ranked = sorted(blended.items(), key=lambda item: -item[1])
+    display = [RACE_CANONICAL_LABELS[key] for key, _ in ranked]
+    values = np.array([value for _, value in ranked])
+    return _format_race_label(values, display)
+
+
+def fuse_emotion(labels: dict[str, str]) -> str | None:
+    """Combine per-model emotion labels into one weighted-vote label."""
+    if len(labels) < 2:
+        return None
+    votes: dict[str, float] = {}
+    for model, label in labels.items():
+        canonical = EMOTION_CANONICAL.get(str(label).lower())
+        if canonical is None:
+            continue
+        votes[canonical] = votes.get(canonical, 0.0) + EMOTION_FUSION_WEIGHTS.get(model, 1.0)
+    if not votes:
+        return None
+    return max(votes.items(), key=lambda item: item[1])[0]
+
+
+def with_headline(
+    pairs: list[tuple[str, str]], headline: str | None, key: str = FUSED_MODEL_KEY,
+) -> list[tuple[str, str]]:
+    """Prepend a combined answer to a feature's model pairs, so it leads every display of them."""
+    return ([(key, headline)] if headline else []) + pairs
 
 
 def _softmax(x: np.ndarray) -> np.ndarray:
@@ -1708,40 +1822,66 @@ def _fairface_forward(
         return net.forward(output_name).flatten()
 
 
+def fairface_probabilities(
+    net, frame_bgr: np.ndarray, box: tuple[int, int, int, int], output_name: str, landmarks=None,
+) -> np.ndarray:
+    """Softmax probabilities from one of FairFace's three heads.
+
+    Exposed separately from the predict_* wrappers so fusion can read the distribution without
+    paying for a second forward pass just to re-derive it from a label.
+    """
+    # Prefer dlib chip geometry (MediaPipe landmarks) over bbox approximation for better alignment.
+    return _softmax(_fairface_forward(net, frame_bgr, box, output_name, landmarks))
+
+
+def fairface_race_label(probs: np.ndarray) -> str:
+    """Race label (with a close runner-up when applicable) from FairFace's race head."""
+    return _format_race_label(probs, RACE_LABELS_FAIRFACE)
+
+
+def fairface_gender_label(probs: np.ndarray) -> str:
+    """Gender label from FairFace's gender head (index 0 is Male)."""
+    return "Male" if np.argmax(probs) == 0 else "Female"
+
+
+def fairface_age_label(probs: np.ndarray) -> str:
+    """Age-bucket label from FairFace's age head (9 categories: 0-2, 3-9, ..., 70+)."""
+    return FAIRFACE_AGE_LABELS[int(np.argmax(probs))]
+
+
 def predict_race_fairface(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int], landmarks=None) -> str:
     """Predict race via FairFace, using landmarks for alignment when available."""
-    # Prefer dlib chip geometry (MediaPipe landmarks) over bbox approximation for better alignment.
-    logits = _fairface_forward(net, frame_bgr, box, "race_output", landmarks)
-    return _format_race_label(_softmax(logits), RACE_LABELS_FAIRFACE)
+    return fairface_race_label(fairface_probabilities(net, frame_bgr, box, "race_output", landmarks))
 
 
 def predict_gender_fairface(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int], landmarks=None) -> str:
     """Predict gender via FairFace, using landmarks for alignment when available."""
-    out = _fairface_forward(net, frame_bgr, box, "gender_output", landmarks)
-    return "Male" if np.argmax(out) == 0 else "Female"
+    return fairface_gender_label(fairface_probabilities(net, frame_bgr, box, "gender_output", landmarks))
 
 
 def predict_age_fairface(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int], landmarks=None) -> str:
     """Predict age bucket via FairFace (9 categories: 0-2, 3-9, ..., 70+), using landmarks when available."""
-    out = _fairface_forward(net, frame_bgr, box, "age_output", landmarks)
-    return FAIRFACE_AGE_LABELS[int(np.argmax(out))]
+    return fairface_age_label(fairface_probabilities(net, frame_bgr, box, "age_output", landmarks))
+
+
+def deepface_probabilities(net, face_bgr: np.ndarray) -> np.ndarray:
+    """Class probabilities from a deepface VGGFace-backbone head (race or gender).
+
+    VGGFace input: 224x224 BGR, unnormalized [0,255].
+    """
+    face_resized = cv2.resize(face_bgr, (224, 224)).astype(np.float32)
+    with _lock_for(net):
+        return net(face_resized[np.newaxis, ...], training=False).numpy().flatten()
 
 
 def predict_race_deepface(net, face_bgr: np.ndarray) -> str:
     """Predict race via deepface VGGFace backend (6 categories)."""
-    face_resized = cv2.resize(face_bgr, (224, 224)).astype(np.float32)
-    with _lock_for(net):
-        probs = net(face_resized[np.newaxis, ...], training=False).numpy().flatten()
-    return _format_race_label(probs, RACE_LABELS_DEEPFACE)
+    return _format_race_label(deepface_probabilities(net, face_bgr), RACE_LABELS_DEEPFACE)
 
 
 def predict_gender_deepface(net, face_bgr: np.ndarray) -> str:
     """Predict gender via deepface VGGFace backend."""
-    # VGGFace input: 224x224 BGR, unnormalized [0,255].
-    face_resized = cv2.resize(face_bgr, (224, 224)).astype(np.float32)
-    with _lock_for(net):
-        probs = net(face_resized[np.newaxis, ...], training=False).numpy().flatten()
-    return "Male" if np.argmax(probs) == 1 else "Female"
+    return "Male" if np.argmax(deepface_probabilities(net, face_bgr)) == 1 else "Female"
 
 
 def compute_face_embedding(net, face_bgr: np.ndarray) -> np.ndarray:
@@ -1915,8 +2055,9 @@ def _cached_face_predict(feature: str, model_key: str, face_bgr: np.ndarray, pre
     """Memoize a predict_*(net, face, ...) call on (feature, model_key, hash(image bytes)).
     Despite the name, `face_bgr` may be a per-face crop OR a whole frame (face detection,
     hand landmarks) -- the cache key only depends on that array's bytes, not what it depicts.
-    Not used for predictors that take the full frame + box (fairface) or hash a
-    much larger, more adjustment-sensitive buffer for comparatively little benefit.
+    Predictors that take the whole frame plus a box (fairface) are keyed on the face crop cut
+    from that same frame and box: the crop is derived from them 1:1, so its bytes identify the
+    same input without hashing the entire frame.
 
     NOTE: only `feature`/`model_key`/`face_bgr` are part of the cache key -- predict_fn's other
     *args are NOT hashed. Any caller whose behavior also depends on another argument (e.g.
@@ -2577,9 +2718,6 @@ def analyze_frame(
         if face.size == 0:
             continue
 
-        bx1, by1, bx2, by2 = body_crop_bounds((x1, y1, x2, y2), frame.shape[:2])
-        body = frame[by1:by2, bx1:bx2]
-
         if face_adjustments and any(face_adjustments.values()):
             face = apply_image_adjustments(face, face_adjustments)
 
@@ -2631,50 +2769,90 @@ def analyze_frame(
         # by _lock_for(), applied at each net's actual setInput/forward/predict/detect call
         # site (see the top of this file) -- concurrent calls onto the SAME net serialize
         # there, while calls onto DIFFERENT nets still overlap for real.
+        # MiVOLO answers age and gender from ONE forward pass and is by far the slowest backend
+        # (seconds per face), so run it once here rather than once inside each feature's task.
+        mivolo_net = models.age_nets.get("mivolo") or models.gender_nets.get("mivolo")
+        mivolo_wanted = "mivolo" in active_age or "mivolo" in active_gender
+        mivolo_result = (
+            _cached_face_predict("mivolo", "face", face, mivolo_estimate, mivolo_net, face)
+            if mivolo_net is not None and mivolo_wanted else None
+        )
+
         def _age_task():
-            pairs = []
+            """Per-model age labels, plus each model's estimate in years for fusion."""
+            pairs, estimates = [], {}
             for key in active_age:
                 net = models.age_nets.get(key)
                 if net is None:
                     continue
                 started = time.perf_counter()
                 if key == "caffe":
-                    value = _cached_face_predict("age", key, face, predict_age_caffe, net, blob227)
+                    probs = _cached_face_predict("age_probs", key, face, caffe_probabilities, net, blob227)
+                    bucket = int(np.argmax(probs))
+                    value = AGE_LIST[bucket]
+                    estimates[key] = float(np.mean(AGE_LIST_RANGES[bucket]))
                 elif key == "ssrnet":
                     value = _cached_face_predict("age", key, face, predict_age_ssrnet, net, face)
+                    estimates[key] = float(value)
                 elif key == "fairface":
-                    value = predict_age_fairface(net, crop_frame, (cx1, cy1, cx2, cy2), fairface_landmarks)
+                    probs = _cached_face_predict(
+                        "age_probs", key, face, fairface_probabilities,
+                        net, crop_frame, (cx1, cy1, cx2, cy2), "age_output", fairface_landmarks,
+                    )
+                    value = fairface_age_label(probs)
+                    estimates[key] = float(np.mean(FAIRFACE_AGE_RANGES[int(np.argmax(probs))]))
                 elif key == "dex":
                     dex_face = crop_face_dex(frame, (x1, y1, x2, y2))
                     if face_adjustments and any(face_adjustments.values()):
                         dex_face = apply_image_adjustments(dex_face, face_adjustments)
-                    value = _cached_face_predict("age", key, dex_face, predict_age_dex, net, dex_face)
+                    estimate = _cached_face_predict("age_estimate", key, dex_face, dex_age_estimate, net, dex_face)
+                    value = format_dex_age(estimate)
+                    if estimate is not None:
+                        estimates[key] = estimate[0]
                 elif key == "mivolo":
-                    value = predict_age_mivolo(net, face, body)
+                    if mivolo_result is None:
+                        continue
+                    value = f"{mivolo_result[0]:.0f}"
+                    estimates[key] = mivolo_result[0]
                 pairs.append((key, value))
                 _record_model_latency(metrics, "age", key, started)
-            return pairs
+            return pairs, select_age(estimates)
 
         def _gender_task():
-            pairs = []
+            """Per-model gender labels, plus each model's P(Male) for fusion."""
+            pairs, male_probabilities = [], {}
             for key in active_gender:
                 net = models.gender_nets.get(key)
                 if net is None:
                     continue
                 started = time.perf_counter()
                 if key == "caffe":
-                    value = _cached_face_predict("gender", key, face, predict_gender_caffe, net, blob227)
+                    probs = _cached_face_predict("gender_probs", key, face, caffe_probabilities, net, blob227)
+                    value = GENDER_LIST[int(np.argmax(probs))]
+                    male_probabilities[key] = float(probs[0] / (probs.sum() or 1.0))
                 elif key == "deepface":
-                    value = _cached_face_predict("gender", key, face, predict_gender_deepface, net, face)
+                    probs = _cached_face_predict("gender_probs", key, face, deepface_probabilities, net, face)
+                    value = "Male" if np.argmax(probs) == 1 else "Female"
+                    male_probabilities[key] = float(probs[1] / (probs.sum() or 1.0))
                 elif key == "fairface":
-                    value = predict_gender_fairface(net, crop_frame, (cx1, cy1, cx2, cy2), fairface_landmarks)
+                    probs = _cached_face_predict(
+                        "gender_probs", key, face, fairface_probabilities,
+                        net, crop_frame, (cx1, cy1, cx2, cy2), "gender_output", fairface_landmarks,
+                    )
+                    value = fairface_gender_label(probs)
+                    male_probabilities[key] = float(probs[0])
                 elif key == "mivolo":
-                    value = predict_gender_mivolo(net, face, body)
+                    if mivolo_result is None:
+                        continue
+                    value = mivolo_result[1]
+                    # MiVOLO exposes only a label, so it votes at full confidence either way.
+                    male_probabilities[key] = 1.0 if value == "Male" else 0.0
                 pairs.append((key, value))
                 _record_model_latency(metrics, "gender", key, started)
-            return pairs
+            return pairs, fuse_gender(male_probabilities)
 
         def _emotion_task():
+            """Per-model emotion labels, plus the fused weighted-vote label."""
             pairs = []
             for key in active_emotion:
                 net = models.emotion_nets.get(key)
@@ -2693,19 +2871,30 @@ def analyze_frame(
                     value = _cached_face_predict("emotion", key, face, predict_emotion_efficientnet, net, face)
                 pairs.append((key, value))
                 _record_model_latency(metrics, "emotion", key, started)
-            return pairs
+            return pairs, fuse_emotion(dict(pairs))
 
         def _race_task():
-            pairs = []
+            """Per-model race labels, plus each model's canonical distribution for fusion."""
+            pairs, distributions = [], {}
             for key in active_race:
                 net = models.race_nets.get(key)
                 if net is None:
                     continue
                 started = time.perf_counter()
-                value = predict_race_fairface(net, crop_frame, (cx1, cy1, cx2, cy2), fairface_landmarks) if key == "fairface" else _cached_face_predict("race", key, face, predict_race_deepface, net, face)
+                if key == "fairface":
+                    probs = _cached_face_predict(
+                        "race_probs", key, face, fairface_probabilities,
+                        net, crop_frame, (cx1, cy1, cx2, cy2), "race_output", fairface_landmarks,
+                    )
+                    value = fairface_race_label(probs)
+                    distributions[key] = canonical_race_probabilities(probs, RACE_LABELS_FAIRFACE)
+                else:
+                    probs = _cached_face_predict("race_probs", key, face, deepface_probabilities, net, face)
+                    value = _format_race_label(probs, RACE_LABELS_DEEPFACE)
+                    distributions[key] = canonical_race_probabilities(probs, RACE_LABELS_DEEPFACE)
                 pairs.append((key, value))
                 _record_model_latency(metrics, "race", key, started)
-            return pairs
+            return pairs, fuse_race(distributions)
 
         def _gaze_task():
             pairs = []
@@ -2826,11 +3015,10 @@ def analyze_frame(
             "liveness": _INFERENCE_EXECUTOR.submit(_liveness_task),
         }
 
-        age_pairs = futures["age"].result()
-        age_consensus = conservative_age_consensus(age_pairs)
-        gender_pairs = futures["gender"].result()
-        emotion_pairs = futures["emotion"].result()
-        race_pairs = futures["race"].result()
+        age_pairs, best_age = futures["age"].result()
+        gender_pairs, fused_gender = futures["gender"].result()
+        emotion_pairs, fused_emotion = futures["emotion"].result()
+        race_pairs, fused_race = futures["race"].result()
         gaze_pairs = futures["gaze"].result()
         head_pose_pairs = futures["head_pose"].result()
         recognition_pairs, face_embedding = futures["recognition"].result()
@@ -2862,6 +3050,19 @@ def analyze_frame(
 
         eye_contact = [f"{key}=yes" if value.startswith("center/") else f"{key}=no" for key, value in gaze_pairs]
 
+        # Every feature that fuses leads with its fused answer here, so the saved columns, the
+        # per-face card, and the one-line summary all agree on which answer is the headline.
+        # AGE names its most reliable model instead of blending (see AGE_MODEL_RELIABILITY),
+        # so its headline row is labelled "best (<model>)" rather than "fused".
+        age_pairs = with_headline(
+            age_pairs,
+            f"{best_age[0]} ({best_age[1]})" if best_age else None,
+            BEST_MODEL_KEY,
+        )
+        gender_pairs = with_headline(gender_pairs, fused_gender)
+        race_pairs = with_headline(race_pairs, fused_race)
+        emotion_pairs = with_headline(emotion_pairs, fused_emotion)
+
         raw_columns = _gather_face_results({
             "age": age_pairs, "gender": gender_pairs, "race": race_pairs, "emotion": emotion_pairs,
             "gaze": gaze_pairs, "identity": recognition_pairs,
@@ -2870,9 +3071,10 @@ def analyze_frame(
             "hair_color": hair_color_pairs, "eye_color": eye_color_pairs,
             "liveness": liveness_pairs,
         })
-        model_results = age_model_results(age_pairs) + [
+        model_results = [
             {"Feature": feature.replace("_", " ").upper(), "Model": model, "Output": str(value)}
             for feature, pairs in {
+                "age": age_pairs,
                 "gender": gender_pairs, "race": race_pairs, "emotion": emotion_pairs,
                 "gaze": gaze_pairs, "identity": recognition_pairs,
                 "eye contact": [("derived", value) for value in eye_contact],
@@ -2890,7 +3092,8 @@ def analyze_frame(
             "box": (x1, y1, x2, y2),
             "image": cv2.cvtColor(face, cv2.COLOR_BGR2RGB),
             "age": _format_results(age_pairs),
-            "age_consensus": age_consensus,
+            "headline": {"age": best_age[0] if best_age else None, "gender": fused_gender,
+                         "race": fused_race, "emotion": fused_emotion},
             "gender": _format_results(gender_pairs),
             "race": _format_results(race_pairs),
             "emotion": _format_results(emotion_pairs),

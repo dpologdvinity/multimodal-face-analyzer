@@ -3,6 +3,11 @@
 Runs the real analyze_frame() pipeline over assets/, binds each detection to its hand-labelled
 face by nearest normalized centre, and reports per-model accuracy plus face-detection recall.
 
+Age is scored by RANGE OVERLAP, which favours the bucketed models: FairFace answering "30-39"
+is correct if any of those ten years is plausible, while MiVOLO answering "34" must land
+inside the truth range. Compare bucketed and continuous age models on that footing only --
+tools/score_fusion.py scores single-year answers, which is the stricter, like-for-like view.
+
     FACE_ANALYZER_MODEL_DIR=/path/to/models python tools/benchmark.py [--detector ssd]
 """
 from __future__ import annotations
@@ -35,6 +40,7 @@ RACE_ALIASES = {
     "indian": "indian",
     "latino_hispanic": "latino",
     "latino hispanic": "latino",
+    "latino": "latino",  # inference.RACE_CANONICAL_LABELS' name, used by the fused answer
     "middle eastern": "middle_eastern",
 }
 
