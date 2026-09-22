@@ -107,7 +107,11 @@ class MiVOLOInference:
                 gender: str, 'male' or 'female'
                 gender_confidence: float, confidence in [0, 1]
         """
-        # Preprocess face
+        output = self._run_face_model(face_crop)
+        return self._decode_output(output)
+
+    def _run_face_model(self, face_crop: np.ndarray) -> torch.Tensor:
+        """Run one face-only forward pass and return raw output."""
         input_tensor = prepare_classification_images(
             [face_crop],
             target_size=self.model.input_size,
@@ -124,15 +128,18 @@ class MiVOLOInference:
             body_zeros = torch.zeros_like(input_tensor)
             input_tensor = torch.cat((input_tensor, body_zeros), dim=1)
 
-        # Run inference
         with torch.no_grad():
             if self.model.half:
                 input_tensor = input_tensor.half()
             output = self.model.model(input_tensor)
+        return output[0]
 
-        # Decode output
-        age, gender, gender_conf = self._decode_output(output[0])
-        return age, gender, gender_conf
+    def predict_age(self, face_crop: np.ndarray) -> float:
+        """Predict age without decoding or computing gender."""
+        output = self._run_face_model(face_crop)
+        age_raw = output.item() if self.model.meta.only_age else output[-1].item()
+        age = age_raw * (self.model.meta.max_age - self.model.meta.min_age) + self.model.meta.avg_age
+        return round(age, 2)
 
     def predict_face_with_body(
         self,

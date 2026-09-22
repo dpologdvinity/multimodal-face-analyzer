@@ -1545,6 +1545,12 @@ def mivolo_estimate(net: MiVOLOInference, face_bgr: np.ndarray) -> tuple[float, 
     return float(age), ("Male" if gender == "male" else "Female")
 
 
+def mivolo_age_estimate(net: MiVOLOInference, face_bgr: np.ndarray) -> float:
+    """Run MiVOLO age-only inference when gender is not selected."""
+    with _lock_for(net):
+        return float(net.predict_age(face_bgr))
+
+
 def predict_age_mivolo(net: MiVOLOInference, face_bgr: np.ndarray) -> str:
     """Predict age with MiVOLO."""
     age, _ = mivolo_estimate(net, face_bgr)
@@ -2348,10 +2354,46 @@ def predict_hair_color_colorimetric(frame_bgr: np.ndarray, box: tuple[int, int, 
     return "brown"
 
 
-def predict_eye_color_colorimetric(eye_cascade, face_bgr: np.ndarray) -> str:
+def predict_eye_color_colorimetric(eye_cascade, face_bgr: np.ndarray, landmarks=None) -> str:
     """Heuristic (not ML): locate the largest detected eye via the Haar
     cascade, sample the center 40% of its box (avoiding sclera/eyelid), and bucket
-    the median HSV into EYE_COLOR_LABELS. Rough by nature -- lighting/pose-sensitive."""
+    the median HSV into EYE_COLOR_LABELS. Prefer iris landmarks when available to
+    avoid sampling eyelids and pupils. Rough by nature -- lighting/pose-sensitive."""
+    samples = []
+    if landmarks is not None and len(landmarks) >= 478:
+        height, width = face_bgr.shape[:2]
+        points = np.asarray(landmarks, dtype=np.float64)[:, :2] * [width, height]
+        for index in (468, 473):
+            iris = points[index:index + 5]
+            if not np.isfinite(iris).all():
+                continue
+            cx, cy = iris[0]
+            radius = float(np.mean(np.linalg.norm(iris[1:] - iris[0], axis=1)))
+            if radius < 2 or not (0 <= cx < width and 0 <= cy < height):
+                continue
+            x1, x2 = max(0, int(cx - radius)), min(width, int(np.ceil(cx + radius)))
+            y1, y2 = max(0, int(cy - radius)), min(height, int(np.ceil(cy + radius)))
+            yy, xx = np.ogrid[y1:y2, x1:x2]
+            mask = ((xx - cx) ** 2 + (yy - cy) ** 2 < (0.9 * radius) ** 2)
+            mask &= (abs(xx - cx) > 0.35 * radius) & (abs(yy - cy) < 0.25 * radius)
+            pixels = face_bgr[y1:y2, x1:x2][mask]
+            if len(pixels) >= 4:
+                samples.append(pixels)
+    if samples:
+        median = np.median(np.concatenate(samples), axis=0).astype(np.uint8)
+        hue, saturation, value = cv2.cvtColor(median.reshape(1, 1, 3), cv2.COLOR_BGR2HSV)[0, 0]
+        if saturation >= 40 and 95 <= hue <= 130:
+            return "blue"
+        if value < 60:
+            return "brown"
+        if saturation < 40:
+            return "grey"
+        if 40 <= hue < 95:
+            return "green"
+        if 15 <= hue < 40 and saturation > 100:
+            return "amber"
+        return "brown" if hue < 15 or hue >= 170 else "hazel"
+
     face_gray = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2GRAY)
     with _lock_for(eye_cascade):
         eyes = eye_cascade.detectMultiScale(face_gray, scaleFactor=1.1, minNeighbors=6, minSize=(20, 20))
@@ -2713,6 +2755,7 @@ def analyze_frame(
             else None
         )
         fairface_landmarks = None
+        points = None
         if landmarker_result is not None and face_landmarker is not None:
             points = predict_face_landmarks_mediapipe(face_landmarker, face, landmarker_result)
             if points is not None:
@@ -2741,10 +2784,17 @@ def analyze_frame(
         # (seconds per face), so run it once here rather than once inside each feature's task.
         mivolo_net = models.age_nets.get("mivolo") or models.gender_nets.get("mivolo")
         mivolo_wanted = "mivolo" in active_age or "mivolo" in active_gender
-        mivolo_result = (
-            _cached_face_predict("mivolo", "face", face, mivolo_estimate, mivolo_net, face)
-            if mivolo_net is not None and mivolo_wanted else None
-        )
+        mivolo_result = None
+        mivolo_age_result = None
+        if mivolo_net is not None and mivolo_wanted:
+            if "mivolo" in active_age and "mivolo" not in active_gender:
+                mivolo_age_result = _cached_face_predict(
+                    "mivolo_age", "face", face, mivolo_age_estimate, mivolo_net, face,
+                )
+            else:
+                mivolo_result = _cached_face_predict(
+                    "mivolo", "face", face, mivolo_estimate, mivolo_net, face,
+                )
 
         def _age_task():
             """Per-model age labels, plus each model's estimate in years for fusion."""
@@ -2775,10 +2825,11 @@ def analyze_frame(
                     if estimate is not None:
                         estimates[key] = estimate[0]
                 elif key == "mivolo":
-                    if mivolo_result is None:
+                    if mivolo_result is None and mivolo_age_result is None:
                         continue
-                    value = f"{mivolo_result[0]:.0f}"
-                    estimates[key] = mivolo_result[0]
+                    age = mivolo_result[0] if mivolo_result is not None else mivolo_age_result
+                    value = f"{age:.0f}"
+                    estimates[key] = age
                 pairs.append((key, value))
                 _record_model_latency(metrics, "age", key, started)
             return pairs, select_age(estimates)
@@ -2829,7 +2880,14 @@ def analyze_frame(
                 elif key == "mini_xception":
                     value = _cached_face_predict("emotion", key, face, predict_emotion_mini_xception, net, face)
                 elif key == "ferplus":
-                    value = _cached_face_predict("emotion", key, face, predict_emotion_ferplus, net, face)
+                    # FERPlus performs best on the tight detector crop; other models keep
+                    # the shared padded crop used by their training preprocessing.
+                    ferplus_face = crop_region(frame, x1, y1, x2, y2)
+                    if face_adjustments and any(face_adjustments.values()):
+                        ferplus_face = apply_image_adjustments(ferplus_face, face_adjustments)
+                    value = _cached_face_predict(
+                        "emotion", key, ferplus_face, predict_emotion_ferplus, net, ferplus_face,
+                    )
                 else:
                     value = _cached_face_predict("emotion", key, face, predict_emotion_hsemotion, net, face)
                 pairs.append((key, value))
@@ -2947,7 +3005,10 @@ def analyze_frame(
                 if net is None:
                     continue
                 started = time.perf_counter()
-                value = _cached_face_predict("eye_color", key, face, predict_eye_color_colorimetric, net, face)
+                if points is not None:
+                    value = predict_eye_color_colorimetric(net, face, points)
+                else:
+                    value = _cached_face_predict("eye_color", key, face, predict_eye_color_colorimetric, net, face)
                 pairs.append((key, value))
                 _record_model_latency(metrics, "eye_color", key, started)
             return pairs
