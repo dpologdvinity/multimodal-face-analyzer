@@ -26,8 +26,6 @@ def age_estimates(record: dict) -> dict[str, float]:
     if "caffe" in raw:
         bucket = int(np.argmax(raw["caffe"]))
         estimates["caffe"] = float(np.mean(inf.AGE_LIST_RANGES[bucket]))
-    if "ssrnet" in raw:
-        estimates["ssrnet"] = raw["ssrnet"]
     if "dex" in raw:
         estimates["dex"] = raw["dex"]
     if "fairface_probs" in raw:

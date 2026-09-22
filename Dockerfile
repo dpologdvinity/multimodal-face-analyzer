@@ -2,11 +2,12 @@
 FROM python:3.11-slim
 
 # Per-feature model selection. Each ARG takes a comma-separated list of model
-# keys for that feature, or an empty string for "none". Options, in
-# quickest-to-build order (default is the first/quickest):
-#   AGE_MODEL:        caffe, ssrnet, fairface, dex, mivolo (default: caffe)
-#   GENDER_MODEL:      caffe, deepface, fairface, mivolo (default: caffe)
-#   EMOTION_MODEL:     efficientnet, ferplus, mini_xception, dan, hsemotion (default: efficientnet)
+# keys for that feature, or an empty string for "none". Options are listed
+# most-accurate-first, as measured by tools/benchmark.py, and the default is
+# that first (most accurate) key:
+#   AGE_MODEL:        fairface, caffe, dex, mivolo (default: fairface)
+#   GENDER_MODEL:      fairface, caffe, deepface, mivolo (default: fairface)
+#   EMOTION_MODEL:     hsemotion, ferplus, mini_xception, dan (default: hsemotion)
 #   RACE_MODEL:        fairface, deepface           (default: fairface)
 #   FACE_LANDMARKS_MODEL: mediapipe                 (default: mediapipe)
 #   LIVENESS_MODEL:    mediapipe                     (default: mediapipe)
@@ -51,12 +52,12 @@ FROM python:3.11-slim
 # deepface's race model needs TensorFlow (~200-400MB) and a 513MB weight file, much heavier
 # than fairface -- only pulled in if requested. mask also needs TensorFlow
 # (Keras .h5 weights); glasses are plain ONNX.
-# e.g. --build-arg AGE_MODEL=caffe,ssrnet builds both age backends so the web
+# e.g. --build-arg AGE_MODEL=fairface,caffe builds both age backends so the web
 # app can switch between them at runtime. See build-and-run.sh for a guided
 # prompt instead of typing these by hand.
-ARG AGE_MODEL=caffe
-ARG GENDER_MODEL=caffe
-ARG EMOTION_MODEL=efficientnet
+ARG AGE_MODEL=fairface
+ARG GENDER_MODEL=fairface
+ARG EMOTION_MODEL=hsemotion
 ARG RACE_MODEL=fairface
 ARG FACE_LANDMARKS_MODEL=mediapipe
 ARG LIVENESS_MODEL=mediapipe
@@ -87,11 +88,10 @@ COPY requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install -r requirements.txt
 
-# torch/torchvision are needed for ssrnet, dan, and/or mivolo models
+# torch/torchvision are needed for dan, mivolo, deep3d, and/or franunet models
 RUN --mount=type=cache,target=/root/.cache/pip \
     age_csv=",$AGE_MODEL,"; gender_csv=",$GENDER_MODEL,"; emotion_csv=",$EMOTION_MODEL,"; \
     recon3d_csv=",$RECONSTRUCTION_3D_MODEL,"; need_torch=false; \
-    case "$age_csv" in *,ssrnet,*) need_torch=true ;; esac; \
     case "$age_csv" in *,mivolo,*) need_torch=true ;; esac; \
     case "$gender_csv" in *,mivolo,*) need_torch=true ;; esac; \
     case "$emotion_csv" in *,dan,*) need_torch=true ;; esac; \
@@ -174,14 +174,12 @@ RUN --mount=type=bind,source=models,target=/tmp/models \
     race_csv=",$RACE_MODEL,"; face_landmarks_csv=",$FACE_LANDMARKS_MODEL,"; liveness_csv=",$LIVENESS_MODEL,"; recognition_csv=",$RECOGNITION_MODEL,"; \
     glasses_csv=",$GLASSES_MODEL,"; mask_csv=",$MASK_MODEL,"; colorization_csv=",$COLORIZATION_MODEL,"; hand_csv=",$HAND_MODEL,"; recon3d_csv=",$RECONSTRUCTION_3D_MODEL,"; yolo_face_csv=",$YOLO_FACE_MODEL,"; scrfd_face_csv=",$SCRFD_FACE_MODEL,"; retinaface_csv=",$RETINAFACE_MODEL,"; age_progression_csv=",$AGE_PROGRESSION_MODEL,"; \
     case "$age_csv" in *,caffe,*) cp /tmp/models/age_deploy.prototxt /tmp/models/age_net.caffemodel models/ ;; esac; \
-    case "$age_csv" in *,ssrnet,*) cp /tmp/models/ssrnet_morph2.pth models/ ;; esac; \
     case "$gender_csv" in *,caffe,*) cp /tmp/models/gender_deploy.prototxt /tmp/models/gender_net.caffemodel models/ ;; esac; \
     case "$age_csv" in *,fairface,*) cp /tmp/models/fairface_7class.onnx models/ ;; esac; \
     case "$gender_csv" in *,fairface,*) cp /tmp/models/fairface_7class.onnx models/ ;; esac; \
     case "$age_csv" in *,dex,*) cp /tmp/models/dex_age.prototxt /tmp/models/dex_age.caffemodel models/ ;; esac; \
     case "$gender_csv" in *,deepface,*) cp /tmp/models/deepface_gender.h5 models/ ;; esac; \
     case "$emotion_csv" in *,dan,*) cp /tmp/models/dan_affecnet7.pth models/ ;; esac; \
-    case "$emotion_csv" in *,efficientnet,*) cp /tmp/models/efficientnet_b0_fer.onnx models/ ;; esac; \
     case "$emotion_csv" in *,ferplus,*) cp /tmp/models/emotion_ferplus.onnx models/ ;; esac; \
     case "$emotion_csv" in *,hsemotion,*) cp /tmp/models/hsemotion_enet_b0_8_best_vgaf.onnx models/ ;; esac; \
     case "$emotion_csv" in *,mini_xception,*) cp /tmp/models/mini_xception_fer.h5 models/ ;; esac; \

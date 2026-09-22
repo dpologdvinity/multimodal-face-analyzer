@@ -291,16 +291,15 @@ prompt_feature "FACE DETECTION" 0 \
 set_face_detector_models "$REPLY_MODEL"
 
 prompt_feature "AGE" 1 \
-    "caffe|caffe|$BASE_PACKAGES" \
     "fairface|fairface|$BASE_PACKAGES" \
+    "caffe|caffe|$BASE_PACKAGES" \
     "dex|dex|$BASE_PACKAGES" \
-    "ssrnet|ssrnet|$BASE_PACKAGES,+torch,+torchvision" \
     "mivolo|mivolo|$BASE_PACKAGES,+torch,+torchvision,+ultralytics,+timm,+safetensors,+huggingface_hub"
 AGE_MODEL="$REPLY_MODEL"
 
 prompt_feature "GENDER" 1 \
-    "caffe|caffe|$BASE_PACKAGES" \
     "fairface|fairface|$BASE_PACKAGES" \
+    "caffe|caffe|$BASE_PACKAGES" \
     "deepface|deepface|$BASE_PACKAGES,+tensorflow-cpu,+tf-keras" \
     "mivolo|mivolo|$BASE_PACKAGES,+torch,+torchvision,+ultralytics,+timm,+safetensors,+huggingface_hub"
 GENDER_MODEL="$REPLY_MODEL"
@@ -311,9 +310,8 @@ prompt_feature "RACE" 1 \
 RACE_MODEL="$REPLY_MODEL"
 
 prompt_feature "EMOTION" 1 \
-    "efficientnet|efficientnet|$BASE_PACKAGES" \
-    "ferplus|ferplus|$BASE_PACKAGES" \
     "hsemotion|hsemotion|$BASE_PACKAGES" \
+    "ferplus|ferplus|$BASE_PACKAGES" \
     "mini_xception|mini_xception|$BASE_PACKAGES,+tensorflow-cpu,+tf-keras" \
     "dan|dan|$BASE_PACKAGES,+torch,+torchvision"
 EMOTION_MODEL="$REPLY_MODEL"
@@ -385,7 +383,7 @@ NEED_ONNXRUNTIME=false
 NEED_MIVOLO=false
 NEED_SCIPY=false
 
-if csv_has "$AGE_MODEL" ssrnet || csv_has "$AGE_MODEL" mivolo \
+if csv_has "$AGE_MODEL" mivolo \
     || csv_has "$GENDER_MODEL" mivolo || csv_has "$EMOTION_MODEL" dan \
     || csv_has "$RECONSTRUCTION_3D_MODEL" deep3d || csv_has "$AGE_PROGRESSION_MODEL" franunet; then
     NEED_TORCH=true

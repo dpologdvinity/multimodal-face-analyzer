@@ -136,7 +136,7 @@ While no explicit restriction is stated in the README or model comments, the dat
 
 ## Integration Notes
 
-This model **complements existing age backends** (caffe Levi-Hassner, ssrnet) and follows the same Caffe pattern:
+This model **complements existing age backends** (caffe Levi-Hassner, fairface) and follows the same Caffe pattern:
 
 - Same input preprocessing (224×224 mean subtraction) as the existing `age_net.caffemodel`
 - Same cv2.dnn loading pattern (readNetFromCaffe)

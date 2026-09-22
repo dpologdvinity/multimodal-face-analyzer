@@ -705,13 +705,11 @@ st.markdown(
 
 MODEL_DISPLAY_NAMES = {
     "caffe": "Caffe",
-    "ssrnet": "SSR-Net",
     "dex": "DEX",
     "mivolo": "MiVOLO",
     "fairface": "FairFace",
     "deepface": "DeepFace",
     "dan": "DAN",
-    "efficientnet": "EfficientNet",
     "mini_xception": "Mini Xception",
     "ferplus": "FERPlus",
     "hsemotion": "HSEmotion",

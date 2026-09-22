@@ -128,16 +128,15 @@ prompt_feature "FACE DETECTION" 0 \
 set_face_detector_models "$REPLY_MODEL"
 
 prompt_feature "AGE" 1 \
-    "caffe|caffe|green" \
     "fairface|fairface|green" \
+    "caffe|caffe|green" \
     "dex|dex|green" \
-    "ssrnet|ssrnet|orange" \
     "mivolo|mivolo|orange"
 AGE_MODEL="$REPLY_MODEL"
 
 prompt_feature "GENDER" 1 \
-    "caffe|caffe|green" \
     "fairface|fairface|green" \
+    "caffe|caffe|green" \
     "deepface|deepface|orange" \
     "mivolo|mivolo|orange"
 GENDER_MODEL="$REPLY_MODEL"
@@ -148,9 +147,8 @@ prompt_feature "RACE" 1 \
 RACE_MODEL="$REPLY_MODEL"
 
 prompt_feature "EMOTION" 1 \
-    "efficientnet|efficientnet|green" \
-    "ferplus|ferplus|green" \
     "hsemotion|hsemotion|green" \
+    "ferplus|ferplus|green" \
     "mini_xception|mini_xception|orange" \
     "dan|dan|orange"
 EMOTION_MODEL="$REPLY_MODEL"
@@ -256,9 +254,8 @@ stage_model() {
 # copying.
 link_model opencv_face_detector.pbtxt
 link_model opencv_face_detector_uint8.pb
-stage_model "$AGE_MODEL" caffe age_deploy.prototxt age_net.caffemodel
 stage_model "$AGE_MODEL" fairface fairface_7class.onnx
-stage_model "$AGE_MODEL" ssrnet ssrnet_morph2.pth
+stage_model "$AGE_MODEL" caffe age_deploy.prototxt age_net.caffemodel
 stage_model "$AGE_MODEL" dex dex_age.prototxt dex_age.caffemodel
 stage_model "$AGE_MODEL" mivolo mivolo_v2.safetensors mivolo_v2_config.json
 stage_model "$GENDER_MODEL" caffe gender_deploy.prototxt gender_net.caffemodel
@@ -266,7 +263,6 @@ stage_model "$GENDER_MODEL" fairface fairface_7class.onnx
 stage_model "$GENDER_MODEL" deepface deepface_gender.h5
 stage_model "$GENDER_MODEL" mivolo mivolo_v2.safetensors mivolo_v2_config.json
 stage_model "$EMOTION_MODEL" dan dan_affecnet7.pth
-stage_model "$EMOTION_MODEL" efficientnet efficientnet_b0_fer.onnx
 stage_model "$EMOTION_MODEL" ferplus emotion_ferplus.onnx
 stage_model "$EMOTION_MODEL" hsemotion hsemotion_enet_b0_8_best_vgaf.onnx
 stage_model "$EMOTION_MODEL" mini_xception mini_xception_fer.h5

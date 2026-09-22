@@ -46,7 +46,7 @@ Face detection is required; age, gender, race, and emotion are each independentl
 | `scrfd` (web app only) | ONNX (onnxruntime) | bounding box            |
 | `retinaface` (web app only) | ONNX (onnxruntime) | bounding box            |
 
-SSD/ResNet-10 is the original detector and is always required as the fallback. `yolo` (YOLOv8-Face, `models/yolov8n_face.onnx`, [yakhyo/yolov8-face-onnx-inference](https://github.com/yakhyo/yolov8-face-onnx-inference), no explicit upstream license -- same treatment as DAN/SSR-Net), `scrfd` (SCRFD, `models/scrfd_2.5g_bnkps.onnx`, [deepinsight/insightface](https://github.com/deepinsight/insightface/tree/master/detection/scrfd), 2.5GF `bnkps` checkpoint, **non-commercial research-only weights**), and `retinaface` (RetinaFace, `models/retinaface_mobilenet0.25.onnx`, [biubug6/Pytorch_Retinaface](https://github.com/biubug6/Pytorch_Retinaface)'s mobilenet0.25 backbone -- MIT-licensed, re-exported by [AMD's Ryzen AI model zoo](https://huggingface.co/amd/retinaface) under Apache 2.0, the only unambiguously permissive face-detector option in this repo) are selectable in the web app, with YOLO first whenever its model is loaded. Exactly one detector runs per frame; running two and merging their boxes would just produce duplicate/overlapping faces, not a meaningfully combined result. All three verified with a real photo (`known_people/Barack_Obama.jpg`): correctly detect and localize the face.
+SSD/ResNet-10 is the original detector and is always required as the fallback. `yolo` (YOLOv8-Face, `models/yolov8n_face.onnx`, [yakhyo/yolov8-face-onnx-inference](https://github.com/yakhyo/yolov8-face-onnx-inference), no explicit upstream license -- same treatment as DAN), `scrfd` (SCRFD, `models/scrfd_2.5g_bnkps.onnx`, [deepinsight/insightface](https://github.com/deepinsight/insightface/tree/master/detection/scrfd), 2.5GF `bnkps` checkpoint, **non-commercial research-only weights**), and `retinaface` (RetinaFace, `models/retinaface_mobilenet0.25.onnx`, [biubug6/Pytorch_Retinaface](https://github.com/biubug6/Pytorch_Retinaface)'s mobilenet0.25 backbone -- MIT-licensed, re-exported by [AMD's Ryzen AI model zoo](https://huggingface.co/amd/retinaface) under Apache 2.0, the only unambiguously permissive face-detector option in this repo) are selectable in the web app, with YOLO first whenever its model is loaded. Exactly one detector runs per frame; running two and merging their boxes would just produce duplicate/overlapping faces, not a meaningfully combined result. All three verified with a real photo (`known_people/Barack_Obama.jpg`): correctly detect and localize the face.
 
 **All three need `onnxruntime`, not this repo's usual `cv2.dnn` ONNX path.** For `yolo`, verified directly: this specific ONNX export fails to load under `cv2.dnn` on both OpenCV 4.10 and 5.0 (`Mixed input data types` error in its DFL box-decode subgraph -- an ONNX importer limitation, not a version-pin issue). The decode math (DFL softmax + sigmoid + NMS) is otherwise a faithful port of upstream's own `models/yolov8.py`, using `cv2.dnn.NMSBoxes` in place of their `torchvision.ops.nms` to avoid pulling in `torchvision` just for this. `scrfd` is run through onnxruntime too, for one consistent non-cv2.dnn detector code path rather than mixing conventions -- its own multi-output (score/bbox/kps per stride) anchor format is decoded via straightforward distance-to-bbox regression (no DFL needed, this checkpoint regresses distances directly), matching upstream's own `tools/scrfd.py`. `retinaface` likewise -- unlike `yolo`/`scrfd`'s dynamic square input, this checkpoint takes a fixed 608x640 NHWC input; boxes are decoded against precomputed anchor priors using the same variance-scaled regression as upstream's own `utils/box_utils.py`.
 
@@ -54,19 +54,17 @@ SSD/ResNet-10 is the original detector and is always required as the fallback. `
 
 | Backend       | Framework         | Output                         |
 | ------------- | ----------------- | ------------------------------ |
-| `caffe`       | Caffe (cv2.dnn)   | bucketed range, e.g. `(25-32)` |
-| `ssrnet`      | PyTorch           | continuous age, e.g. `31`      |
 | `fairface`    | ONNX (cv2.dnn)    | bucketed range, e.g. `20-29` (9 buckets) |
+| `caffe`       | Caffe (cv2.dnn)   | bucketed range, e.g. `(25-32)` |
 | `dex`         | Caffe (cv2.dnn)   | continuous age, e.g. `31` (expected value over 101 classes) |
 | `mivolo`      | PyTorch/timm ViT  | continuous age, e.g. `31`      |
 
-Checkbox per built model in the web app sidebar. Default: `caffe`.
+Checkbox per built model in the web app sidebar. Default: `fairface`.
 
-When at least two continuous age backends are active (`ssrnet`, `dex`, or
-`mivolo`) and their numeric outputs are within 10 years, the UI also shows a median consensus
-while retaining every individual model result. Bucketed ages, explicit DEX uncertainty, and
-disagreements remain individual-only. The 10-year gate is a conservative display heuristic,
-not a calibrated confidence interval or measured accuracy guarantee.
+With two or more age backends active the UI leads with a `best (<model>)` row: the estimate
+from the most accurate backend present, ranked `mivolo` > `fairface` > `dex` > `caffe`.
+Age is the one feature that is **not** fused, because fusing it measured worse -- see
+[Combined answers](#combined-answers).
 
 FairFace age, gender, and race use the existing MediaPipe landmarks when available, mapped
 to the four eye corners and nose used by [dlib's five-point face chip](https://github.com/davisking/dlib/blob/master/dlib/image_transforms/interpolation.h).
@@ -114,13 +112,52 @@ If the top-2 predicted classes are within 10 percentage points of each other, bo
 
 | Backend                  | Framework         | Output                                                         |
 | ------------------------ | ----------------- | -------------------------------------------------------------- |
-| `efficientnet`           | ONNX (cv2.dnn)    | 7 classes: angry, disgust, fear, happy, sad, surprise, neutral |
 | `ferplus`                | ONNX (cv2.dnn)    | 8 classes: neutral, happiness, surprise, sadness, anger, disgust, fear, contempt |
 | `mini_xception`          | Keras/TensorFlow  | 7 classes: angry, disgust, fear, happy, sad, surprise, neutral |
 | `dan` (DAN, AffectNet-7) | PyTorch           | 7 classes: neutral, happy, sad, surprise, fear, disgust, anger |
 | `hsemotion` (enet_b0_8_best_vgaf, AffectNet-8) | ONNX (cv2.dnn) | 8 classes: anger, contempt, disgust, fear, happiness, neutral, sadness, surprise |
 
-Note the class label order (and count) differs between backends -- each is tracked as a separate constant, never assumed to match. `mini_xception` is tiny (853KB, oarriaga/face_classification, MIT) but needs TensorFlow like the deepface models. `ferplus` is the official ONNX Model Zoo emotion model (MIT, 35MB, no extra framework -- pure cv2.dnn ONNX), used in place of a third-party PyTorch checkpoint for security reasons (no untrusted pickle deserialization). `hsemotion` (HSE-asavchenko/EmotiEffLib, Apache-2.0 code, 16MB EfficientNet-B0 backbone) is pretrained on VGGFace2 and fine-tuned on AffectNet-8 -- same AffectNet-derived weight provenance as `dan` (research/educational use, no explicit commercial weight license); pure cv2.dnn ONNX, no extra framework, no torch needed.
+Default: `hsemotion`. Note the class label order (and count) differs between backends -- each is tracked as a separate constant, never assumed to match. `mini_xception` is tiny (853KB, oarriaga/face_classification, MIT) but needs TensorFlow like the deepface models. `ferplus` is the official ONNX Model Zoo emotion model (MIT, 35MB, no extra framework -- pure cv2.dnn ONNX), used in place of a third-party PyTorch checkpoint for security reasons (no untrusted pickle deserialization). `hsemotion` (HSE-asavchenko/EmotiEffLib, Apache-2.0 code, 16MB EfficientNet-B0 backbone) is pretrained on VGGFace2 and fine-tuned on AffectNet-8 -- same AffectNet-derived weight provenance as `dan` (research/educational use, no explicit commercial weight license); pure cv2.dnn ONNX, no extra framework, no torch needed.
+
+### Combined answers
+
+With more than one model active for a feature, the per-face card leads with a single combined
+answer and lists every individual model underneath. Gender, race, and emotion are **fused**;
+age instead names its **best** available model.
+
+| Feature | Combined row | How |
+| ------- | ------------ | --- |
+| Gender  | `fused`      | Weighted mean of each model's P(Male) |
+| Race    | `fused`      | Weighted blend of class probabilities, re-expressed over shared canonical classes (FairFace's East/Southeast Asian collapse into one `Asian` class, since the two backends' label sets differ) |
+| Emotion | `fused`      | Weighted vote over canonical emotion names (`happy`/`happiness` are one vote, not two) |
+| Age     | `best (<model>)` | The most accurate backend present: `mivolo` > `fairface` > `dex` > `caffe` |
+
+Weights are measurements, not taste. `tools/benchmark.py` scores every backend against
+`tools/ground_truth.json` -- 75 hand-labelled faces across the `assets/` images, each bound to
+its label by normalized face centre so the labels survive detector changes -- and the weights
+in `src/inference.py` track those accuracies, so a weaker backend contributes proportionally
+less instead of dragging the combined answer toward its own error.
+
+Measured on those 75 faces (detection recall 100%):
+
+| Feature | Combined | Best single model | Weakest active model |
+| ------- | -------- | ----------------- | -------------------- |
+| Gender  | **100%** | `mivolo` 100%     | `caffe`/`deepface` 86.7% |
+| Emotion | **100%** | `dan`/`hsemotion`/`ferplus` 100% | `mini_xception` 95.2% |
+| Race    | **97.3%** | `fairface` 96.0% | `deepface` 94.7% |
+| Age     | **93.3%** (= `mivolo`) | `mivolo` 93.3% | `caffe` 62.7% |
+
+Age is deliberately not fused: every combination tried -- weighted median and weighted mean
+across a range of weights, clipping MiVOLO into FairFace's predicted decade, and overriding
+MiVOLO only when both other backends disagreed with it -- scored at or below MiVOLO alone,
+because the age backends fail on the same faces (elderly faces read young in all of them).
+Averaging moves that answer without correcting it, so the headline names a winner instead.
+
+Caveats worth stating plainly: 75 faces is a small corpus, so differences of one or two faces
+(about 1.3 percentage points) are noise, and only three of those faces have externally
+confirmed ages -- the rest of the age ranges are careful visual estimates, so age accuracy is
+measured against judgement, not documented fact. Re-run `tools/benchmark.py` after changing
+any model or its preprocessing, and re-derive the weights if the ordering moves.
 
 ### Gaze (web app only)
 
@@ -172,7 +209,7 @@ A `SCAN ALL FACES: RECOGNIZED / UNRECOGNIZED` button above the per-face cards, f
 
 ### Crowd Count / Demographics (web app only, no model)
 
-An opt-in `CROWD COUNT / DEMOGRAPHICS` sidebar checkbox, **off by default** (privacy-sensitive: it turns per-face results into an aggregate statistic about everyone in the image at once). Enabling it shows a caption explaining the tradeoff, and adds a `CROWD COUNT: N face(s) detected` expander below each analyzed image with a total count plus a bar-chart breakdown per currently active age/gender/race model. No new model or Docker build argument -- it's a pure tally (`aggregate_demographics()` in `src/inference.py`) over the age/gender/race outputs `analyze_frame()` already computed for that image; if two models are active for the same feature (e.g. `caffe` + `ssrnet` age), each gets its own independent breakdown rather than being merged, for the same reason DAN and EfficientNet emotion labels aren't mixed (different label sets/granularity). Image upload and webcam SNAPSHOT only -- not webcam LIVE mode, which has no per-frame result panel to attach this to.
+An opt-in `CROWD COUNT / DEMOGRAPHICS` sidebar checkbox, **off by default** (privacy-sensitive: it turns per-face results into an aggregate statistic about everyone in the image at once). Enabling it shows a caption explaining the tradeoff, and adds a `CROWD COUNT: N face(s) detected` expander below each analyzed image with a total count plus a bar-chart breakdown per currently active age/gender/race model. No new model or Docker build argument -- it's a pure tally (`aggregate_demographics()` in `src/inference.py`) over the age/gender/race outputs `analyze_frame()` already computed for that image; if two models are active for the same feature (e.g. `caffe` + `fairface` age), each gets its own independent breakdown rather than being merged, for the same reason DAN and FERPlus emotion labels aren't mixed (different label sets/granularity). Image upload and webcam SNAPSHOT only -- not webcam LIVE mode, which has no per-frame result panel to attach this to.
 
 ### 3D Reconstruction (web app only, ships no working weights)
 
@@ -239,7 +276,7 @@ permissions and a working WebRTC connection are required.
 | ----------- | -------------- | -------------------- |
 | `mobilenet` | ONNX (onnxruntime) | `glasses` / `none`  |
 
-Sorour190/Glasses-Detector, `models/glasses_detector.onnx` (MobileNetV3-Large, 224x224 RGB, normalization baked into the ONNX graph itself -- feed raw uint8 pixels). **License unstated by the source repo** -- same treatment as DAN/SSR-Net, use at your own discretion.
+Sorour190/Glasses-Detector, `models/glasses_detector.onnx` (MobileNetV3-Large, 224x224 RGB, normalization baked into the ONNX graph itself -- feed raw uint8 pixels). **License unstated by the source repo** -- same treatment as DAN, use at your own discretion.
 
 ### Mask (web app only)
 
@@ -335,7 +372,7 @@ Open **SELECT REGION & TRANSFORM** beneath an uploaded image or webcam snapshot,
 
 Each detected face has an **Edit face** expander containing its sliders, **IMAGE OP** selector, and **APPLY IMAGE OP** button. The filters stay hidden until that expander opens. Operations act on that face's displayed crop; the result can be downloaded as a PNG. Intensity, sharpen, and denoise expose a method selector. These operations need no model files or Docker build arguments. CNN and GAN denoising are not included because trained weights are not supplied.
 
-Model provenance: DAN, SSR-Net, and DeepFace's race model are vendored research code (`src/nets/`). DAN and SSR-Net have no explicit upstream license file (research/educational use). DeepFace (race, gender, and recognition/`deepface_vgg.h5`) is MIT. FairFace's ONNX conversion is MIT (underlying dataset CC BY 4.0). Face-Mask-Detection is MIT; the glasses detector's license is unstated. HSEmotion (HSE-asavchenko/EmotiEffLib) code is Apache-2.0; its AffectNet-8 fine-tuned weight has the same research/educational provenance as DAN. The age-reaging U-Net (`franunet`) is MIT-licensed code, but its BlurPool component (vendored from Adobe's antialiased-cnns) is CC BY-NC-SA 4.0 -- non-commercial use only (see Age Progression / Regression above).
+Model provenance: DAN and DeepFace's race model are vendored research code (`src/nets/`). DAN has no explicit upstream license file (research/educational use). DeepFace (race, gender, and recognition/`deepface_vgg.h5`) is MIT. FairFace's ONNX conversion is MIT (underlying dataset CC BY 4.0). Face-Mask-Detection is MIT; the glasses detector's license is unstated. HSEmotion (HSE-asavchenko/EmotiEffLib) code is Apache-2.0; its AffectNet-8 fine-tuned weight has the same research/educational provenance as DAN. The age-reaging U-Net (`franunet`) is MIT-licensed code, but its BlurPool component (vendored from Adobe's antialiased-cnns) is CC BY-NC-SA 4.0 -- non-commercial use only (see Age Progression / Regression above).
 
 ## Performance
 
@@ -356,11 +393,9 @@ multimodal-face-analyzer/
 ├── models/                 # Pre-trained weights & configs (data, not code)
 │   ├── opencv_face_detector_uint8.pb / .pbtxt   # face detection (required)
 │   ├── age_deploy.prototxt / age_net.caffemodel # age: caffe backend
-│   ├── ssrnet_morph2.pth                        # age: ssrnet backend
 │   ├── gender_deploy.prototxt / gender_net.caffemodel
 │   ├── mivolo_v2.safetensors / _config.json     # age + gender: mivolo backend
 │   ├── dan_affecnet7.pth                        # emotion: dan backend
-│   ├── efficientnet_b0_fer.onnx                 # emotion: efficientnet backend
 │   ├── emotion_ferplus.onnx                     # emotion: ferplus backend
 │   ├── mini_xception_fer.h5                     # emotion: mini_xception backend
 │   ├── hsemotion_enet_b0_8_best_vgaf.onnx       # emotion: hsemotion backend
@@ -395,7 +430,6 @@ multimodal-face-analyzer/
     ├── inference.py        # model loading + per-face prediction logic
     └── nets/               # vendored model architectures (code, not weights)
         ├── dan_model.py
-        ├── ssrnet_model.py
         ├── deepface_common.py                   # shared VGGFace backbone
         ├── deepface_race.py
         ├── mini_xception_model.py
@@ -423,7 +457,7 @@ conda create -n vision_env python=3.11 -y
 conda activate vision_env
 pip install -r requirements.txt
 
-# needed for: ssrnet age, dan emotion
+# needed for: dan emotion, mivolo age/gender
 pip install torch torchvision --extra-index-url https://download.pytorch.org/whl/cpu
 
 # needed for: deepface race and/or deepface gender (heavy -- ~200-400MB)
@@ -502,9 +536,9 @@ detector fallback while YOLO, SCRFD, and RetinaFace are additive choices:
 
 ```bash
 docker build \
-  --build-arg AGE_MODEL=caffe,fairface,dex,ssrnet,mivolo \
-  --build-arg GENDER_MODEL=caffe,fairface,deepface,mivolo \
-  --build-arg EMOTION_MODEL=efficientnet,ferplus,hsemotion,mini_xception,dan \
+  --build-arg AGE_MODEL=fairface,caffe,dex,mivolo \
+  --build-arg GENDER_MODEL=fairface,caffe,deepface,mivolo \
+  --build-arg EMOTION_MODEL=hsemotion,ferplus,mini_xception,dan \
   --build-arg RACE_MODEL=fairface,deepface \
   --build-arg FACE_LANDMARKS_MODEL=mediapipe \
   --build-arg LIVENESS_MODEL=mediapipe \
@@ -523,9 +557,9 @@ docker build \
 
 | Build arg           | Options (default first)          |
 | -------------------- | -------------------------------- |
-| `AGE_MODEL`        | `caffe`, `fairface`, `dex`, `ssrnet`, `mivolo` |
-| `GENDER_MODEL`     | `caffe`, `fairface`, `deepface`, `mivolo` |
-| `EMOTION_MODEL`    | `efficientnet`, `ferplus`, `hsemotion`, `mini_xception`, `dan` |
+| `AGE_MODEL`        | `fairface`, `caffe`, `dex`, `mivolo` |
+| `GENDER_MODEL`     | `fairface`, `caffe`, `deepface`, `mivolo` |
+| `EMOTION_MODEL`    | `hsemotion`, `ferplus`, `mini_xception`, `dan` |
 | `RACE_MODEL`       | `fairface`, `deepface`                   |
 | `FACE_LANDMARKS_MODEL` | `mediapipe`                        |
 | `LIVENESS_MODEL` | `mediapipe` (reuses `face_landmarker.task`) |
@@ -542,12 +576,12 @@ docker build \
 
 Hair Color and Eye Color are colorimetric heuristics with no model file and thus no build ARG either -- they're always available in the web app (Eye Color additionally needs `haarcascade_eye.xml`). Face Landmarks uses `FACE_LANDMARKS_MODEL=mediapipe`; Liveness uses its own `LIVENESS_MODEL=mediapipe` ARG while reusing the same model file.
 
-Multiple models per feature (e.g. `AGE_MODEL=caffe,ssrnet`) can be built in together -- the web app sidebar shows a checkbox per built model, and checking more than one for the same feature runs and displays all of them at once.
+Multiple models per feature (e.g. `AGE_MODEL=fairface,caffe`) can be built in together -- the web app sidebar shows a checkbox per built model, and checking more than one for the same feature runs and displays all of them at once.
 
 Disabled model files never land in an image layer. Guided builds also exclude them from the Docker
 build context by staging only selected files. Direct `docker build .` retains the conditional-copy
 behavior but still sends the full context. `torch`/`torchvision` (~200MB) are only installed if
-`ssrnet`, `dan`, `mivolo`, `deep3d`, and/or `franunet` are requested (`scipy` is additionally
+`dan`, `mivolo`, `deep3d`, and/or `franunet` are requested (`scipy` is additionally
 installed for `deep3d` alone, to load `.mat` files). `tensorflow-cpu`/`tf-keras` (~200-400MB, plus
 deepface's 513MB weight file) are only installed if `deepface`, `mini_xception`, `vggface`, and/or
 `mask` are requested -- deepface race remains by far the heaviest single option in the repo (note:
