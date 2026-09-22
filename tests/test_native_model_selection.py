@@ -18,7 +18,7 @@ class NativeModelSelectionTests(unittest.TestCase):
         with patch.dict(os.environ, {"AGE_MODEL": "caffe,fairface"}, clear=True):
             self.assertTrue(native_model_selected("AGE_MODEL", "caffe"))
             self.assertTrue(native_model_selected("AGE_MODEL", "fairface"))
-            self.assertFalse(native_model_selected("AGE_MODEL", "ssrnet"))
+            self.assertFalse(native_model_selected("AGE_MODEL", "dex"))
 
     def test_empty_selection_disables_all_backends(self):
         """Ensure empty env var disables all backends for that feature."""

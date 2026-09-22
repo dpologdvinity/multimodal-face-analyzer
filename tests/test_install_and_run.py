@@ -58,8 +58,8 @@ class NativeInstallerVerbosityTests(unittest.TestCase):
         """Verify default mode hides package dependencies and marks defaults with green asterisk."""
         output = self._run_installer()
 
-        self.assertIn("\033[1;32m* 1) caffe\033[0m", output)
-        self.assertIn("\033[1;33m  4) ssrnet\033[0m", output)
+        self.assertIn("\033[1;32m* 1) fairface\033[0m", output)
+        self.assertIn("\033[1;33m  4) mivolo\033[0m", output)
         self.assertIn("  0) none", output)
         self.assertIn("  9) all", output)
         self.assertNotIn("\033[1;32m0) none\033[0m", output)
@@ -100,9 +100,9 @@ class NativeInstallerVerbosityTests(unittest.TestCase):
         # These pairs check that models requiring no extra dependencies (green/bold)
         # appear before models requiring new packages (orange/bold)
         for green, orange in (
-            ("\033[1;32m  3) dex\033[0m", "\033[1;33m  4) ssrnet\033[0m"),
-            ("\033[1;32m  2) fairface\033[0m", "\033[1;33m  3) deepface\033[0m"),
-            ("\033[1;32m  3) hsemotion\033[0m", "\033[1;33m  4) mini_xception\033[0m"),
+            ("\033[1;32m  3) dex\033[0m", "\033[1;33m  4) mivolo\033[0m"),
+            ("\033[1;32m  2) caffe\033[0m", "\033[1;33m  3) deepface\033[0m"),
+            ("\033[1;32m  2) ferplus\033[0m", "\033[1;33m  3) mini_xception\033[0m"),
         ):
             self.assertLess(output.index(green), output.index(orange))
 
@@ -113,8 +113,8 @@ class NativeInstallerVerbosityTests(unittest.TestCase):
                 output = self._run_installer(flag)
 
                 self.assertNotIn("\n      packages:", output)
-                self.assertIn("\033[1;32m* 1) caffe\033[0m", output)
-                self.assertIn("\033[1;33m  4) ssrnet\033[0m", output)
+                self.assertIn("\033[1;32m* 1) fairface\033[0m", output)
+                self.assertIn("\033[1;33m  4) mivolo\033[0m", output)
                 self.assertIn("\033[1;32m* 0) ssd\033[0m", output)
                 self.assertIn("\033[32mopencv-python-headless, numpy\033[0m", output)
                 self.assertIn("\033[33mtorch, torchvision\033[0m", output)
@@ -143,10 +143,10 @@ class NativeInstallerVerbosityTests(unittest.TestCase):
 
     def test_reused_optional_packages_turn_later_options_green(self):
         """Confirm model that reuses same packages as prior selection turns green."""
-        selections = "\n".join(["0", "5", "0", "0", "5"] + ["0"] * 3) + "\n"
+        selections = "\n".join(["0", "4", "0", "0", "4"] + ["0"] * 3) + "\n"
         output = self._run_installer("--verbose", input_data=selections)
 
-        self.assertIn("\033[1;32m  5) dan\033[0m", output)
+        self.assertIn("\033[1;32m  4) dan\033[0m", output)
         self.assertIn("\033[32mopencv-python-headless, numpy, torch, torchvision\033[0m", output)
 
     def test_hidden_mode_omits_choices_with_new_optional_packages(self):
@@ -155,7 +155,7 @@ class NativeInstallerVerbosityTests(unittest.TestCase):
 
         self.assertIn("== AGE ==", output)
         self.assertIn("caffe", output)
-        self.assertNotIn("ssrnet", output)
+        self.assertNotIn("mivolo", output)
         self.assertNotIn("deepface", output)
         self.assertNotIn("yolo", output)
         self.assertNotIn("vggface", output)
@@ -164,9 +164,9 @@ class NativeInstallerVerbosityTests(unittest.TestCase):
         """Ensure --hidden mode 'all' includes only base-package models, no extra deps."""
         output = self._run_installer("--hidden", input_data="9\n" * 8)
 
-        self.assertIn("AGE_MODEL=caffe,fairface,dex", output)
-        self.assertIn("GENDER_MODEL=caffe,fairface", output)
-        self.assertIn("EMOTION_MODEL=efficientnet,ferplus,hsemotion", output)
+        self.assertIn("AGE_MODEL=fairface,caffe,dex", output)
+        self.assertIn("GENDER_MODEL=fairface,caffe", output)
+        self.assertIn("EMOTION_MODEL=hsemotion,ferplus", output)
         self.assertIn("RECOGNITION_MODEL=", output)
         self.assertNotIn("Installing: torch", output)
         self.assertNotIn("Installing: tensorflow-cpu", output)
@@ -193,7 +193,7 @@ class NativeInstallerVerbosityTests(unittest.TestCase):
         selections = "\n".join(["0", "1", "0", "0", "0", "0", "0", "1"]) + "\n"
         output = self._run_installer(input_data=selections, capture_env=True)
 
-        self.assertIn("AGE_MODEL=caffe", output)
+        self.assertIn("AGE_MODEL=fairface", output)
         self.assertIn("GENDER_MODEL=", output)
         self.assertIn("YOLO_FACE_MODEL=", output)
         self.assertIn("COLORIZATION_MODEL=eccv16", output)

@@ -30,8 +30,8 @@ class SelectAgeTests(unittest.TestCase):
         self.assertEqual(inference.select_age({"caffe": 5.0, "dex": 41.2}), ("41", "dex"))
 
     def test_ignores_unusable_values(self):
-        self.assertIsNone(inference.select_age({"mivolo": float("nan"), "ssrnet": 200.0}))
-        self.assertIsNone(inference.select_age({"mivolo": 30.0, "ssrnet": float("inf")}))
+        self.assertIsNone(inference.select_age({"mivolo": float("nan"), "dex": 200.0}))
+        self.assertIsNone(inference.select_age({"mivolo": 30.0, "dex": float("inf")}))
 
     def test_unusable_top_model_hands_off_to_the_next(self):
         self.assertEqual(
@@ -86,13 +86,13 @@ class FuseEmotionTests(unittest.TestCase):
     def test_votes_across_differing_spellings_of_one_state(self):
         # ferplus says "happiness", dan says "happy" -- one state, two spellings, two votes.
         self.assertEqual(
-            inference.fuse_emotion({"ferplus": "happiness", "dan": "happy", "efficientnet": "sad"}),
+            inference.fuse_emotion({"ferplus": "happiness", "dan": "happy", "mini_xception": "sad"}),
             "happy",
         )
 
     def test_accurate_models_outweigh_an_inaccurate_one(self):
         self.assertEqual(
-            inference.fuse_emotion({"dan": "neutral", "efficientnet": "sad"}), "neutral",
+            inference.fuse_emotion({"dan": "neutral", "mini_xception": "sad"}), "neutral",
         )
 
     def test_needs_at_least_two_models(self):

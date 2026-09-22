@@ -17,11 +17,6 @@ sys.path.insert(0, str(ROOT / "src"))
 
 import inference as inf  # noqa: E402
 
-try:
-    import torch
-except ImportError:
-    torch = None
-
 
 def _face_crop(frame: np.ndarray, box, ratio: float = 0.1) -> np.ndarray:
     x1, y1, x2, y2 = inf.face_crop_bounds(box, frame.shape[:2], ratio)
@@ -65,8 +60,6 @@ def age_predictions(models, frame, box, landmarks, mivolo) -> dict:
         net = models.age_nets["caffe"]
         net.setInput(blob)
         out["caffe"] = net.forward().flatten().tolist()
-    if "ssrnet" in models.age_nets and torch is not None:
-        out["ssrnet"] = float(inf.predict_age_ssrnet(models.age_nets["ssrnet"], face))
     if "dex" in models.age_nets:
         net = models.age_nets["dex"]
         for name, crop in (("dex", inf.crop_face_dex(frame, box)),
@@ -127,7 +120,6 @@ def emotion_predictions(models, frame, box) -> dict:
     face = _face_crop(frame, box)
     out: dict = {}
     for key, fn in (("dan", inf.predict_emotion_dan),
-                    ("efficientnet", inf.predict_emotion_efficientnet),
                     ("mini_xception", inf.predict_emotion_mini_xception),
                     ("ferplus", inf.predict_emotion_ferplus),
                     ("hsemotion", inf.predict_emotion_hsemotion)):

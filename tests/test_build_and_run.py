@@ -51,11 +51,11 @@ class BuildPromptFormattingTests(unittest.TestCase):
 
         self.assertIn("\033[1;32m* 0) ssd\033[0m", output)
         self.assertIn("\033[1;33m  1) yolo\033[0m", output)
-        self.assertIn("\033[1;32m* 1) caffe\033[0m", output)
+        self.assertIn("\033[1;32m* 1) fairface\033[0m", output)
         self.assertIn("\033[1;32m  3) dex\033[0m", output)
-        self.assertIn("\033[1;33m  4) ssrnet\033[0m", output)
-        self.assertIn("\033[1;32m  3) hsemotion\033[0m", output)
-        self.assertIn("\033[1;33m  4) mini_xception\033[0m", output)
+        self.assertIn("\033[1;33m  4) mivolo\033[0m", output)
+        self.assertIn("\033[1;32m* 1) hsemotion\033[0m", output)
+        self.assertIn("\033[1;33m  3) mini_xception\033[0m", output)
         self.assertIn("\033[1;33m  3) 3d reconstruction - deep3d\033[0m", output)
         self.assertIn("\033[1;32m  4) hair color - colorimetric\033[0m", output)
 
@@ -66,11 +66,11 @@ class BuildPromptFormattingTests(unittest.TestCase):
 
     def test_reordered_choices_still_forward_the_selected_build_models(self):
         """Verify selected model indices map correctly to docker build args."""
-        selections = ["2", "4", "3", "2", "5", "0", "0", "3"]
+        selections = ["2", "4", "3", "2", "4", "0", "0", "3"]
         output = self._run_build(selections)
 
         self.assertIn("SCRFD_FACE_MODEL=scrfd", output)
-        self.assertIn("AGE_MODEL=ssrnet", output)
+        self.assertIn("AGE_MODEL=mivolo", output)
         self.assertIn("GENDER_MODEL=deepface", output)
         self.assertIn("EMOTION_MODEL=dan", output)
         self.assertIn("RECONSTRUCTION_3D_MODEL=deep3d", output)
@@ -148,7 +148,7 @@ class BuildPromptFormattingTests(unittest.TestCase):
             result = subprocess.run(
                 ["bash", str(SCRIPT)],
                 cwd=SCRIPT.parent,
-                input="\n".join(["0", "2", "2", "0", "0", "0", "0", "0", "n", "q"]) + "\n",
+                input="\n".join(["0", "1", "1", "0", "0", "0", "0", "0", "n", "q"]) + "\n",
                 text=True,
                 capture_output=True,
                 env=env,

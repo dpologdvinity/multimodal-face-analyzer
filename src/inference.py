@@ -85,7 +85,6 @@ try:
     with _silence_native_logs():
         import torch
         from nets.dan_model import DAN
-        from nets.ssrnet_model import SSRNet
     TORCH_SUPPORTED = True
 except ImportError:
     TORCH_SUPPORTED = False
@@ -154,8 +153,6 @@ GENDER_PROTO = MODEL_DIR / "gender_deploy.prototxt"
 GENDER_MODEL = MODEL_DIR / "gender_net.caffemodel"
 EYE_CASCADE_FILE = MODEL_DIR / "haarcascade_eye.xml"
 EMOTION_MODEL = MODEL_DIR / "dan_affecnet7.pth"
-SSRNET_MODEL = MODEL_DIR / "ssrnet_morph2.pth"
-EFFICIENTNET_EMOTION_MODEL = MODEL_DIR / "efficientnet_b0_fer.onnx"
 MINI_XCEPTION_MODEL = MODEL_DIR / "mini_xception_fer.h5"
 FERPLUS_MODEL = MODEL_DIR / "emotion_ferplus.onnx"
 HSEMOTION_MODEL = MODEL_DIR / "hsemotion_enet_b0_8_best_vgaf.onnx"
@@ -183,14 +180,13 @@ MODEL_MEAN_VALUES = (78.4263377603, 87.768914374, 114.895847746)
 AGE_LIST = ['(0-2)', '(4-6)', '(8-12)', '(15-20)', '(25-32)', '(38-43)', '(48-53)', '(60-100)']
 GENDER_LIST = ['Male', 'Female']
 EMOTION_LABELS_DAN = ['neutral', 'happy', 'sad', 'surprise', 'fear', 'disgust', 'anger']
-EMOTION_LABELS_EFFICIENTNET = ['angry', 'disgust', 'fear', 'happy', 'sad', 'surprise', 'neutral']
 EMOTION_LABELS_MINI_XCEPTION = ['angry', 'disgust', 'fear', 'happy', 'sad', 'surprise', 'neutral']
 EMOTION_LABELS_FERPLUS = ['neutral', 'happiness', 'surprise', 'sadness', 'anger', 'disgust', 'fear', 'contempt']
 EMOTION_LABELS_HSEMOTION = ['anger', 'contempt', 'disgust', 'fear', 'happiness', 'neutral', 'sadness', 'surprise']
-EMOTION_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
-EMOTION_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
-SSRNET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
-SSRNET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
+# Standard ImageNet channel statistics, shared by every backend trained on ImageNet-normalized
+# RGB input (DAN, HSEmotion, FairFace).
+IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
+IMAGENET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 RACE_LABELS_FAIRFACE = ['White', 'Black', 'Latino_Hispanic', 'East Asian', 'Southeast Asian', 'Indian', 'Middle Eastern']
 RACE_LABELS_DEEPFACE = ['asian', 'indian', 'black', 'white', 'middle eastern', 'latino hispanic']
 RACE_CLOSE_MARGIN = 0.10  # show top-2 race classes together if within this probability margin
@@ -209,12 +205,14 @@ EIGEN_DIR = BASE_DIR / "eigen"  # saved faces' grayscale/zoomed eigenfaces train
 EIGEN_FACE_SIZE = (100, 100)  # (width, height) every eigen/ image is normalized to
 EIGENFACE_DISTANCE_THRESHOLD = 3000.0  # untuned heuristic (see match_face_eigenfaces docstring)
 
-# Model keys per feature, in quickest-to-build order (first = default).
+# Model keys per feature, most accurate first (first = default), as measured by
+# tools/benchmark.py -- a default a user never changes should be the one most likely to be
+# right, and a backend that is both slower to build AND more accurate earns the extra build.
 # Must match the numbered options in build-and-run.sh and the Dockerfile ARGs.
-AGE_MODEL_OPTIONS = ["caffe", "ssrnet", "fairface", "dex", "mivolo"]
-GENDER_MODEL_OPTIONS = ["caffe", "deepface", "fairface", "mivolo"]
+AGE_MODEL_OPTIONS = ["fairface", "caffe", "dex", "mivolo"]
+GENDER_MODEL_OPTIONS = ["fairface", "caffe", "deepface", "mivolo"]
 FAIRFACE_AGE_LABELS = ["0-2", "3-9", "10-19", "20-29", "30-39", "40-49", "50-59", "60-69", "70+"]
-EMOTION_MODEL_OPTIONS = ["efficientnet", "ferplus", "mini_xception", "dan", "hsemotion"]
+EMOTION_MODEL_OPTIONS = ["hsemotion", "ferplus", "mini_xception", "dan"]
 RACE_MODEL_OPTIONS = ["fairface", "deepface"]
 LIVENESS_MODEL_OPTIONS = ["mediapipe"]
 RECOGNITION_MODEL_OPTIONS = ["vggface", "lbph"]
@@ -285,7 +283,7 @@ GLASSES_THRESHOLD = 0.5
 # Streamlit session. analyze_frame() runs each face's per-feature predictions concurrently
 # (see _run_feature_tasks below); this lock, keyed by the shared net object's identity, is
 # what makes concurrent calls onto the same net safe (they serialize) while calls onto
-# DIFFERENT nets still run in true parallel. Torch nn.Module.forward (ssrnet/dan) and
+# DIFFERENT nets still run in true parallel. Torch nn.Module.forward (dan) and
 # onnxruntime InferenceSession.run (glasses, yolo face detector) are both documented safe for
 # concurrent inference on one instance, so those are intentionally left unlocked.
 _NET_LOCKS: dict[int, threading.Lock] = {}
@@ -387,12 +385,6 @@ def load_models() -> Models:
     age_nets = {}
     if native_model_selected("AGE_MODEL", "caffe") and AGE_PROTO.exists() and AGE_MODEL.exists():
         age_nets["caffe"] = cv2.dnn.readNet(str(AGE_MODEL), str(AGE_PROTO))
-    if native_model_selected("AGE_MODEL", "ssrnet") and TORCH_SUPPORTED and SSRNET_MODEL.exists():
-        net = SSRNet()
-        checkpoint = torch.load(str(SSRNET_MODEL), map_location="cpu")
-        net.load_state_dict(checkpoint["state_dict"])
-        net.eval()
-        age_nets["ssrnet"] = net
     if native_model_selected("AGE_MODEL", "dex") and DEX_PROTO.exists() and DEX_MODEL.exists():
         age_nets["dex"] = cv2.dnn.readNetFromCaffe(str(DEX_PROTO), str(DEX_MODEL))
 
@@ -431,8 +423,6 @@ def load_models() -> Models:
         net.load_state_dict(checkpoint["model_state_dict"])
         net.eval()
         emotion_nets["dan"] = net
-    if native_model_selected("EMOTION_MODEL", "efficientnet") and EFFICIENTNET_EMOTION_MODEL.exists():
-        emotion_nets["efficientnet"] = cv2.dnn.readNetFromONNX(str(EFFICIENTNET_EMOTION_MODEL))
     if native_model_selected("EMOTION_MODEL", "mini_xception") and TF_SUPPORTED and MINI_XCEPTION_MODEL.exists():
         mini_xception_net = build_mini_xception((64, 64, 1), num_classes=7)
         mini_xception_net.load_weights(str(MINI_XCEPTION_MODEL))
@@ -1381,16 +1371,6 @@ def predict_age_caffe(net, blob: np.ndarray) -> str:
     return AGE_LIST[int(caffe_probabilities(net, blob).argmax())]
 
 
-def predict_age_ssrnet(net, face_bgr: np.ndarray) -> str:
-    """Predict a continuous age with SSR-Net and format it as a label string."""
-    face_rgb = cv2.cvtColor(cv2.resize(face_bgr, (64, 64)), cv2.COLOR_BGR2RGB)
-    face_norm = (face_rgb.astype(np.float32) / 255.0 - SSRNET_MEAN) / SSRNET_STD
-    tensor = torch.from_numpy(face_norm.transpose(2, 0, 1)).unsqueeze(0).float()
-    with torch.no_grad():
-        age = net(tensor).item()
-    return f"{age:.0f}"
-
-
 def crop_face_dex(frame: np.ndarray, box: tuple[int, int, int, int]) -> np.ndarray:
     """Extract DEX's 40% width/height margins, replicating missing edge pixels.
 
@@ -1580,22 +1560,11 @@ def predict_gender_mivolo(net: MiVOLOInference, face_bgr: np.ndarray) -> str:
 def predict_emotion_dan(net, face_bgr: np.ndarray) -> str:
     """Classify facial expression into one of EMOTION_LABELS_DAN."""
     face_rgb = cv2.cvtColor(cv2.resize(face_bgr, (224, 224)), cv2.COLOR_BGR2RGB)
-    face_norm = (face_rgb.astype(np.float32) / 255.0 - EMOTION_MEAN) / EMOTION_STD
+    face_norm = (face_rgb.astype(np.float32) / 255.0 - IMAGENET_MEAN) / IMAGENET_STD
     tensor = torch.from_numpy(face_norm.transpose(2, 0, 1)).unsqueeze(0).float()
     with torch.no_grad():
         logits, _, _ = net(tensor)
     return EMOTION_LABELS_DAN[logits[0].argmax().item()]
-
-
-def predict_emotion_efficientnet(net, face_bgr: np.ndarray) -> str:
-    """Classify facial expression into one of EMOTION_LABELS_EFFICIENTNET."""
-    face_rgb = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2RGB)
-    blob = cv2.dnn.blobFromImage(face_rgb, 1.0 / 255.0, (224, 224), (0, 0, 0), swapRB=False, crop=False)
-    blob = (blob - EMOTION_MEAN.reshape(1, 3, 1, 1)) / EMOTION_STD.reshape(1, 3, 1, 1)
-    with _lock_for(net):
-        net.setInput(blob.astype(np.float32))
-        logits = net.forward().flatten()
-    return EMOTION_LABELS_EFFICIENTNET[int(np.argmax(logits))]
 
 
 def predict_emotion_mini_xception(net, face_bgr: np.ndarray) -> str:
@@ -1622,7 +1591,7 @@ def predict_emotion_hsemotion(net, face_bgr: np.ndarray) -> str:
     """Classify facial expression into one of EMOTION_LABELS_HSEMOTION."""
     face_rgb = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2RGB)
     blob = cv2.dnn.blobFromImage(face_rgb, 1.0 / 255.0, (224, 224), (0, 0, 0), swapRB=False, crop=False)
-    blob = (blob - EMOTION_MEAN.reshape(1, 3, 1, 1)) / EMOTION_STD.reshape(1, 3, 1, 1)
+    blob = (blob - IMAGENET_MEAN.reshape(1, 3, 1, 1)) / IMAGENET_STD.reshape(1, 3, 1, 1)
     with _lock_for(net):
         net.setInput(blob.astype(np.float32))
         logits = net.forward().flatten()
@@ -1652,20 +1621,19 @@ BEST_MODEL_KEY = "best"    # one model picked as most reliable (age, see select_
 HEADLINE_MODEL_KEYS = (FUSED_MODEL_KEY, BEST_MODEL_KEY)
 
 # Age is deliberately NOT fused. Measured on the benchmark corpus: mivolo 92%, fairface 84%,
-# dex 63%, ssrnet 57%, caffe 48%. Every combination tried -- weighted median and weighted mean
+# dex 63%, caffe 48%. Every combination tried -- weighted median and weighted mean
 # across a wide range of weights, clipping MiVOLO into FairFace's predicted decade, and
 # overriding MiVOLO only when both others disagreed with it -- scored at or BELOW MiVOLO alone
 # (best combination 90.7%). The backends fail on the same faces (elderly read young), so
 # averaging them moves the answer without correcting it. The headline therefore names the most
 # reliable model present rather than blending toward a worse one. Re-check with
 # tools/benchmark.py if a backend changes; switch to fusion if one ever wins.
-AGE_MODEL_RELIABILITY = ("mivolo", "fairface", "dex", "caffe", "ssrnet")
+AGE_MODEL_RELIABILITY = ("mivolo", "fairface", "dex", "caffe")
 # Measured: mivolo 100%, fairface 95%, caffe 87%, deepface 84%.
 GENDER_FUSION_WEIGHTS = {"mivolo": 3.0, "fairface": 2.0, "caffe": 0.5, "deepface": 0.5}
 RACE_FUSION_WEIGHTS = {"fairface": 1.0, "deepface": 1.0}
-# Measured: dan 100%, hsemotion 100%, ferplus 98%, mini_xception 95%, efficientnet 52%.
-EMOTION_FUSION_WEIGHTS = {"dan": 3.0, "hsemotion": 3.0, "ferplus": 2.0,
-                          "mini_xception": 1.0, "efficientnet": 0.25}
+# Measured: dan 100%, hsemotion 100%, ferplus 98%, mini_xception 95%.
+EMOTION_FUSION_WEIGHTS = {"dan": 3.0, "hsemotion": 3.0, "ferplus": 2.0, "mini_xception": 1.0}
 
 # Inclusive year spans behind each bucketed age model's labels, so a bucket can join a
 # numeric fusion at its midpoint. 70+/60-100 are closed at a nominal 100 for that midpoint.
@@ -1815,7 +1783,7 @@ def _fairface_forward(
     if aligned is None:
         aligned = _margin_align(frame_bgr, box, 224, margin=1.5)
     face_rgb = cv2.cvtColor(aligned, cv2.COLOR_BGR2RGB)
-    face_norm = (face_rgb.astype(np.float32) / 255.0 - SSRNET_MEAN) / SSRNET_STD
+    face_norm = (face_rgb.astype(np.float32) / 255.0 - IMAGENET_MEAN) / IMAGENET_STD
     blob = face_norm.transpose(2, 0, 1)[np.newaxis, ...].astype(np.float32)
     with _lock_for(net):
         net.setInput(blob)
@@ -2625,7 +2593,7 @@ def analyze_frame(
     active_liveness: set | None = None,
 ):
     """Detect faces and run inference for whichever model keys are active per feature.
-    Multiple active models for the same feature (e.g. active_age = {"caffe", "ssrnet"})
+    Multiple active models for the same feature (e.g. active_age = {"caffe", "fairface"})
     all run and are shown together. No Streamlit calls (safe for background threads).
 
     global_adjustments apply to the whole frame first, before face detection even runs --
@@ -2791,9 +2759,6 @@ def analyze_frame(
                     bucket = int(np.argmax(probs))
                     value = AGE_LIST[bucket]
                     estimates[key] = float(np.mean(AGE_LIST_RANGES[bucket]))
-                elif key == "ssrnet":
-                    value = _cached_face_predict("age", key, face, predict_age_ssrnet, net, face)
-                    estimates[key] = float(value)
                 elif key == "fairface":
                     probs = _cached_face_predict(
                         "age_probs", key, face, fairface_probabilities,
@@ -2865,10 +2830,8 @@ def analyze_frame(
                     value = _cached_face_predict("emotion", key, face, predict_emotion_mini_xception, net, face)
                 elif key == "ferplus":
                     value = _cached_face_predict("emotion", key, face, predict_emotion_ferplus, net, face)
-                elif key == "hsemotion":
-                    value = _cached_face_predict("emotion", key, face, predict_emotion_hsemotion, net, face)
                 else:
-                    value = _cached_face_predict("emotion", key, face, predict_emotion_efficientnet, net, face)
+                    value = _cached_face_predict("emotion", key, face, predict_emotion_hsemotion, net, face)
                 pairs.append((key, value))
                 _record_model_latency(metrics, "emotion", key, started)
             return pairs, fuse_emotion(dict(pairs))
@@ -3126,7 +3089,7 @@ def aggregate_demographics(cropped_faces: list[dict]) -> dict[str, dict[str, dic
     """Whole-image demographic aggregate over already-computed per-face results (age/gender/race
     only) -- no new model, just a tally over cropped_faces' raw_columns. Reuses whatever
     model(s) were already active per feature; if two models are active for the same feature
-    (e.g. caffe + ssrnet age), each gets its own independent tally since their label sets/value
+    (e.g. caffe + fairface age), each gets its own independent tally since their label sets/value
     granularity generally differ (same reasoning as DAN vs EfficientNet emotion labels not being
     mixed). Returns {feature: {model_key: {label: count}}}; a feature/model with
     no faces contributing a value for it is simply absent, not a zero-filled entry."""
