@@ -144,7 +144,7 @@ Measured on those 75 faces (detection recall 100%):
 | ------- | -------- | ----------------- | -------------------- |
 | Gender  | **100%** | `mivolo` 100%     | `caffe`/`deepface` 86.7% |
 | Emotion | **100%** | `dan`/`hsemotion`/`ferplus` 100% | `mini_xception` 95.2% |
-| Race    | **97.3%** | `fairface` 96.0% | `deepface` 94.7% |
+| Race    | **96.0%** | `fairface` 93.3% | `deepface` 94.7% |
 | Age     | **93.3%** (= `mivolo`) | `mivolo` 93.3% | `caffe` 62.7% |
 
 Age is deliberately not fused: every combination tried -- weighted median and weighted mean
@@ -152,6 +152,11 @@ across a range of weights, clipping MiVOLO into FairFace's predicted decade, and
 MiVOLO only when both other backends disagreed with it -- scored at or below MiVOLO alone,
 because the age backends fail on the same faces (elderly faces read young in all of them).
 Averaging moves that answer without correcting it, so the headline names a winner instead.
+
+Race is scored strictly here: only the top class counts, even though the UI also shows a
+close runner-up (`White (52%)/Black (47%)`) when two classes are within 10 percentage points.
+Counting either shown class as correct would read 97.3% fused / 96.0% `fairface`, but only 2
+of the 75 fused answers show a runner-up at all, so the strict number is the honest one.
 
 Caveats worth stating plainly: 75 faces is a small corpus, so differences of one or two faces
 (about 1.3 percentage points) are noise, and only three of those faces have externally
