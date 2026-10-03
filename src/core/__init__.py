@@ -1,7 +1,7 @@
 """Core types, constants, and image processing utilities."""
-from src.core.types import BoundingBox, Detection, FaceResult, Models
-from src.core.constants import *
-from src.core.image_utils import (
+from .types import BoundingBox, Detection, FaceResult, Models
+from .constants import *
+from .image_utils import (
     is_grayscale_frame,
     crop_region,
     face_crop_bounds,

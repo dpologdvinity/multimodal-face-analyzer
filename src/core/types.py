@@ -9,6 +9,7 @@ import numpy as np
 
 @dataclass
 class BoundingBox:
+    """Axis-aligned rectangular 2D bounding box defined by top-left and bottom-right corners."""
     x1: int
     y1: int
     x2: int
@@ -16,20 +17,25 @@ class BoundingBox:
 
     @property
     def width(self) -> int:
+        """Horizontal pixel width of the bounding box."""
         return max(0, self.x2 - self.x1)
 
     @property
     def height(self) -> int:
+        """Vertical pixel height of the bounding box."""
         return max(0, self.y2 - self.y1)
 
     @property
     def area(self) -> int:
+        """Total area of the bounding box in pixels."""
         return self.width * self.height
 
     def to_tuple(self) -> tuple[int, int, int, int]:
+        """Return the coordinates as an (x1, y1, x2, y2) tuple."""
         return (self.x1, self.y1, self.x2, self.y2)
 
     def to_list(self) -> list[int]:
+        """Return the coordinates as an [x1, y1, x2, y2] list."""
         return [self.x1, self.y1, self.x2, self.y2]
 
     def __iter__(self):
@@ -44,6 +50,7 @@ class BoundingBox:
 
 @dataclass
 class Detection:
+    """Detected face or object candidate with bounding box, confidence, and optional landmarks."""
     box: BoundingBox
     confidence: float = 1.0
     landmarks: Any = None
@@ -57,6 +64,7 @@ class Detection:
 
 @dataclass
 class FaceResult:
+    """Analysis result container for a single detected face crop and its inferred attributes."""
     idx: int = 0
     box: tuple[int, int, int, int] | BoundingBox = (0, 0, 0, 0)
     image: np.ndarray | None = None
@@ -85,6 +93,7 @@ class FaceResult:
     model_results: list = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
+        """Convert face result to a dictionary representation."""
         d = asdict(self)
         if isinstance(self.box, BoundingBox):
             d["box"] = self.box.to_tuple()
@@ -102,6 +111,7 @@ class FaceResult:
 
 @dataclass
 class Models:
+    """Container holding loaded neural network models and session handles for face analysis."""
     face_net: Any = None
     age_nets: dict = field(default_factory=dict)
     gender_nets: dict = field(default_factory=dict)
@@ -156,6 +166,7 @@ class Models:
 
     @property
     def offline_features(self) -> list[str]:
+        """Return a list of feature slot names that currently have no models loaded."""
         return [
             name for name, nets in self._feature_slots if not nets
         ]

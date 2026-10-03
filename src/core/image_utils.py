@@ -4,7 +4,7 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
-from src.core.constants import GRAYSCALE_CHANNEL_DIFF_THRESHOLD
+from .constants import GRAYSCALE_CHANNEL_DIFF_THRESHOLD
 
 
 def is_grayscale_frame(frame_bgr: np.ndarray) -> bool:
@@ -84,6 +84,7 @@ def _adjust_black_point(img: np.ndarray, amount: float) -> np.ndarray:
 
 
 def _adjust_saturation(img_bgr: np.ndarray, amount: float, vibrance: bool = False) -> np.ndarray:
+    """Adjust saturation or skin-preserving vibrance in HSV color space."""
     hsv = cv2.cvtColor(np.clip(img_bgr, 0, 255).astype(np.uint8), cv2.COLOR_BGR2HSV).astype(np.float32)
     s = hsv[..., 1]
     if vibrance:

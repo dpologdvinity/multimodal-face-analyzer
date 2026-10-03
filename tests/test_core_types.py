@@ -138,3 +138,23 @@ def test_crop_helpers():
     frame = np.zeros((100, 100, 3), dtype=np.uint8)
     crop = crop_region(frame, 10, 20, 50, 60)
     assert crop.shape == (40, 40, 3)
+
+
+def test_import_inference_when_only_src_in_sys_path():
+    """Verify that inference and core import cleanly when only src/ is on sys.path."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    src_dir = str(Path(__file__).resolve().parents[1] / "src")
+    code = (
+        "import sys\n"
+        f"sys.path = [{src_dir!r}] + [p for p in sys.path if 'multimodal-face-analyzer' not in p]\n"
+        "import inference\n"
+        "assert hasattr(inference, 'Models')\n"
+        "assert hasattr(inference, 'BoundingBox')\n"
+        "assert hasattr(inference, 'apply_image_adjustments')\n"
+    )
+    res = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    assert res.returncode == 0, f"Import failed with stderr: {res.stderr}"
+
