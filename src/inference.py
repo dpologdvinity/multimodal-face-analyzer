@@ -209,32 +209,128 @@ except ImportError:
 
 
 
-# --- Thread safety for shared model instances (#19, #B) -----------------------------------
-# cv2.dnn.Net, cv2.CascadeClassifier, Keras/TF models, and the MediaPipe Tasks API are not
-# documented as safe for concurrent setInput/forward/predict/detect calls on the SAME cached
-# instance -- st.cache_resource shares one Models instance across every face, frame, and
-# Streamlit session. analyze_frame() runs each face's per-feature predictions concurrently
-# (see _run_feature_tasks below); this lock, keyed by the shared net object's identity, is
-# what makes concurrent calls onto the same net safe (they serialize) while calls onto
-# DIFFERENT nets still run in true parallel. Torch nn.Module.forward (dan) and
-# onnxruntime InferenceSession.run (glasses, yolo face detector) are both documented safe for
-# concurrent inference on one instance, so those are intentionally left unlocked.
-_NET_LOCKS: dict[int, threading.Lock] = {}
-_NET_LOCKS_GUARD = threading.Lock()
-
-
-def _lock_for(net) -> threading.Lock | "nullcontext[None]":
-    """Return a lock keyed by net's identity, or a no-op if net is just a boolean presence
-    marker (e.g. hair_color's "colorimetric" / recognition's "lbph" entries in Models, which
-    aren't a real shared native object)."""
-    if net is None or isinstance(net, bool):
-        return nullcontext()
-    key = id(net)
-    lock = _NET_LOCKS.get(key)
-    if lock is None:
-        with _NET_LOCKS_GUARD:
-            lock = _NET_LOCKS.setdefault(key, threading.Lock())
-    return lock
+try:
+    from .attributes import (
+        _lock_for,
+        colorize_frame,
+        maybe_colorize,
+        apply_geometric_transform,
+        apply_intensity_transform,
+        apply_enhance,
+        apply_sharpen,
+        apply_color_correct,
+        apply_denoise,
+        apply_bilateral_filter,
+        apply_wavelet_denoise,
+        apply_image_op,
+        run_3d_reconstruction,
+        run_age_progression,
+        _margin_align,
+        fairface_landmarks_from_mediapipe,
+        align_face_with_landmarks,
+        _estimate_roll_angle,
+        _rotate_region,
+        _softmax,
+        _format_race_label,
+        _fairface_forward,
+        fairface_probabilities,
+        fairface_race_label,
+        fairface_gender_label,
+        fairface_age_label,
+        predict_race_fairface,
+        deepface_probabilities,
+        predict_race_deepface,
+        caffe_probabilities,
+        predict_age_caffe,
+        crop_face_dex,
+        dex_age_estimate,
+        format_dex_age,
+        predict_age_dex,
+        mivolo_estimate,
+        mivolo_age_estimate,
+        predict_age_mivolo,
+        predict_age_fairface,
+        predict_gender_caffe,
+        predict_gender_mivolo,
+        predict_gender_fairface,
+        predict_gender_deepface,
+        predict_emotion_dan,
+        predict_emotion_mini_xception,
+        predict_emotion_ferplus,
+        predict_emotion_hsemotion,
+        audio_frame_to_mono_float,
+        classify_voice_arousal,
+        _emotion_arousal_category,
+        fuse_voice_and_emotion,
+        VoiceFaceFusion,
+        predict_texture_artifact_score,
+        predict_glasses_mobilenet,
+        predict_mask_mobilenetv2,
+        predict_hair_color_colorimetric,
+        predict_eye_color_colorimetric,
+    )
+    from .attributes._lock import _NET_LOCKS, _NET_LOCKS_GUARD
+except ImportError:
+    from attributes import (
+        _lock_for,
+        colorize_frame,
+        maybe_colorize,
+        apply_geometric_transform,
+        apply_intensity_transform,
+        apply_enhance,
+        apply_sharpen,
+        apply_color_correct,
+        apply_denoise,
+        apply_bilateral_filter,
+        apply_wavelet_denoise,
+        apply_image_op,
+        run_3d_reconstruction,
+        run_age_progression,
+        _margin_align,
+        fairface_landmarks_from_mediapipe,
+        align_face_with_landmarks,
+        _estimate_roll_angle,
+        _rotate_region,
+        _softmax,
+        _format_race_label,
+        _fairface_forward,
+        fairface_probabilities,
+        fairface_race_label,
+        fairface_gender_label,
+        fairface_age_label,
+        predict_race_fairface,
+        deepface_probabilities,
+        predict_race_deepface,
+        caffe_probabilities,
+        predict_age_caffe,
+        crop_face_dex,
+        dex_age_estimate,
+        format_dex_age,
+        predict_age_dex,
+        mivolo_estimate,
+        mivolo_age_estimate,
+        predict_age_mivolo,
+        predict_age_fairface,
+        predict_gender_caffe,
+        predict_gender_mivolo,
+        predict_gender_fairface,
+        predict_gender_deepface,
+        predict_emotion_dan,
+        predict_emotion_mini_xception,
+        predict_emotion_ferplus,
+        predict_emotion_hsemotion,
+        audio_frame_to_mono_float,
+        classify_voice_arousal,
+        _emotion_arousal_category,
+        fuse_voice_and_emotion,
+        VoiceFaceFusion,
+        predict_texture_artifact_score,
+        predict_glasses_mobilenet,
+        predict_mask_mobilenetv2,
+        predict_hair_color_colorimetric,
+        predict_eye_color_colorimetric,
+    )
+    from attributes._lock import _NET_LOCKS, _NET_LOCKS_GUARD
 
 
 # Shared across the process (and every Streamlit session) -- per-feature tasks are short-lived
@@ -509,38 +605,7 @@ class FaceTracker:
 # is_grayscale_frame imported from core.image_utils
 
 
-def colorize_frame(net, frame_bgr: np.ndarray) -> np.ndarray:
-    """ECCV16 colorization (Zhang et al., richzhang/colorization): predict the Lab 'ab' channels
-    from the 'L' channel and rejoin. See ideas/colorization.md for the reference implementation
-    this follows."""
-    scaled = frame_bgr.astype("float32") / 255.0
-    lab_img = cv2.cvtColor(scaled, cv2.COLOR_BGR2LAB)
-
-    resized = cv2.resize(lab_img, (224, 224))
-    L = cv2.split(resized)[0]
-    L -= 50
-
-    with _lock_for(net):
-        net.setInput(cv2.dnn.blobFromImage(L))
-        ab_channel = net.forward()[0, :, :, :].transpose((1, 2, 0))
-    ab_channel = cv2.resize(ab_channel, (frame_bgr.shape[1], frame_bgr.shape[0]))
-
-    L_full = cv2.split(lab_img)[0]
-    colorized = np.concatenate((L_full[:, :, np.newaxis], ab_channel), axis=2)
-    colorized = cv2.cvtColor(colorized, cv2.COLOR_LAB2BGR)
-    colorized = np.clip(colorized, 0, 1)
-    return (255 * colorized).astype("uint8")
-
-
-def maybe_colorize(models: "Models", frame_bgr: np.ndarray, active_colorization: set) -> tuple[np.ndarray, bool]:
-    """Auto-colorize frame_bgr if it's detected as grayscale and the colorization backend is
-    active; otherwise return it unchanged. Returns (frame, was_colorized)."""
-    net = models.colorization_nets.get("eccv16")
-    if net is None or "eccv16" not in active_colorization:
-        return frame_bgr, False
-    if not is_grayscale_frame(frame_bgr):
-        return frame_bgr, False
-    return colorize_frame(net, frame_bgr), True
+# colorize_frame and maybe_colorize imported from attributes.transformers
 
 # apply_image_adjustments and helpers imported from core.image_utils
 
@@ -580,109 +645,7 @@ EMOTION_HIGH_AROUSAL_LABELS = {
 EMOTION_LOW_AROUSAL_LABELS = {"neutral", "sad", "sadness"}
 
 
-def audio_frame_to_mono_float(samples: np.ndarray) -> np.ndarray:
-    """Normalize whatever shape/dtype PyAV's AudioFrame.to_ndarray() handed back into a 1-D
-    float32 array in [-1, 1]: mixes multi-channel audio down to mono (av's ndarray is
-    channel-major for planar formats, i.e. shape (channels, samples), so averaging axis 0
-    is correct there; a already-1-D array is left as-is)."""
-    if np.issubdtype(samples.dtype, np.integer):
-        max_value = float(np.iinfo(samples.dtype).max)
-        samples = samples.astype(np.float32) / max_value
-    else:
-        samples = samples.astype(np.float32)
-    if samples.ndim == 2 and samples.shape[0] <= 8:
-        samples = samples.mean(axis=0)
-    return samples.flatten()
-
-
-def classify_voice_arousal(rms: float) -> str:
-    """Bucket a normalized RMS energy level into QUIET / SPEAKING / LOUD."""
-    if rms >= AUDIO_AROUSAL_LOUD_RMS:
-        return "LOUD"
-    if rms >= AUDIO_AROUSAL_QUIET_RMS:
-        return "SPEAKING"
-    return "QUIET"
-
-
-def _emotion_arousal_category(emotion_label: str) -> str | None:
-    label = emotion_label.lower()
-    if label in EMOTION_HIGH_AROUSAL_LABELS:
-        return "high"
-    if label in EMOTION_LOW_AROUSAL_LABELS:
-        return "low"
-    return None  # composite labels are not mapped to arousal categories
-
-
-def fuse_voice_and_emotion(voice_arousal: str, emotion_label: str) -> str | None:
-    """Cross-check voice loudness against one face's emotion label. Returns "consistent" if
-    the two roughly agree on high/low arousal, "inconsistent" if they roughly disagree, or
-    None if emotion_label isn't one this heuristic can categorize (see
-    _emotion_arousal_category) -- None means "no opinion", not "disagreement"."""
-    emotion_category = _emotion_arousal_category(emotion_label)
-    if emotion_category is None:
-        return None
-    voice_category = "low" if voice_arousal == "QUIET" else "high"
-    return "consistent" if voice_category == emotion_category else "inconsistent"
-
-
-class VoiceFaceFusion:
-    """Thread-safe rolling audio buffer for #10. One instance per webcam LIVE stream: the
-    audio_frame_callback (streamlit-webrtc's own audio thread) appends samples via
-    ingest_audio(); the video_frame_callback (a different thread, different rate) calls
-    current_arousal() to read "how loud has the mic been recently" at the instant a video
-    frame arrives. Same "module-level/st.cache_resource-held thread-safe buffer" pattern as
-    #9's emotion-over-time buffer and #2's FaceTracker -- this is the third feature needing
-    exactly this shape of cross-thread state, all solved the same way for consistency."""
-
-    def __init__(self, window_seconds: float = AUDIO_AROUSAL_WINDOW_SECONDS):
-        self._lock = threading.Lock()
-        self._window_seconds = window_seconds
-        self._samples: list[np.ndarray] = []
-        self._buffered_seconds = 0.0
-        self._sample_rate: int | None = None
-        self._latest_status: dict | None = None
-
-    def ingest_audio(self, samples: np.ndarray, sample_rate: int) -> None:
-        """Append one audio frame's samples (mono float32, see audio_frame_to_mono_float) to
-        the rolling window, dropping the oldest samples once the window exceeds
-        window_seconds -- bounds memory the same way #9's buffer caps its sample count."""
-        if samples.size == 0 or sample_rate <= 0:
-            return
-        with self._lock:
-            self._sample_rate = sample_rate
-            self._samples.append(samples)
-            self._buffered_seconds += samples.size / sample_rate
-            while self._buffered_seconds > self._window_seconds and len(self._samples) > 1:
-                oldest = self._samples.pop(0)
-                self._buffered_seconds -= oldest.size / self._sample_rate
-
-    def current_arousal(self) -> str:
-        """Return QUIET / SPEAKING / LOUD for the current buffered window, or "QUIET" if no
-        audio has been ingested yet (e.g. mic permission not granted, or fusion just enabled)."""
-        with self._lock:
-            if not self._samples:
-                return "QUIET"
-            window = np.concatenate(self._samples)
-        rms = float(np.sqrt(np.mean(np.square(window)))) if window.size else 0.0
-        return classify_voice_arousal(rms)
-
-    def set_latest_status(self, status: dict) -> None:
-        """Stash the video callback's most recent fusion result for the main Streamlit script
-        thread to read on its next rerun (see the module docstring's "no per-face text burned
-        onto the shared image" convention -- this is the same shared-state-read-on-rerun
-        pattern as #9's buffer, applied to a single status dict instead of a time series)."""
-        with self._lock:
-            self._latest_status = status
-
-    def get_latest_status(self) -> dict | None:
-        with self._lock:
-            return self._latest_status
-
-    def reset(self) -> None:
-        with self._lock:
-            self._samples = []
-            self._buffered_seconds = 0.0
-            self._latest_status = None
+# Voice and emotion fusion imported from attributes.emotion
 
 
 # --- Rectangle-select geometric transforms (ideas/transform.md, ideas/geo-transform.md) ---
@@ -694,427 +657,10 @@ GEOMETRIC_TRANSFORM_OPTIONS = ["translate", "reflect", "rotate", "scale", "shear
 
 
 
-def apply_geometric_transform(region: np.ndarray, transform_type: str, **params) -> np.ndarray:
-    """Apply one geometric transform to a cropped region. Matches the matrices in
-    ideas/transform.md / ideas/geo-transform.md directly (translation, reflection, rotation,
-    scaling, shearing)."""
-    h, w = region.shape[:2]
+# Geometric transforms and image ops imported from attributes.transformers
 
-    if transform_type == "translate":
-        dx, dy = params.get("dx", 0), params.get("dy", 0)
-        m = np.float32([[1, 0, dx], [0, 1, dy]])
-        return cv2.warpAffine(region, m, (w, h))
 
-    if transform_type == "reflect":
-        axis = params.get("axis", "horizontal")
-        return cv2.flip(region, 1 if axis == "horizontal" else 0)
-
-    if transform_type == "rotate":
-        angle, scale = params.get("angle", 0.0), params.get("scale", 1.0)
-        m = cv2.getRotationMatrix2D((w / 2, h / 2), angle, scale)
-        return cv2.warpAffine(region, m, (w, h))
-
-    if transform_type == "scale":
-        fx, fy = params.get("fx", 1.0), params.get("fy", 1.0)
-        interp = cv2.INTER_AREA if fx < 1 and fy < 1 else cv2.INTER_CUBIC
-        return cv2.resize(region, None, fx=fx, fy=fy, interpolation=interp)
-
-    if transform_type == "shear":
-        axis, factor = params.get("axis", "x"), params.get("factor", 0.0)
-        if axis == "x":
-            out_w, out_h = max(1, int(np.ceil(w + abs(factor) * h))), h
-            m = np.float32([[1, factor, max(0, -factor * h)], [0, 1, 0], [0, 0, 1]])
-        else:
-            out_w, out_h = w, max(1, int(np.ceil(h + abs(factor) * w)))
-            m = np.float32([[1, 0, 0], [factor, 1, max(0, -factor * w)], [0, 0, 1]])
-        return cv2.warpPerspective(region, m, (out_w, out_h))
-
-    raise ValueError(f"Unknown transform_type: {transform_type}")
-
-
-# --- Per-face one-click image operations (ideas/intensity.md, enhance.md, sharpen.md,
-# color-correct.md, denoise.md, bilateral-filter.md, wavelet-denoise.md) ---
-IMAGE_OP_OPTIONS = ["intensity", "enhance", "sharpen", "color_correct", "denoise", "bilateral_filter", "wavelet_denoise"]
-INTENSITY_METHODS = ["negative", "log", "gamma", "contrast_stretch"]
-SHARPEN_METHODS = ["laplacian", "high_boost"]
-DENOISE_METHODS = ["gaussian", "median", "nlm"]
-
-
-def apply_intensity_transform(face_bgr: np.ndarray, method: str = "gamma", gamma: float = 0.7, r1: int = 70, s1: int = 0, r2: int = 140, s2: int = 255) -> np.ndarray:
-    """Intensity transformations (ideas/intensity.md): negative (s = L-1-r), log (s =
-    c*log(1+r), expands dark detail), gamma/power-law (s = c*r^gamma, gamma<1 brightens,
-    gamma>1 darkens), or piecewise-linear contrast stretching."""
-    img = face_bgr.astype(np.float32)
-
-    if method == "negative":
-        return (255 - img).astype(np.uint8)
-
-    if method == "log":
-        c = 255.0 / np.log(1 + img.max()) if img.max() > 0 else 1.0
-        return np.clip(c * np.log(1 + img), 0, 255).astype(np.uint8)
-
-    if method == "gamma":
-        return np.clip(255.0 * (img / 255.0) ** gamma, 0, 255).astype(np.uint8)
-
-    if method == "contrast_stretch":
-        out = np.empty_like(img)
-        low = img <= r1
-        mid = (img > r1) & (img <= r2)
-        high = img > r2
-        out[low] = (s1 / r1) * img[low] if r1 else 0
-        out[mid] = ((s2 - s1) / (r2 - r1)) * (img[mid] - r1) + s1
-        out[high] = ((255 - s2) / (255 - r2)) * (img[high] - r2) + s2
-        return np.clip(out, 0, 255).astype(np.uint8)
-
-    raise ValueError(f"Unknown intensity method: {method}")
-
-
-def apply_enhance(face_bgr: np.ndarray, brightness: float = 10.0, contrast: float = 1.3) -> np.ndarray:
-    """General enhancement (ideas/enhance.md): brightness/contrast adjustment
-    (cv2.addWeighted) followed by luminance histogram equalization (LAB's L channel, so color
-    isn't distorted the way equalizing each BGR channel independently would)."""
-    adjusted = cv2.addWeighted(face_bgr, contrast, np.zeros_like(face_bgr), 0, brightness)
-    lab = cv2.cvtColor(adjusted, cv2.COLOR_BGR2LAB)
-    l, a, b = cv2.split(lab)
-    l = cv2.equalizeHist(l)
-    return cv2.cvtColor(cv2.merge((l, a, b)), cv2.COLOR_LAB2BGR)
-
-
-def apply_sharpen(face_bgr: np.ndarray, method: str = "laplacian") -> np.ndarray:
-    """Sharpening (ideas/sharpen.md): basic Laplacian kernel, or a stronger high-boost filter
-    (larger center coefficient -> more pronounced edge emphasis)."""
-    if method == "high_boost":
-        kernel = np.array([[0, -1, 0], [-1, 6, -1], [0, -1, 0]])
-    else:
-        kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
-    return cv2.filter2D(face_bgr, -1, kernel)
-
-
-def apply_color_correct(face_bgr: np.ndarray) -> np.ndarray:
-    """Color correction (ideas/color-correct.md): BGR -> LAB, CLAHE (adaptive histogram
-    equalization) on the L channel only, back to BGR -- corrects contrast/color balance
-    without the color-shifting artifacts of equalizing in RGB/BGR space directly."""
-    lab = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2LAB)
-    l, a, b = cv2.split(lab)
-    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-    l = clahe.apply(l)
-    return cv2.cvtColor(cv2.merge((l, a, b)), cv2.COLOR_LAB2BGR)
-
-
-def apply_denoise(face_bgr: np.ndarray, method: str = "nlm") -> np.ndarray:
-    """Classical denoising (ideas/denoise.md): Gaussian (smooths Gaussian/sensor noise,
-    slightly blurs edges), median (strong against salt-and-pepper/impulse noise, better edge
-    preservation), or Non-Local Means (searches the whole image for similar patches, best
-    texture preservation, slowest). CNN/GAN-based methods from the same doc are skipped --
-    they need trained weights this repo doesn't have a source for (same category of gap as
-    deep3d elsewhere in this app)."""
-    if method == "gaussian":
-        return cv2.GaussianBlur(face_bgr, (5, 5), 1.5)
-    if method == "median":
-        return cv2.medianBlur(face_bgr, 5)
-    if method == "nlm":
-        return cv2.fastNlMeansDenoisingColored(face_bgr, h=10, hColor=10, templateWindowSize=7, searchWindowSize=21)
-    raise ValueError(f"Unknown denoise method: {method}")
-
-
-def apply_bilateral_filter(face_bgr: np.ndarray, diameter: int = 15, sigma_color: float = 75.0, sigma_space: float = 75.0) -> np.ndarray:
-    """Edge-preserving denoise (ideas/bilateral-filter.md.md): weights nearby pixels by both
-    spatial closeness and intensity similarity, so edges (large intensity jumps) are preserved
-    while flat/noisy regions get smoothed -- unlike Gaussian blur, which smooths everything
-    uniformly regardless of edges."""
-    return cv2.bilateralFilter(face_bgr, diameter, sigma_color, sigma_space)
-
-
-def apply_wavelet_denoise(face_bgr: np.ndarray, threshold: float = 0.05, wavelet: str = "db1") -> np.ndarray:
-    """Wavelet denoising (ideas/wavelet-denoise.md): the source doc uses ImageMagick/Wand's
-    wavelet_denoise(); this app has no ImageMagick dependency, so this is the equivalent
-    operation via PyWavelets instead -- a multi-level discrete wavelet decomposition per
-    channel, soft-thresholding the detail (noise-dominated) coefficients, then reconstructing.
-    threshold is fractional (0-1), scaled against each channel's own coefficient magnitude
-    range so it behaves similarly across images regardless of absolute brightness."""
-    import pywt
-
-    channels = cv2.split(face_bgr.astype(np.float32))
-    denoised_channels = []
-    for channel in channels:
-        coeffs = pywt.wavedec2(channel, wavelet, level=2)
-        detail_coeffs = coeffs[1:]
-        max_detail = max((np.abs(d).max() for level in detail_coeffs for d in level), default=1.0) or 1.0
-        abs_threshold = threshold * max_detail
-        thresholded = [coeffs[0]] + [
-            tuple(pywt.threshold(d, abs_threshold, mode="soft") for d in level) for level in detail_coeffs
-        ]
-        reconstructed = pywt.waverec2(thresholded, wavelet)
-        denoised_channels.append(reconstructed[:channel.shape[0], :channel.shape[1]])
-
-    return np.clip(cv2.merge(denoised_channels), 0, 255).astype(np.uint8)
-
-
-def apply_image_op(face_bgr: np.ndarray, op: str, **params) -> np.ndarray:
-    """Dispatch for the per-face IMAGE OP button -- one entry point for all 7 one-click
-    operations, so the caller doesn't need to know each function's name."""
-    dispatch = {
-        "intensity": apply_intensity_transform,
-        "enhance": apply_enhance,
-        "sharpen": apply_sharpen,
-        "color_correct": apply_color_correct,
-        "denoise": apply_denoise,
-        "bilateral_filter": apply_bilateral_filter,
-        "wavelet_denoise": apply_wavelet_denoise,
-    }
-    if op not in dispatch:
-        raise ValueError(f"Unknown image op: {op}")
-    return dispatch[op](face_bgr, **params)
-
-
-def caffe_probabilities(net, blob: np.ndarray) -> np.ndarray:
-    """Class probabilities from one of the Adience Caffe heads (age or gender)."""
-    with _lock_for(net):
-        net.setInput(blob)
-        return net.forward()[0].flatten()
-
-
-def predict_gender_caffe(net, blob: np.ndarray) -> str:
-    """Predict gender from a Caffe blob via argmax."""
-    return GENDER_LIST[int(caffe_probabilities(net, blob).argmax())]
-
-
-def predict_age_caffe(net, blob: np.ndarray) -> str:
-    """Predict age bucket from a Caffe blob via argmax."""
-    return AGE_LIST[int(caffe_probabilities(net, blob).argmax())]
-
-
-def crop_face_dex(frame: np.ndarray, box: tuple[int, int, int, int]) -> np.ndarray:
-    """Extract DEX's 40% width/height margins, replicating missing edge pixels.
-
-    Translate the reference extractSubImage.m crop to zero-based exclusive boxes.
-    Use the original detector box without the shared padding or roll correction.
-    """
-    x1, y1, x2, y2 = box
-    pad_x, pad_y = round((x2 - x1) * 0.4), round((y2 - y1) * 0.4)
-    left, top, right, bottom = x1 - pad_x, y1 - pad_y, x2 + pad_x, y2 + pad_y
-    height, width = frame.shape[:2]
-    crop = frame[max(0, top):min(height, bottom), max(0, left):min(width, right)]
-    return cv2.copyMakeBorder(crop, max(0, -top), max(0, bottom - height),
-                              max(0, -left), max(0, right - width), cv2.BORDER_REPLICATE)
-
-
-def dex_age_estimate(net, face_bgr: np.ndarray) -> tuple[float, float] | None:
-    """Decode DEX's 101-class softmax over ages 0-100 into (expected age, standard deviation).
-
-    Expectation, not argmax -- that decoding is what the DEX paper reports its error against.
-    Returns None for a malformed forward pass. Separate from predict_age_dex so age fusion can
-    consume the raw number instead of re-parsing the display string.
-    """
-    blob = cv2.dnn.blobFromImage(face_bgr, 1.0, (224, 224), DEX_MEAN_VALUES, swapRB=False, crop=False)
-    with _lock_for(net):
-        net.setInput(blob)
-        probs = net.forward().flatten().astype(np.float64)
-    if probs.size != 101 or not np.isfinite(probs).all() or (probs < 0).any():
-        return None
-    total = probs.sum()
-    if not np.isfinite(total) or total <= 0:
-        return None
-    probs /= total
-    years = np.arange(101)
-    age = float(probs @ years)
-    spread = float(np.sqrt(probs @ ((years - age) ** 2)))
-    return age, spread
-
-
-def format_dex_age(estimate: tuple[float, float] | None) -> str:
-    """Render a DEX estimate, flagging distributions too wide to state as a single year."""
-    if estimate is None:
-        return "unknown"
-    age, spread = estimate
-    if spread > DEX_MAX_AGE_SD:
-        return f"uncertain (mean {age:.0f}, SD {spread:.0f})"
-    return f"{age:.0f}"
-
-
-def predict_age_dex(net, face_bgr: np.ndarray) -> str:
-    """Predict a continuous age with DEX (Deep EXpectation), labelling wide distributions."""
-    return format_dex_age(dex_age_estimate(net, face_bgr))
-
-
-def _margin_align(frame_bgr: np.ndarray, box: tuple[int, int, int, int], output_size: int, margin: float) -> np.ndarray:
-    """Crop and center a face box with proportional context, then resize to output_size.
-
-    Margin controls the ratio of box height to output size: margin=1.5 means the box occupies
-    1/1.5 of the output. No rotation is applied. Critical: must use the UNPADDED detection box
-    from the original frame -- many models were trained with specific context ratios and
-    arbitrary padding breaks them, causing subtle bias in predictions.
-    """
-    x1, y1, x2, y2 = box
-    w, h = x2 - x1, y2 - y1
-    cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
-    scale = output_size / (max(w, h) * margin)
-    m = np.array([
-        [scale, 0, output_size / 2 - scale * cx],
-        [0, scale, output_size / 2 - scale * cy],
-    ], dtype=np.float32)
-    return cv2.warpAffine(frame_bgr, m, (output_size, output_size), borderValue=0.0)
-
-
-# dlib's five-point chip uses FOUR eye corners and the nose, not ArcFace's eye centers
-# and mouth corners. Order: image-right outer/inner, image-left outer/inner, nose.
-FAIRFACE_LANDMARK_INDICES = (263, 362, 33, 133, 1)
-# dlib/image_transforms/interpolation.h::get_face_chip_details, padding=0.25 as in
-# dchen236/FairFace/predict.py. MediaPipe supplies approximate corresponding landmarks.
-FAIRFACE_REFERENCE_LANDMARKS = np.array([
-    [0.8595674595992, 0.2134981538014], [0.6460604764104, 0.2289674387677],
-    [0.1205750620789, 0.2137274526848], [0.3340850613712, 0.2290642403242],
-    [0.4901123135679, 0.6277975316475],
-], dtype=np.float64)
-
-
-def fairface_landmarks_from_mediapipe(
-    points: list[tuple[float, float]], width: int, height: int,
-) -> np.ndarray | None:
-    """Convert normalized MediaPipe landmarks to FairFace's five-point pixel order."""
-    if len(points) <= max(FAIRFACE_LANDMARK_INDICES) or width <= 0 or height <= 0:
-        return None
-    selected = np.asarray([points[index] for index in FAIRFACE_LANDMARK_INDICES], dtype=np.float32)
-    if selected.shape != (5, 2) or not np.isfinite(selected).all() or np.any((selected < 0) | (selected > 1)):
-        return None
-    selected *= np.array([width, height], dtype=np.float32)
-    return selected
-
-
-def align_face_with_landmarks(
-    frame_bgr: np.ndarray, landmarks: np.ndarray, output_size: int,
-) -> np.ndarray | None:
-    """Align a face to FairFace's five-point reference, or return None for invalid input."""
-    source = np.asarray(landmarks, dtype=np.float64)
-    if source.shape != (5, 2) or not np.isfinite(source).all():
-        return None
-    if np.linalg.matrix_rank(source - source.mean(axis=0)) < 2:
-        return None
-    target = (FAIRFACE_REFERENCE_LANDMARKS + 0.25) / 1.5 * output_size
-    # Fit an orientation-preserving similarity from chip coordinates to source pixels,
-    # using all five points. No shear, reflection, or random outlier subset.
-    design = np.zeros((10, 4), dtype=np.float64)
-    design[0::2, :2] = np.column_stack((target[:, 0], -target[:, 1]))
-    design[1::2, :2] = np.column_stack((target[:, 1], target[:, 0]))
-    design[0::2, 2] = 1
-    design[1::2, 3] = 1
-    a, b, tx, ty = np.linalg.lstsq(design, source.reshape(-1), rcond=None)[0]
-    if a*a + b*b < 1e-12:
-        return None
-    matrix = np.array([[a, -b, tx], [b, a, ty]])
-    return cv2.warpAffine(frame_bgr, matrix, (output_size, output_size),
-                          flags=cv2.INTER_LINEAR | cv2.WARP_INVERSE_MAP, borderValue=0.0)
-
-
-def _estimate_roll_angle(face_bgr: np.ndarray, eye_cascade) -> float | None:
-    """Detect two eyes via Haar cascade and return the roll angle (degrees) needed to
-    level them, or None if fewer than 2 eyes found or the angle looks like noise."""
-    face_gray = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2GRAY)
-    with _lock_for(eye_cascade):
-        eyes = eye_cascade.detectMultiScale(face_gray, scaleFactor=1.1, minNeighbors=6, minSize=(20, 20))
-    if len(eyes) < 2:
-        return None
-    # take the two largest detections (most confident), left-to-right by x center
-    eyes = sorted(eyes, key=lambda e: e[2] * e[3], reverse=True)[:2]
-    (x1, y1, w1, h1), (x2, y2, w2, h2) = sorted(eyes, key=lambda e: e[0])
-    cx1, cy1 = x1 + w1 / 2, y1 + h1 / 2
-    cx2, cy2 = x2 + w2 / 2, y2 + h2 / 2
-    angle = np.degrees(np.arctan2(cy2 - cy1, cx2 - cx1))
-    return angle if abs(angle) <= 45 else None  # >45 deg is almost certainly a bad detection
-
-
-def _rotate_region(frame_bgr: np.ndarray, box: tuple[int, int, int, int], angle_deg: float, pad_factor: float = 0.8) -> tuple[np.ndarray, tuple[int, int, int, int]]:
-    """Crop a generously padded region around box from frame_bgr, rotate it level by
-    angle_deg around the box center, and return (rotated_region, box_in_region_coords).
-    Padding is large enough that rotating the box never clips its corners."""
-    x1, y1, x2, y2 = box
-    w, h = x2 - x1, y2 - y1
-    pad = int(pad_factor * max(w, h))
-    fy, fx = frame_bgr.shape[:2]
-    rx1, ry1 = max(0, x1 - pad), max(0, y1 - pad)
-    rx2, ry2 = min(fx, x2 + pad), min(fy, y2 + pad)
-    region = frame_bgr[ry1:ry2, rx1:rx2]
-    local_box = (x1 - rx1, y1 - ry1, x2 - rx1, y2 - ry1)
-    lcx, lcy = (local_box[0] + local_box[2]) / 2.0, (local_box[1] + local_box[3]) / 2.0
-    # atan2 uses downward-positive image y. OpenCV's positive rotation levels that slope.
-    m = cv2.getRotationMatrix2D((lcx, lcy), angle_deg, 1.0)
-    rotated = cv2.warpAffine(region, m, (region.shape[1], region.shape[0]), borderMode=cv2.BORDER_REPLICATE)
-    return rotated, local_box
-
-
-def mivolo_estimate(net: MiVOLOInference, face_bgr: np.ndarray) -> tuple[float, str]:
-    """Age in years and gender label from a single MiVOLO forward pass.
-
-    Face-only. The bundled checkpoint is loaded with use_persons=False (see
-    nets/mivolo/inference_wrapper.py), whose training-time format for "no person crop" is a
-    ZERO body branch -- which is exactly what predict_face supplies. Feeding the second branch
-    a person crop guessed from the face box instead measured *worse* on the benchmark corpus
-    (89.3% vs 94.7%): without a person detector the guess is not a person box, and the model
-    was never given a non-zero body branch in this configuration.
-    """
-    with _lock_for(net):
-        age, gender, _ = net.predict_face(face_bgr)
-    # MiVOLO returns 'male'/'female' (lowercase); normalize to "Male"/"Female"
-    return float(age), ("Male" if gender == "male" else "Female")
-
-
-def mivolo_age_estimate(net: MiVOLOInference, face_bgr: np.ndarray) -> float:
-    """Run MiVOLO age-only inference when gender is not selected."""
-    with _lock_for(net):
-        return float(net.predict_age(face_bgr))
-
-
-def predict_age_mivolo(net: MiVOLOInference, face_bgr: np.ndarray) -> str:
-    """Predict age with MiVOLO."""
-    age, _ = mivolo_estimate(net, face_bgr)
-    return f"{int(round(age))}"
-
-
-def predict_gender_mivolo(net: MiVOLOInference, face_bgr: np.ndarray) -> str:
-    """Predict gender with MiVOLO."""
-    _, gender = mivolo_estimate(net, face_bgr)
-    return gender
-
-
-def predict_emotion_dan(net, face_bgr: np.ndarray) -> str:
-    """Classify facial expression into one of EMOTION_LABELS_DAN."""
-    face_rgb = cv2.cvtColor(cv2.resize(face_bgr, (224, 224)), cv2.COLOR_BGR2RGB)
-    face_norm = (face_rgb.astype(np.float32) / 255.0 - IMAGENET_MEAN) / IMAGENET_STD
-    tensor = torch.from_numpy(face_norm.transpose(2, 0, 1)).unsqueeze(0).float()
-    with torch.no_grad():
-        logits, _, _ = net(tensor)
-    return EMOTION_LABELS_DAN[logits[0].argmax().item()]
-
-
-def predict_emotion_mini_xception(net, face_bgr: np.ndarray) -> str:
-    """Classify facial expression into one of EMOTION_LABELS_MINI_XCEPTION."""
-    face_gray = cv2.cvtColor(cv2.resize(face_bgr, (64, 64)), cv2.COLOR_BGR2GRAY).astype(np.float32)
-    face_norm = (face_gray / 255.0 - 0.5) * 2.0
-    tensor = face_norm[np.newaxis, ..., np.newaxis]
-    with _lock_for(net):
-        probs = net(tensor, training=False).numpy().flatten()
-    return EMOTION_LABELS_MINI_XCEPTION[int(np.argmax(probs))]
-
-
-def predict_emotion_ferplus(net, face_bgr: np.ndarray) -> str:
-    """Classify facial expression into one of EMOTION_LABELS_FERPLUS."""
-    face_gray = cv2.cvtColor(cv2.resize(face_bgr, (64, 64)), cv2.COLOR_BGR2GRAY).astype(np.float32)
-    blob = face_gray[np.newaxis, np.newaxis, ...]
-    with _lock_for(net):
-        net.setInput(blob)
-        logits = net.forward().flatten()
-    return EMOTION_LABELS_FERPLUS[int(np.argmax(logits))]
-
-
-def predict_emotion_hsemotion(net, face_bgr: np.ndarray) -> str:
-    """Classify facial expression into one of EMOTION_LABELS_HSEMOTION."""
-    face_rgb = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2RGB)
-    blob = cv2.dnn.blobFromImage(face_rgb, 1.0 / 255.0, (224, 224), (0, 0, 0), swapRB=False, crop=False)
-    blob = (blob - IMAGENET_MEAN.reshape(1, 3, 1, 1)) / IMAGENET_STD.reshape(1, 3, 1, 1)
-    with _lock_for(net):
-        net.setInput(blob.astype(np.float32))
-        logits = net.forward().flatten()
-    return EMOTION_LABELS_HSEMOTION[int(np.argmax(logits))]
+# Age, gender, emotion, and alignment functions imported from attributes
 
 
 def _format_results(pairs: list[tuple[str, str]]) -> list[str]:
@@ -1277,98 +823,7 @@ def with_headline(
     return ([(key, headline)] if headline else []) + pairs
 
 
-def _softmax(x: np.ndarray) -> np.ndarray:
-    """Numerically stable softmax (shift by max to prevent overflow)."""
-    exp = np.exp(x - np.max(x))
-    return exp / exp.sum()
-
-
-def _format_race_label(probs: np.ndarray, labels: list[str]) -> str:
-    """Format the top race prediction, showing the top-2 together if their probabilities are close."""
-    order = np.argsort(probs)[::-1]
-    top1, top2 = order[0], order[1]
-    if probs[top1] - probs[top2] < RACE_CLOSE_MARGIN:
-        return f"{labels[top1]} ({probs[top1] * 100:.0f}%)/{labels[top2]} ({probs[top2] * 100:.0f}%)"
-    return labels[top1]
-
-
-def _fairface_forward(
-    net, frame_bgr: np.ndarray, box: tuple[int, int, int, int], output_name: str,
-    landmarks: np.ndarray | None = None,
-) -> np.ndarray:
-    # Same alignment as predict_race_fairface -- one ONNX graph, three named outputs
-    # (race_output, gender_output, age_output); re-run per feature for simplicity.
-    aligned = align_face_with_landmarks(frame_bgr, landmarks, 224) if landmarks is not None else None
-    if aligned is None:
-        aligned = _margin_align(frame_bgr, box, 224, margin=1.5)
-    face_rgb = cv2.cvtColor(aligned, cv2.COLOR_BGR2RGB)
-    face_norm = (face_rgb.astype(np.float32) / 255.0 - IMAGENET_MEAN) / IMAGENET_STD
-    blob = face_norm.transpose(2, 0, 1)[np.newaxis, ...].astype(np.float32)
-    with _lock_for(net):
-        net.setInput(blob)
-        return net.forward(output_name).flatten()
-
-
-def fairface_probabilities(
-    net, frame_bgr: np.ndarray, box: tuple[int, int, int, int], output_name: str, landmarks=None,
-) -> np.ndarray:
-    """Softmax probabilities from one of FairFace's three heads.
-
-    Exposed separately from the predict_* wrappers so fusion can read the distribution without
-    paying for a second forward pass just to re-derive it from a label.
-    """
-    # Prefer dlib chip geometry (MediaPipe landmarks) over bbox approximation for better alignment.
-    return _softmax(_fairface_forward(net, frame_bgr, box, output_name, landmarks))
-
-
-def fairface_race_label(probs: np.ndarray) -> str:
-    """Race label (with a close runner-up when applicable) from FairFace's race head."""
-    return _format_race_label(probs, RACE_LABELS_FAIRFACE)
-
-
-def fairface_gender_label(probs: np.ndarray) -> str:
-    """Gender label from FairFace's gender head (index 0 is Male)."""
-    return "Male" if np.argmax(probs) == 0 else "Female"
-
-
-def fairface_age_label(probs: np.ndarray) -> str:
-    """Age-bucket label from FairFace's age head (9 categories: 0-2, 3-9, ..., 70+)."""
-    return FAIRFACE_AGE_LABELS[int(np.argmax(probs))]
-
-
-def predict_race_fairface(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int], landmarks=None) -> str:
-    """Predict race via FairFace, using landmarks for alignment when available."""
-    return fairface_race_label(fairface_probabilities(net, frame_bgr, box, "race_output", landmarks))
-
-
-def predict_gender_fairface(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int], landmarks=None) -> str:
-    """Predict gender via FairFace, using landmarks for alignment when available."""
-    return fairface_gender_label(fairface_probabilities(net, frame_bgr, box, "gender_output", landmarks))
-
-
-def predict_age_fairface(net, frame_bgr: np.ndarray, box: tuple[int, int, int, int], landmarks=None) -> str:
-    """Predict age bucket via FairFace (9 categories: 0-2, 3-9, ..., 70+), using landmarks when available."""
-    return fairface_age_label(fairface_probabilities(net, frame_bgr, box, "age_output", landmarks))
-
-
-def deepface_probabilities(net, face_bgr: np.ndarray) -> np.ndarray:
-    """Class probabilities from a deepface VGGFace-backbone head (race or gender).
-
-    VGGFace input: 224x224 BGR, unnormalized [0,255].
-    """
-    face_resized = cv2.resize(face_bgr, (224, 224)).astype(np.float32)
-    with _lock_for(net):
-        return net(face_resized[np.newaxis, ...], training=False).numpy().flatten()
-
-
-def predict_race_deepface(net, face_bgr: np.ndarray) -> str:
-    """Predict race via deepface VGGFace backend (6 categories)."""
-    return _format_race_label(deepface_probabilities(net, face_bgr), RACE_LABELS_DEEPFACE)
-
-
-def predict_gender_deepface(net, face_bgr: np.ndarray) -> str:
-    """Predict gender via deepface VGGFace backend."""
-    return "Male" if np.argmax(deepface_probabilities(net, face_bgr)) == 1 else "Female"
+# Race and FairFace/DeepFace prediction functions imported from attributes.race and attributes.gender
 
 
 def compute_face_embedding(net, face_bgr: np.ndarray) -> np.ndarray:
@@ -1796,145 +1251,7 @@ def _detect_face_landmarker(landmarker, face_bgr: np.ndarray):
             return landmarker.detect(mp_image)
 
 
-def predict_texture_artifact_score(face_bgr: np.ndarray) -> float:
-    """Score regular high-frequency texture in a face crop as a replay cue."""
-    gray = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2GRAY)
-    sample = cv2.resize(gray, (32, 32), interpolation=cv2.INTER_AREA)
-    return texture_artifact_score(sample.tolist())
-
-
-def predict_glasses_mobilenet(net, face_bgr: np.ndarray) -> str:
-    """Sorour190/Glasses-Detector's glasses_face224.onnx: MobileNetV3-Large, 224x224 RGB,
-    uint8 NHWC input (normalization baked into the ONNX graph itself), outputs a named
-    'eyeglasses_prob' scalar already through softmax. License unstated by the source repo
-    (flagged in README, same treatment as DAN/SSR-Net)."""
-    face_rgb = cv2.cvtColor(cv2.resize(face_bgr, (224, 224)), cv2.COLOR_BGR2RGB)
-    blob = face_rgb[np.newaxis, ...].astype(np.uint8)
-    prob = float(net.run(["eyeglasses_prob"], {net.get_inputs()[0].name: blob})[0].flatten()[0])
-    return "glasses" if prob >= GLASSES_THRESHOLD else "none"
-
-
-def predict_mask_mobilenetv2(net, face_bgr: np.ndarray) -> str:
-    """chandrikadeb7/Face-Mask-Detection: MobileNetV2 backbone (imagenet weights,
-    include_top=False) + AveragePooling2D(7,7) + Flatten + Dense(128, relu) + Dropout(0.5) +
-    Dense(2, softmax), 224x224 RGB, keras.applications.mobilenet_v2.preprocess_input scaling.
-    Class order (sklearn LabelBinarizer, alphabetical) is MASK_LABELS = ['with_mask', 'without_mask']."""
-    face_rgb = cv2.cvtColor(cv2.resize(face_bgr, (224, 224)), cv2.COLOR_BGR2RGB).astype(np.float32)
-    face_norm = face_rgb / 127.5 - 1.0
-    with _lock_for(net):
-        probs = net(face_norm[np.newaxis, ...], training=False).numpy().flatten()
-    return MASK_LABELS[int(np.argmax(probs))]
-
-# _is_skin_hsv imported from core.image_utils
-
-
-
-def predict_hair_color_colorimetric(frame_bgr: np.ndarray, box: tuple[int, int, int, int]) -> str:
-    """Heuristic (not ML): sample the region above the face box, exclude likely-skin
-    pixels, take the median color, and bucket by HSV hue/saturation/value into
-    HAIR_COLOR_LABELS. Sensitive to lighting/pose/hats -- much rougher than the
-    model-backed attributes."""
-    x1, y1, x2, y2 = box
-    fh, fw = frame_bgr.shape[:2]
-    h = y2 - y1
-    ry1 = max(0, int(y1 - 0.6 * h))
-    ry2 = max(ry1 + 1, y1)
-    rx1, rx2 = max(0, x1), min(fw, x2)
-    region = frame_bgr[ry1:ry2, rx1:rx2]
-    if region.size == 0:
-        return "unknown"
-
-    hsv = cv2.cvtColor(region, cv2.COLOR_BGR2HSV)
-    skin_mask = _is_skin_hsv(hsv)
-    non_skin = hsv[~skin_mask]
-    sample = non_skin if non_skin.size > 0 else hsv.reshape(-1, 3)
-
-    med_h, med_s, med_v = (np.median(sample[..., i]) for i in range(3))
-
-    if med_v < 50:
-        return "black"
-    if med_s < 30:
-        return "white" if med_v > 180 else "grey"
-    if 8 < med_h < 25 and med_v > 150 and med_s > 60:
-        return "blonde"
-    if (med_h <= 8 or med_h >= 170) and med_s > 90:
-        return "red"
-    return "brown"
-
-
-def predict_eye_color_colorimetric(eye_cascade, face_bgr: np.ndarray, landmarks=None) -> str:
-    """Heuristic (not ML): locate the largest detected eye via the Haar
-    cascade, sample the center 40% of its box (avoiding sclera/eyelid), and bucket
-    the median HSV into EYE_COLOR_LABELS. Prefer iris landmarks when available to
-    avoid sampling eyelids and pupils. Rough by nature -- lighting/pose-sensitive."""
-    samples = []
-    if landmarks is not None and len(landmarks) >= 478:
-        height, width = face_bgr.shape[:2]
-        points = np.asarray(landmarks, dtype=np.float64)[:, :2] * [width, height]
-        for index in (468, 473):
-            iris = points[index:index + 5]
-            if not np.isfinite(iris).all():
-                continue
-            cx, cy = iris[0]
-            radius = float(np.mean(np.linalg.norm(iris[1:] - iris[0], axis=1)))
-            if radius < 2 or not (0 <= cx < width and 0 <= cy < height):
-                continue
-            x1, x2 = max(0, int(cx - radius)), min(width, int(np.ceil(cx + radius)))
-            y1, y2 = max(0, int(cy - radius)), min(height, int(np.ceil(cy + radius)))
-            yy, xx = np.ogrid[y1:y2, x1:x2]
-            mask = ((xx - cx) ** 2 + (yy - cy) ** 2 < (0.9 * radius) ** 2)
-            mask &= (abs(xx - cx) > 0.35 * radius) & (abs(yy - cy) < 0.25 * radius)
-            pixels = face_bgr[y1:y2, x1:x2][mask]
-            if len(pixels) >= 4:
-                samples.append(pixels)
-    if samples:
-        median = np.median(np.concatenate(samples), axis=0).astype(np.uint8)
-        hue, saturation, value = cv2.cvtColor(median.reshape(1, 1, 3), cv2.COLOR_BGR2HSV)[0, 0]
-        if saturation >= 40 and 95 <= hue <= 130:
-            return "blue"
-        if value < 60:
-            return "brown"
-        if saturation < 40:
-            return "grey"
-        if 40 <= hue < 95:
-            return "green"
-        if 15 <= hue < 40 and saturation > 100:
-            return "amber"
-        return "brown" if hue < 15 or hue >= 170 else "hazel"
-
-    face_gray = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2GRAY)
-    with _lock_for(eye_cascade):
-        eyes = eye_cascade.detectMultiScale(face_gray, scaleFactor=1.1, minNeighbors=6, minSize=(20, 20))
-    if len(eyes) == 0:
-        return "unknown"
-
-    ex, ey, ew, eh = max(eyes, key=lambda e: e[2] * e[3])
-    cx1 = ex + int(ew * 0.3)
-    cx2 = ex + int(ew * 0.7)
-    cy1 = ey + int(eh * 0.3)
-    cy2 = ey + int(eh * 0.7)
-    iris_region = face_bgr[cy1:cy2, cx1:cx2]
-    if iris_region.size == 0:
-        return "unknown"
-
-    hsv = cv2.cvtColor(iris_region, cv2.COLOR_BGR2HSV)
-    med_h = float(np.median(hsv[..., 0]))
-    med_s = float(np.median(hsv[..., 1]))
-    med_v = float(np.median(hsv[..., 2]))
-
-    if med_v < 60:
-        return "brown"
-    if med_s < 40:
-        return "grey"
-    if 95 <= med_h <= 130:
-        return "blue"
-    if 40 <= med_h < 95:
-        return "green"
-    if 15 <= med_h < 40 and med_s > 100:
-        return "amber"
-    if med_h < 15 or med_h >= 170:
-        return "brown" if med_v < 130 else "hazel"
-    return "hazel"
+# Accessory and colorimetric prediction functions imported from attributes.accessories
 
 
 def predict_face_landmarks_mediapipe(landmarker, face_bgr: np.ndarray, result=None) -> list[tuple[float, float]] | None:
@@ -2015,37 +1332,7 @@ def _record_model_latency(metrics: dict | None, feature: str, model: str, starte
     )
 
 
-def run_3d_reconstruction(models: "Models", face_bgr: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
-    """Deep3DFaceRecon_pytorch-based 3D reconstruction (see src/nets/deep3d_recon.py) for one
-    face crop. Reuses the same FaceLandmarker instance as Face Landmarks to derive
-    the 5-point alignment landmarks this pipeline needs. Returns (vertices, faces, per-vertex
-    RGB colors) or None if the deep3d model, the BFM data, or the face landmarker aren't
-    available, or if no face landmarks were found in this crop."""
-    bundle = models.reconstruction_3d_nets.get("deep3d")
-    landmarker = models.face_landmarks_nets.get("mediapipe")
-    if bundle is None or landmarker is None:
-        return None
-
-    recon_net, bfm_model, lm3d_template = bundle
-    points = predict_face_landmarks_mediapipe(landmarker, face_bgr)
-    if points is None:
-        return None
-
-    h, w = face_bgr.shape[:2]
-    landmarks_5pt = landmarks_5pt_from_mediapipe(points, w, h)
-    return reconstruct_face_3d(recon_net, bfm_model, face_bgr, landmarks_5pt, lm3d_template)
-
-
-def run_age_progression(models: "Models", face_bgr: np.ndarray, source_age: float, target_age: float) -> np.ndarray | None:
-    """FRAN-style age progression/regression (see src/nets/face_reaging_model.py) for one face
-    crop. Returns an aged/de-aged BGR uint8 crop the same size as face_bgr, or None if the
-    franunet model isn't available. Non-commercial use only -- see README."""
-    net = models.age_progression_nets.get("franunet")
-    if net is None:
-        return None
-    face_rgb = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2RGB)
-    aged_rgb = age_progress_face(net, face_rgb, source_age, target_age)
-    return cv2.cvtColor(aged_rgb, cv2.COLOR_RGB2BGR)
+# 3D reconstruction and age progression imported from attributes.transformers
 
 
 def draw_face_landmarks(frame: np.ndarray, points_normalized: list[tuple[float, float]], box: tuple[int, int, int, int]) -> None:
