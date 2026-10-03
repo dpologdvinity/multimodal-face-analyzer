@@ -137,143 +137,51 @@ try:
 except ImportError:
     FACE_REAGING_SUPPORTED = False
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-# Overridable so a git worktree (checked out with GIT_LFS_SKIP_SMUDGE=1, i.e. holding LFS
-# pointer files rather than real weights) can share the main checkout's 3GB models/ directory.
-MODEL_DIR = Path(os.environ.get("FACE_ANALYZER_MODEL_DIR") or (BASE_DIR / "models"))
+try:
+    from .core import (
+        BoundingBox,
+        Detection,
+        FaceResult,
+        Models,
+        is_grayscale_frame,
+        crop_region,
+        face_crop_bounds,
+        apply_image_adjustments,
+        _is_skin_hsv,
+        _adjust_exposure,
+        _adjust_brightness,
+        _adjust_contrast,
+        _adjust_tone_region,
+        _adjust_black_point,
+        _adjust_saturation,
+        _adjust_sharpness,
+        _adjust_definition,
+        _adjust_noise_reduction,
+    )
+    from .core.constants import *
+except ImportError:
+    from core import (
+        BoundingBox,
+        Detection,
+        FaceResult,
+        Models,
+        is_grayscale_frame,
+        crop_region,
+        face_crop_bounds,
+        apply_image_adjustments,
+        _is_skin_hsv,
+        _adjust_exposure,
+        _adjust_brightness,
+        _adjust_contrast,
+        _adjust_tone_region,
+        _adjust_black_point,
+        _adjust_saturation,
+        _adjust_sharpness,
+        _adjust_definition,
+        _adjust_noise_reduction,
+    )
+    from core.constants import *
 
-FACE_PROTO = MODEL_DIR / "opencv_face_detector.pbtxt"
-FACE_MODEL = MODEL_DIR / "opencv_face_detector_uint8.pb"
-YOLO_FACE_MODEL = MODEL_DIR / "yolov8n_face.onnx"
-SCRFD_FACE_MODEL = MODEL_DIR / "scrfd_2.5g_bnkps.onnx"
-RETINAFACE_MODEL = MODEL_DIR / "retinaface_mobilenet0.25.onnx"
-AGE_PROTO = MODEL_DIR / "age_deploy.prototxt"
-AGE_MODEL = MODEL_DIR / "age_net.caffemodel"
-GENDER_PROTO = MODEL_DIR / "gender_deploy.prototxt"
-GENDER_MODEL = MODEL_DIR / "gender_net.caffemodel"
-EYE_CASCADE_FILE = MODEL_DIR / "haarcascade_eye.xml"
-EMOTION_MODEL = MODEL_DIR / "dan_affecnet7.pth"
-MINI_XCEPTION_MODEL = MODEL_DIR / "mini_xception_fer.h5"
-FERPLUS_MODEL = MODEL_DIR / "emotion_ferplus.onnx"
-HSEMOTION_MODEL = MODEL_DIR / "hsemotion_enet_b0_8_best_vgaf.onnx"
-FAIRFACE_MODEL = MODEL_DIR / "fairface_7class.onnx"
-DEEPFACE_RACE_MODEL = MODEL_DIR / "deepface_race.h5"
-DEEPFACE_GENDER_MODEL = MODEL_DIR / "deepface_gender.h5"
-DEEPFACE_RECOGNITION_MODEL = MODEL_DIR / "deepface_vgg.h5"
-DEX_PROTO = MODEL_DIR / "dex_age.prototxt"
-DEX_MODEL = MODEL_DIR / "dex_age.caffemodel"
-MIVOLO_MODEL = MODEL_DIR / "mivolo_v2.safetensors"
-FACE_LANDMARKER_MODEL = MODEL_DIR / "face_landmarker.task"
-GLASSES_MODEL = MODEL_DIR / "glasses_detector.onnx"
-MASK_MODEL = MODEL_DIR / "mask_detector.h5"
-COLORIZATION_PROTO = MODEL_DIR / "colorization_deploy_v2.prototxt"
-COLORIZATION_MODEL = MODEL_DIR / "colorization_release_v2.caffemodel"
-COLORIZATION_PTS = MODEL_DIR / "pts_in_hull.npy"
-HAND_LANDMARKER_MODEL = MODEL_DIR / "hand_landmarker.task"
-BFM_DIR = MODEL_DIR / "BFM"
-DEEP3D_RECON_MODEL = MODEL_DIR / "deep3d_recon_resnet50.pth"  # gated, not bundled -- see README
-BFM_MODEL_PATH = BFM_DIR / "BFM_model_front.mat"  # gated, not bundled -- see README
-BFM_LM3D_PATH = BFM_DIR / "similarity_Lm3D_all.mat"  # bundled (MIT, small landmark template)
-FACE_REAGING_MODEL = MODEL_DIR / "face_reaging_unet.pth"  # non-commercial -- see README
-
-MODEL_MEAN_VALUES = (78.4263377603, 87.768914374, 114.895847746)
-AGE_LIST = ['(0-2)', '(4-6)', '(8-12)', '(15-20)', '(25-32)', '(38-43)', '(48-53)', '(60-100)']
-GENDER_LIST = ['Male', 'Female']
-EMOTION_LABELS_DAN = ['neutral', 'happy', 'sad', 'surprise', 'fear', 'disgust', 'anger']
-EMOTION_LABELS_MINI_XCEPTION = ['angry', 'disgust', 'fear', 'happy', 'sad', 'surprise', 'neutral']
-EMOTION_LABELS_FERPLUS = ['neutral', 'happiness', 'surprise', 'sadness', 'anger', 'disgust', 'fear', 'contempt']
-EMOTION_LABELS_HSEMOTION = ['anger', 'contempt', 'disgust', 'fear', 'happiness', 'neutral', 'sadness', 'surprise']
-# Standard ImageNet channel statistics, shared by every backend trained on ImageNet-normalized
-# RGB input (DAN, HSEmotion, FairFace).
-IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
-IMAGENET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
-RACE_LABELS_FAIRFACE = ['White', 'Black', 'Latino_Hispanic', 'East Asian', 'Southeast Asian', 'Indian', 'Middle Eastern']
-RACE_LABELS_DEEPFACE = ['asian', 'indian', 'black', 'white', 'middle eastern', 'latino hispanic']
-RACE_CLOSE_MARGIN = 0.10  # show top-2 race classes together if within this probability margin
-RECOGNITION_COSINE_THRESHOLD = 0.68  # deepface's own default VGG-Face verification threshold
-DEX_MEAN_VALUES = (103.939, 116.779, 123.68)  # Existing VGG/ImageNet BGR channel-mean approximation.
-DEX_MAX_AGE_SD = 10.0  # Display heuristic in years, not a calibrated error/confidence bound.
-GALLERY_FILE = BASE_DIR / "gallery" / "known_faces.json"
-LBPH_GALLERY_DIR = BASE_DIR / "gallery" / "lbph"
-LBPH_FACE_SIZE = (200, 200)
-LBPH_CONFIDENCE_THRESHOLD = 80.0  # LBPH's own distance metric -- LOWER is a better match (opposite of cosine similarity)
-KNOWN_PEOPLE_DIR = BASE_DIR / "known_people"  # bundled reference photos for identity search (see README)
-IMAGE_FILE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
-FACES_DB_FILE = BASE_DIR / "db" / "faces.db"  # sparse-column SQLite database, see save_face()
-FACES_DIR = BASE_DIR / "faces"  # saved face crops (color, as-classified), one per saved face
-EIGEN_DIR = BASE_DIR / "eigen"  # saved faces' grayscale/zoomed eigenfaces training images
-EIGEN_FACE_SIZE = (100, 100)  # (width, height) every eigen/ image is normalized to
-EIGENFACE_DISTANCE_THRESHOLD = 3000.0  # untuned heuristic (see match_face_eigenfaces docstring)
-
-# Model keys per feature, most accurate first (first = default), as measured by
-# tools/benchmark.py -- a default a user never changes should be the one most likely to be
-# right, and a backend that is both slower to build AND more accurate earns the extra build.
-# Must match the numbered options in build-and-run.sh and the Dockerfile ARGs.
-AGE_MODEL_OPTIONS = ["fairface", "caffe", "dex", "mivolo"]
-GENDER_MODEL_OPTIONS = ["fairface", "caffe", "deepface", "mivolo"]
-FAIRFACE_AGE_LABELS = ["0-2", "3-9", "10-19", "20-29", "30-39", "40-49", "50-59", "60-69", "70+"]
-EMOTION_MODEL_OPTIONS = ["hsemotion", "ferplus", "mini_xception", "dan"]
-RACE_MODEL_OPTIONS = ["fairface", "deepface"]
-LIVENESS_MODEL_OPTIONS = ["mediapipe"]
-RECOGNITION_MODEL_OPTIONS = ["vggface", "lbph"]
-FACE_DETECTOR_OPTIONS = ["ssd", "yolo", "scrfd", "retinaface"]  # ssd is the original required detector, always on
-IOU_TRACKING_THRESHOLD = 0.3  # greedy-match a track to a detection only above this IoU
-TRACKING_MAX_MISSED_FRAMES = 10  # frames a track survives with zero matching detections
-# (brief occlusion) before its ID is dropped and freed for reuse
-YOLO_FACE_INPUT_SIZE = 640
-YOLO_FACE_STRIDES = (8, 16, 32)
-YOLO_FACE_IOU_THRESHOLD = 0.45
-SCRFD_FACE_INPUT_SIZE = 640
-SCRFD_FACE_STRIDES = (8, 16, 32)
-SCRFD_FACE_NUM_ANCHORS = 2  # bnkps variant's anchors-per-location, fixed by the checkpoint
-SCRFD_FACE_NMS_THRESHOLD = 0.4
-RETINAFACE_INPUT_HEIGHT = 608
-RETINAFACE_INPUT_WIDTH = 640
-RETINAFACE_STEPS = (8, 16, 32)
-RETINAFACE_MIN_SIZES = ((16, 32), (64, 128), (256, 512))
-RETINAFACE_VARIANCE = (0.1, 0.2)
-RETINAFACE_MEAN = (104, 117, 123)  # BGR, biubug6/Pytorch_Retinaface's own training-time mean
-RETINAFACE_NMS_THRESHOLD = 0.4
-GLASSES_MODEL_OPTIONS = ["mobilenet"]
-MASK_MODEL_OPTIONS = ["mobilenetv2"]
-HAIR_COLOR_MODEL_OPTIONS = ["colorimetric"]
-EYE_COLOR_MODEL_OPTIONS = ["colorimetric"]
-COLORIZATION_MODEL_OPTIONS = ["eccv16"]
-GRAYSCALE_CHANNEL_DIFF_THRESHOLD = 3.0  # mean abs diff between B/G/R below this => treat as grayscale
-FACE_LANDMARKS_MODEL_OPTIONS = ["mediapipe"]
-HAND_MODEL_OPTIONS = ["mediapipe"]
-RECONSTRUCTION_3D_MODEL_OPTIONS = ["deep3d"]
-# Standard MediaPipe 21-point hand skeleton (HandLandmark enum order, see ideas/hands.md)
-HAND_CONNECTIONS = [
-    (0, 1), (1, 2), (2, 3), (3, 4),          # thumb
-    (0, 5), (5, 6), (6, 7), (7, 8),          # index
-    (5, 9), (9, 10), (10, 11), (11, 12),     # middle
-    (9, 13), (13, 14), (14, 15), (15, 16),   # ring
-    (13, 17), (17, 18), (18, 19), (19, 20),  # pinky
-    (0, 17),                                  # palm
-]
-
-# Per-face image adjustment sliders (Lightroom-style), applied to each face crop before any
-# classifier runs on it. Pure OpenCV/numpy, no model file. (slider_key -> (min, max, default)),
-# all sliders default to 0 (no-op) so an untouched panel changes nothing.
-IMAGE_ADJUSTMENT_RANGES = {
-    "exposure": (-3.0, 3.0, 0.0),        # stops (2**value gain)
-    "brightness": (-100.0, 100.0, 0.0),  # additive, 0-255 scale
-    "contrast": (-100.0, 100.0, 0.0),
-    "highlights": (-100.0, 100.0, 0.0),
-    "shadows": (-100.0, 100.0, 0.0),
-    "black_point": (-100.0, 100.0, 0.0),
-    "saturation": (-100.0, 100.0, 0.0),
-    "vibrance": (-100.0, 100.0, 0.0),
-    "sharpness": (0.0, 100.0, 0.0),
-    "definition": (0.0, 100.0, 0.0),
-    "noise_reduction": (0.0, 100.0, 0.0),
-}
-
-MASK_LABELS = ["with_mask", "without_mask"]  # sklearn LabelBinarizer's alphabetical class order
-HAIR_COLOR_LABELS = ["black", "brown", "blonde", "red", "grey", "white"]
-EYE_COLOR_LABELS = ["brown", "blue", "green", "hazel", "grey", "amber"]
-GLASSES_THRESHOLD = 0.5
 
 
 # --- Thread safety for shared model instances (#19, #B) -----------------------------------
@@ -309,67 +217,8 @@ def _lock_for(net) -> threading.Lock | "nullcontext[None]":
 # pool sized off the CPU count lets independent features (different nets) genuinely overlap
 # without oversubscribing a CPU-only deployment.
 _INFERENCE_EXECUTOR = ThreadPoolExecutor(max_workers=max(4, (os.cpu_count() or 4)), thread_name_prefix="inference")
+# Models dataclass (including liveness_nets: dict, etc.) is imported from core.types
 
-
-@dataclass
-class Models:
-    face_net: cv2.dnn.Net
-    age_nets: dict = field(default_factory=dict)
-    gender_nets: dict = field(default_factory=dict)
-    emotion_nets: dict = field(default_factory=dict)
-    race_nets: dict = field(default_factory=dict)
-    liveness_nets: dict = field(default_factory=dict)
-    recognition_nets: dict = field(default_factory=dict)
-    glasses_nets: dict = field(default_factory=dict)
-    mask_nets: dict = field(default_factory=dict)
-    hair_color_nets: dict = field(default_factory=dict)
-    eye_color_nets: dict = field(default_factory=dict)
-    colorization_nets: dict = field(default_factory=dict)
-    face_landmarks_nets: dict = field(default_factory=dict)
-    hand_nets: dict = field(default_factory=dict)
-    reconstruction_3d_nets: dict = field(default_factory=dict)
-    yolo_face_nets: dict = field(default_factory=dict)
-    scrfd_face_nets: dict = field(default_factory=dict)
-    retinaface_nets: dict = field(default_factory=dict)
-    gaze_nets: dict = field(default_factory=dict)
-    age_progression_nets: dict = field(default_factory=dict)
-
-    @property
-    def _feature_slots(self) -> list[tuple[str, dict]]:
-        """List every named feature slot alongside its loaded-model dict, shared by the count and offline-list properties below."""
-        return [
-            ("AGE", self.age_nets), ("GENDER", self.gender_nets),
-            ("EMOTION", self.emotion_nets),
-            ("RACE", self.race_nets),
-            ("LIVENESS", self.liveness_nets),
-            ("GAZE", self.gaze_nets),
-            ("RECOGNITION", self.recognition_nets),
-            ("GLASSES", self.glasses_nets),
-            ("MASK", self.mask_nets), ("HAIR_COLOR", self.hair_color_nets),
-            ("EYE_COLOR", self.eye_color_nets), ("COLORIZATION", self.colorization_nets),
-            ("FACE_LANDMARKS", self.face_landmarks_nets),
-            ("HANDS", self.hand_nets), ("RECONSTRUCTION_3D", self.reconstruction_3d_nets),
-            ("FACE_DETECTOR_YOLO", self.yolo_face_nets),
-            ("FACE_DETECTOR_SCRFD", self.scrfd_face_nets),
-            ("FACE_DETECTOR_RETINAFACE", self.retinaface_nets),
-            ("AGE_PROGRESSION", self.age_progression_nets),
-        ]
-
-    @property
-    def loaded_feature_count(self) -> int:
-        """Count feature slots with at least one model loaded."""
-        return sum(1 for _, nets in self._feature_slots if nets)
-
-    @property
-    def total_feature_count(self) -> int:
-        """Count all known feature slots, loaded or not."""
-        return len(self._feature_slots)
-
-    @property
-    def offline_features(self) -> list[str]:
-        return [
-            name for name, nets in self._feature_slots if not nets
-        ]
 
 
 def load_models() -> Models:
@@ -858,16 +707,7 @@ class FaceTracker:
             self._tracks.clear()
             self._next_id = 1
 
-
-def is_grayscale_frame(frame_bgr: np.ndarray) -> bool:
-    """Heuristic: a 3-channel image that's actually grayscale (common for old photos saved
-    as BGR/RGB with all channels equal, or scanned B&W) has near-zero difference between its
-    B/G/R channels across the whole image. Downsamples first -- only the mean matters, and a
-    small sample is far cheaper than scanning a full-resolution frame."""
-    small = cv2.resize(frame_bgr, (64, 64), interpolation=cv2.INTER_AREA).astype(np.float32)
-    b, g, r = small[..., 0], small[..., 1], small[..., 2]
-    diff = (np.abs(b - g) + np.abs(g - r) + np.abs(b - r)) / 3.0
-    return float(diff.mean()) < GRAYSCALE_CHANNEL_DIFF_THRESHOLD
+# is_grayscale_frame imported from core.image_utils
 
 
 def colorize_frame(net, frame_bgr: np.ndarray) -> np.ndarray:
@@ -903,108 +743,8 @@ def maybe_colorize(models: "Models", frame_bgr: np.ndarray, active_colorization:
         return frame_bgr, False
     return colorize_frame(net, frame_bgr), True
 
+# apply_image_adjustments and helpers imported from core.image_utils
 
-def _adjust_exposure(img: np.ndarray, stops: float) -> np.ndarray:
-    """Apply exposure correction in f-stops (base 2 scaling)."""
-    return img * (2.0 ** stops)
-
-
-def _adjust_brightness(img: np.ndarray, amount: float) -> np.ndarray:
-    """Apply additive brightness shift."""
-    return img + amount
-
-
-def _adjust_contrast(img: np.ndarray, amount: float) -> np.ndarray:
-    """Apply contrast correction via the classic parametric formula."""
-    c = amount * 2.55  # slider -100..100 -> classic contrast-correction-factor's -255..255
-    factor = (259.0 * (c + 255.0)) / (255.0 * (259.0 - c))
-    return factor * (img - 128.0) + 128.0
-
-
-def _adjust_tone_region(img_bgr: np.ndarray, amount: float, region: str) -> np.ndarray:
-    """Shift highlights or shadows via a luminance-weighted mask in HSV's V channel.
-    Positive `amount` brightens highlights / lifts shadows (Lightroom convention)."""
-    hsv = cv2.cvtColor(np.clip(img_bgr, 0, 255).astype(np.uint8), cv2.COLOR_BGR2HSV).astype(np.float32)
-    v = hsv[..., 2]
-    if region == "highlights":
-        mask = np.clip((v - 128.0) / 127.0, 0.0, 1.0)
-    else:
-        mask = np.clip((128.0 - v) / 128.0, 0.0, 1.0)
-    hsv[..., 2] = np.clip(v + (amount / 100.0) * 50.0 * mask, 0, 255)
-    return cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR).astype(np.float32)
-
-
-def _adjust_black_point(img: np.ndarray, amount: float) -> np.ndarray:
-    """Shift and stretch the shadow point (rescales to compensate)."""
-    bp = np.clip((amount / 100.0) * 60.0, -60.0, 250.0)
-    return (img - bp) * (255.0 / max(255.0 - bp, 1.0))
-
-
-def _adjust_saturation(img_bgr: np.ndarray, amount: float, vibrance: bool = False) -> np.ndarray:
-    hsv = cv2.cvtColor(np.clip(img_bgr, 0, 255).astype(np.uint8), cv2.COLOR_BGR2HSV).astype(np.float32)
-    s = hsv[..., 1]
-    if vibrance:
-        # Boost low-saturation pixels more than already-saturated ones (protects skin tones).
-        s = s + (amount / 100.0) * 60.0 * (1.0 - s / 255.0)
-    else:
-        s = s * (1.0 + amount / 100.0)
-    hsv[..., 1] = np.clip(s, 0, 255)
-    return cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR).astype(np.float32)
-
-
-def _adjust_sharpness(img_bgr: np.ndarray, amount: float) -> np.ndarray:
-    """Classic unsharp mask -- small-radius blur subtracted back out to boost edge contrast."""
-    blurred = cv2.GaussianBlur(img_bgr, (0, 0), sigmaX=1.5)
-    return img_bgr + (amount / 100.0) * 1.5 * (img_bgr - blurred)
-
-
-def _adjust_definition(img_bgr: np.ndarray, amount: float) -> np.ndarray:
-    """'Clarity'-style local contrast: large-radius unsharp mask on the LAB lightness channel
-    only, so it boosts midtone structure without shifting color."""
-    lab = cv2.cvtColor(np.clip(img_bgr, 0, 255).astype(np.uint8), cv2.COLOR_BGR2LAB).astype(np.float32)
-    L = lab[..., 0]
-    blurred = cv2.GaussianBlur(L, (0, 0), sigmaX=12.0)
-    lab[..., 0] = np.clip(L + (amount / 100.0) * 1.2 * (L - blurred), 0, 255)
-    return cv2.cvtColor(lab.astype(np.uint8), cv2.COLOR_LAB2BGR).astype(np.float32)
-
-
-def _adjust_noise_reduction(img_bgr: np.ndarray, amount: float) -> np.ndarray:
-    """Edge-preserving denoise (bilateral filter); strength scales with the slider."""
-    strength = amount / 100.0
-    return cv2.bilateralFilter(np.clip(img_bgr, 0, 255).astype(np.uint8), d=5, sigmaColor=strength * 100, sigmaSpace=strength * 100).astype(np.float32)
-
-
-def apply_image_adjustments(face_bgr: np.ndarray, adjustments: dict) -> np.ndarray:
-    """Apply the Lightroom-style slider stack to one face crop, in a fixed pipeline order
-    (denoise first so later steps don't amplify grain; sharpen last so it acts on the final
-    tonal/color state). Any slider left at its default (0) is skipped entirely -- cheap when
-    the panel is untouched, since this runs once per face per frame."""
-    img = face_bgr.astype(np.float32)
-
-    if adjustments.get("noise_reduction", 0):
-        img = _adjust_noise_reduction(img, adjustments["noise_reduction"])
-    if adjustments.get("exposure", 0):
-        img = _adjust_exposure(img, adjustments["exposure"])
-    if adjustments.get("black_point", 0):
-        img = _adjust_black_point(img, adjustments["black_point"])
-    if adjustments.get("shadows", 0):
-        img = _adjust_tone_region(img, adjustments["shadows"], "shadows")
-    if adjustments.get("highlights", 0):
-        img = _adjust_tone_region(img, adjustments["highlights"], "highlights")
-    if adjustments.get("contrast", 0):
-        img = _adjust_contrast(img, adjustments["contrast"])
-    if adjustments.get("brightness", 0):
-        img = _adjust_brightness(img, adjustments["brightness"])
-    if adjustments.get("saturation", 0):
-        img = _adjust_saturation(img, adjustments["saturation"])
-    if adjustments.get("vibrance", 0):
-        img = _adjust_saturation(img, adjustments["vibrance"], vibrance=True)
-    if adjustments.get("definition", 0):
-        img = _adjust_definition(img, adjustments["definition"])
-    if adjustments.get("sharpness", 0):
-        img = _adjust_sharpness(img, adjustments["sharpness"])
-
-    return np.clip(img, 0, 255).astype(np.uint8)
 
 
 # --- #10: voice+face multimodal fusion (webcam LIVE mode only) --------------------------------
@@ -1151,34 +891,8 @@ class VoiceFaceFusion:
 # detection -- these operate on any region, not just faces.
 GEOMETRIC_TRANSFORM_OPTIONS = ["translate", "reflect", "rotate", "scale", "shear"]
 
+# crop_region and face_crop_bounds imported from core.image_utils
 
-def crop_region(frame: np.ndarray, x1: int, y1: int, x2: int, y2: int) -> np.ndarray:
-    """Crop an arbitrary rectangle, clamped to frame bounds."""
-    h, w = frame.shape[:2]
-    x1, x2 = sorted((max(0, min(x1, w)), max(0, min(x2, w))))
-    y1, y2 = sorted((max(0, min(y1, h)), max(0, min(y2, h))))
-    return frame[y1:y2, x1:x2]
-
-
-def face_crop_bounds(
-    box: tuple[int, int, int, int], frame_shape: tuple[int, int], padding_ratio: float = 0.1,
-) -> tuple[int, int, int, int]:
-    """Return a detector crop with scale-relative context, using exclusive bounds.
-
-    The Caffe age model is sensitive to how much surrounding context occupies its fixed 227x227
-    input. A fixed pixel margin makes that context dominate small faces and disappear around
-    large faces, so keep the framing proportionate to the detected face instead.
-    """
-    x1, y1, x2, y2 = box
-    frame_height, frame_width = frame_shape
-    face_width, face_height = max(0, x2 - x1), max(0, y2 - y1)
-    padding = max(1, round(max(face_width, face_height) * padding_ratio))
-    return (
-        max(0, x1 - padding),
-        max(0, y1 - padding),
-        min(frame_width, x2 + padding),
-        min(frame_height, y2 + padding),
-    )
 
 
 def apply_geometric_transform(region: np.ndarray, transform_type: str, **params) -> np.ndarray:
@@ -2312,13 +2026,8 @@ def predict_mask_mobilenetv2(net, face_bgr: np.ndarray) -> str:
         probs = net(face_norm[np.newaxis, ...], training=False).numpy().flatten()
     return MASK_LABELS[int(np.argmax(probs))]
 
+# _is_skin_hsv imported from core.image_utils
 
-def _is_skin_hsv(hsv_pixels: np.ndarray) -> np.ndarray:
-    """Boolean mask for common skin-tone hue/sat/val ranges in OpenCV HSV (H:0-179).
-    Rough heuristic, not a trained model -- used only to exclude forehead skin bleeding
-    into the hair-color sample region, not for any skin-tone classification."""
-    h, s, v = hsv_pixels[..., 0], hsv_pixels[..., 1], hsv_pixels[..., 2]
-    return (h <= 25) & (s >= 30) & (s <= 180) & (v >= 40)
 
 
 def predict_hair_color_colorimetric(frame_bgr: np.ndarray, box: tuple[int, int, int, int]) -> str:
