@@ -182,6 +182,31 @@ except ImportError:
     )
     from core.constants import *
 
+try:
+    from .detectors import (
+        BaseFaceDetector,
+        detect_faces_ssd,
+        detect_faces_yolo,
+        detect_faces_scrfd,
+        detect_faces_retinaface,
+        detect_faces,
+    )
+    from .detectors.yolo import _yolo_letterbox, _yolo_softmax
+    from .detectors.scrfd import _scrfd_distance2bbox
+    from .detectors.retinaface import _retinaface_priors, _retinaface_decode
+except ImportError:
+    from detectors import (
+        BaseFaceDetector,
+        detect_faces_ssd,
+        detect_faces_yolo,
+        detect_faces_scrfd,
+        detect_faces_retinaface,
+        detect_faces,
+    )
+    from detectors.yolo import _yolo_letterbox, _yolo_softmax
+    from detectors.scrfd import _scrfd_distance2bbox
+    from detectors.retinaface import _retinaface_priors, _retinaface_decode
+
 
 
 # --- Thread safety for shared model instances (#19, #B) -----------------------------------
@@ -387,234 +412,8 @@ def load_models() -> Models:
     )
 
 
-def _yolo_letterbox(image: np.ndarray, target_size: int = YOLO_FACE_INPUT_SIZE) -> tuple[np.ndarray, float, tuple[float, float]]:
-    """Vendored from yakhyo/yolov8-face-onnx-inference's utils/general.py: resize preserving
-    aspect ratio + pad to a square target_size."""
-    h, w = image.shape[:2]
-    scale = min(target_size / h, target_size / w)
-    new_w, new_h = int(w * scale), int(h * scale)
-    resized = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
-    dw, dh = (target_size - new_w) / 2, (target_size - new_h) / 2
-    top, bottom = int(dh), int(target_size - new_h - int(dh))
-    left, right = int(dw), int(target_size - new_w - int(dw))
-    padded = cv2.copyMakeBorder(resized, top, bottom, left, right, cv2.BORDER_CONSTANT, value=(114, 114, 114))
-    return padded, scale, (dw, dh)
-
-
-def _yolo_softmax(x: np.ndarray, axis: int = -1) -> np.ndarray:
-    """Numerically stable softmax (shift by max to prevent overflow)."""
-    exp_x = np.exp(x - np.max(x, axis=axis, keepdims=True))
-    return exp_x / np.sum(exp_x, axis=axis, keepdims=True)
-
-
-def detect_faces_yolo(session, frame: np.ndarray, conf_threshold: float = 0.5) -> list[list[int]]:
-    """YOLOv8-Face (yakhyo/yolov8-face-onnx-inference, weights unlicensed -- see README) via
-    onnxruntime -- cv2.dnn cannot load this ONNX export (verified: fails identically on both
-    OpenCV 4.10 and 5.0 with a mixed-dtype Cast/Mul error in its DFL decode subgraph), so this
-    feature needs onnxruntime specifically rather than this repo's usual cv2.dnn ONNX
-    convention. Decodes the raw 3-feature-map DFL output (strides 8/16/32) matching upstream's
-    own models/yolov8.py exactly, but only for boxes/scores -- the 5-point facial landmarks
-    this model also predicts aren't decoded since nothing downstream uses them. Returns boxes
-    in the same [x1, y1, x2, y2] int-list contract as detect_faces(), so it's a drop-in swap."""
-    letterboxed, scale, (dw, dh) = _yolo_letterbox(frame)
-    blob = cv2.cvtColor(letterboxed, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
-    blob = blob.transpose(2, 0, 1)[np.newaxis, ...]
-
-    input_name = session.get_inputs()[0].name
-    outputs = session.run(None, {input_name: blob})
-
-    all_boxes, all_scores = [], []
-    for pred, stride in zip(outputs, YOLO_FACE_STRIDES):
-        _, channels, h, w = pred.shape
-        pred = pred.reshape(1, channels, -1).transpose(0, 2, 1)[0]  # (H*W, 80)
-
-        grid_y, grid_x = np.meshgrid(np.arange(h) + 0.5, np.arange(w) + 0.5, indexing="ij")
-        grid_x, grid_y = grid_x.flatten(), grid_y.flatten()
-
-        bbox_pred = pred[:, :64].reshape(-1, 4, 16)
-        bbox_dist = _yolo_softmax(bbox_pred, axis=-1) @ np.arange(16)
-        cls_conf = 1 / (1 + np.exp(-pred[:, 64]))  # sigmoid
-
-        x1 = (grid_x - bbox_dist[:, 0]) * stride
-        y1 = (grid_y - bbox_dist[:, 1]) * stride
-        x2 = (grid_x + bbox_dist[:, 2]) * stride
-        y2 = (grid_y + bbox_dist[:, 3]) * stride
-        all_boxes.append(np.stack([x1, y1, x2, y2], axis=-1))
-        all_scores.append(cls_conf)
-
-    boxes = np.concatenate(all_boxes, axis=0)
-    scores = np.concatenate(all_scores, axis=0)
-    mask = scores >= conf_threshold
-    boxes, scores = boxes[mask], scores[mask]
-    if len(boxes) == 0:
-        return []
-
-    nms_boxes = [[x1, y1, x2 - x1, y2 - y1] for x1, y1, x2, y2 in boxes]  # cv2.dnn.NMSBoxes wants (x, y, w, h)
-    keep = cv2.dnn.NMSBoxes(nms_boxes, scores.tolist(), conf_threshold, YOLO_FACE_IOU_THRESHOLD)
-    if len(keep) == 0:
-        return []
-    boxes = boxes[np.array(keep).flatten()]
-
-    # Undo the letterbox padding/scale to map back to frame's own coordinates.
-    boxes[:, [0, 2]] -= dw
-    boxes[:, [1, 3]] -= dh
-    boxes[:, :4] /= scale
-    frame_h, frame_w = frame.shape[:2]
-    boxes[:, [0, 2]] = boxes[:, [0, 2]].clip(0, frame_w)
-    boxes[:, [1, 3]] = boxes[:, [1, 3]].clip(0, frame_h)
-
-    return boxes.astype(int).tolist()
-
-
-def _scrfd_distance2bbox(points: np.ndarray, distance: np.ndarray) -> np.ndarray:
-    """Decode SCRFD's distance regression into [x1, y1, x2, y2] boxes."""
-    x1 = points[:, 0] - distance[:, 0]
-    y1 = points[:, 1] - distance[:, 1]
-    x2 = points[:, 0] + distance[:, 2]
-    y2 = points[:, 1] + distance[:, 3]
-    return np.stack([x1, y1, x2, y2], axis=-1)
-
-
-def detect_faces_scrfd(session, frame: np.ndarray, conf_threshold: float = 0.5) -> list[list[int]]:
-    """SCRFD (deepinsight/insightface's detection/scrfd, 2.5GF bnkps checkpoint, weights
-    non-commercial research-only, see README) via onnxruntime. Resizes preserving aspect ratio into a top-left-padded
-    square (matching upstream's own tools/scrfd.py, unlike YOLO's centered letterbox), then
-    decodes the raw 3-feature-map anchor output (strides 8/16/32, 2 anchors/location) into boxes
-    via distance-to-bbox regression -- no DFL softmax needed, this checkpoint regresses distances
-    directly. The 5-point landmark outputs aren't decoded since nothing downstream uses them.
-    Returns boxes in the same [x1, y1, x2, y2] int-list contract as detect_faces()."""
-    frame_h, frame_w = frame.shape[:2]
-    scale = SCRFD_FACE_INPUT_SIZE / max(frame_h, frame_w)
-    resized = cv2.resize(frame, (int(frame_w * scale), int(frame_h * scale)), interpolation=cv2.INTER_LINEAR)
-    padded = np.zeros((SCRFD_FACE_INPUT_SIZE, SCRFD_FACE_INPUT_SIZE, 3), dtype=np.uint8)
-    padded[: resized.shape[0], : resized.shape[1]] = resized
-
-    blob = cv2.dnn.blobFromImage(padded, 1.0 / 128, (SCRFD_FACE_INPUT_SIZE, SCRFD_FACE_INPUT_SIZE), (127.5, 127.5, 127.5), swapRB=True)
-    input_name = session.get_inputs()[0].name
-    outputs = session.run(None, {input_name: blob})
-
-    all_boxes, all_scores = [], []
-    for idx, stride in enumerate(SCRFD_FACE_STRIDES):
-        scores = outputs[idx]
-        bbox_preds = outputs[3 + idx] * stride
-        fm_size = SCRFD_FACE_INPUT_SIZE // stride
-        anchor_centers = np.stack(np.mgrid[:fm_size, :fm_size][::-1], axis=-1).astype(np.float32)
-        anchor_centers = (anchor_centers * stride).reshape(-1, 2)
-        anchor_centers = np.repeat(anchor_centers, SCRFD_FACE_NUM_ANCHORS, axis=0)
-
-        mask = scores[:, 0] > conf_threshold
-        if not np.any(mask):
-            continue
-        all_boxes.append(_scrfd_distance2bbox(anchor_centers[mask], bbox_preds[mask]))
-        all_scores.append(scores[mask, 0])
-
-    if not all_scores:
-        return []
-
-    boxes = np.concatenate(all_boxes, axis=0) / scale
-    scores = np.concatenate(all_scores, axis=0)
-
-    nms_boxes = [[x1, y1, x2 - x1, y2 - y1] for x1, y1, x2, y2 in boxes]
-    keep = cv2.dnn.NMSBoxes(nms_boxes, scores.tolist(), conf_threshold, SCRFD_FACE_NMS_THRESHOLD)
-    if len(keep) == 0:
-        return []
-    boxes = boxes[np.array(keep).flatten()]
-    boxes[:, [0, 2]] = boxes[:, [0, 2]].clip(0, frame_w)
-    boxes[:, [1, 3]] = boxes[:, [1, 3]].clip(0, frame_h)
-
-    return boxes.astype(int).tolist()
-
-
-@functools.lru_cache(maxsize=1)
-def _retinaface_priors() -> np.ndarray:
-    """Anchor boxes (cx, cy, w, h, all normalized to [0, 1]) for RetinaFace's fixed
-    608x640 input -- identical for every frame, so computed once and cached rather than
-    regenerated per call. Matches biubug6/Pytorch_Retinaface's own PriorBox exactly."""
-    feature_maps = [(ceil(RETINAFACE_INPUT_HEIGHT / s), ceil(RETINAFACE_INPUT_WIDTH / s)) for s in RETINAFACE_STEPS]
-    anchors = []
-    for k, (fm_h, fm_w) in enumerate(feature_maps):
-        for i, j in itertools.product(range(fm_h), range(fm_w)):
-            for min_size in RETINAFACE_MIN_SIZES[k]:
-                s_kx = min_size / RETINAFACE_INPUT_WIDTH
-                s_ky = min_size / RETINAFACE_INPUT_HEIGHT
-                cx = (j + 0.5) * RETINAFACE_STEPS[k] / RETINAFACE_INPUT_WIDTH
-                cy = (i + 0.5) * RETINAFACE_STEPS[k] / RETINAFACE_INPUT_HEIGHT
-                anchors.append([cx, cy, s_kx, s_ky])
-    return np.array(anchors, dtype=np.float32)
-
-
-def _retinaface_decode(loc: np.ndarray, priors: np.ndarray) -> np.ndarray:
-    """Decode RetinaFace's localization predictions against anchor priors."""
-    boxes = np.concatenate([
-        priors[:, :2] + loc[:, :2] * RETINAFACE_VARIANCE[0] * priors[:, 2:],
-        priors[:, 2:] * np.exp(loc[:, 2:] * RETINAFACE_VARIANCE[1]),
-    ], axis=1)
-    boxes[:, :2] -= boxes[:, 2:] / 2
-    boxes[:, 2:] += boxes[:, :2]
-    return boxes
-
-
-def detect_faces_retinaface(session, frame: np.ndarray, conf_threshold: float = 0.5) -> list[list[int]]:
-    """RetinaFace (biubug6/Pytorch_Retinaface's mobilenet0.25 backbone, MIT-licensed weights via
-    the AMD Ryzen AI model zoo re-export, Apache 2.0) via onnxruntime. Unlike yolo/scrfd, this
-    checkpoint has a fixed 608x640 NHWC input rather than a dynamic square one, so the
-    letterbox pads into that exact canvas instead of a square target. Decodes the raw
-    loc/conf/landm outputs against precomputed anchor priors (see _retinaface_priors) using
-    the same variance-scaled box regression as upstream's own utils/box_utils.py. The 5-point
-    landmark output isn't decoded since nothing downstream uses it. Returns boxes in the same
-    [x1, y1, x2, y2] int-list contract as detect_faces()."""
-    frame_h, frame_w = frame.shape[:2]
-    scale = min(RETINAFACE_INPUT_HEIGHT / frame_h, RETINAFACE_INPUT_WIDTH / frame_w)
-    new_h, new_w = int(frame_h * scale), int(frame_w * scale)
-    resized = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
-    canvas = np.zeros((RETINAFACE_INPUT_HEIGHT, RETINAFACE_INPUT_WIDTH, 3), dtype=np.float32)
-    canvas[:new_h, :new_w] = resized.astype(np.float32)
-    canvas -= RETINAFACE_MEAN
-    blob = canvas[np.newaxis, ...]  # NHWC, matching this checkpoint's fixed input layout
-
-    input_name = session.get_inputs()[0].name
-    loc, conf, _landm = session.run(None, {input_name: blob})
-    loc, conf = loc[0], conf[0]
-
-    boxes = _retinaface_decode(loc, _retinaface_priors())
-    boxes[:, 0::2] *= RETINAFACE_INPUT_WIDTH
-    boxes[:, 1::2] *= RETINAFACE_INPUT_HEIGHT
-    scores = _yolo_softmax(conf, axis=-1)[:, 1]
-
-    mask = scores > conf_threshold
-    boxes, scores = boxes[mask], scores[mask]
-    if len(boxes) == 0:
-        return []
-
-    nms_boxes = [[x1, y1, x2 - x1, y2 - y1] for x1, y1, x2, y2 in boxes]
-    keep = cv2.dnn.NMSBoxes(nms_boxes, scores.tolist(), conf_threshold, RETINAFACE_NMS_THRESHOLD)
-    if len(keep) == 0:
-        return []
-    boxes = boxes[np.array(keep).flatten()] / scale
-    boxes[:, [0, 2]] = boxes[:, [0, 2]].clip(0, frame_w)
-    boxes[:, [1, 3]] = boxes[:, [1, 3]].clip(0, frame_h)
-
-    return boxes.astype(int).tolist()
-
-
-def detect_faces(net: cv2.dnn.Net, frame: np.ndarray, conf_threshold: float = 0.7) -> list[list[int]]:
-    """Detect faces and return bounding box limits."""
-    frame_height, frame_width = frame.shape[:2]
-    blob = cv2.dnn.blobFromImage(frame, 1.0, (300, 300), [104, 117, 123], False, False)
-    with _lock_for(net):
-        net.setInput(blob)
-        detections = net.forward()
-    face_boxes = []
-
-    for i in range(detections.shape[2]):
-        confidence = detections[0, 0, i, 2]
-        if confidence > conf_threshold:
-            x1 = int(detections[0, 0, i, 3] * frame_width)
-            y1 = int(detections[0, 0, i, 4] * frame_height)
-            x2 = int(detections[0, 0, i, 5] * frame_width)
-            y2 = int(detections[0, 0, i, 6] * frame_height)
-            face_boxes.append([x1, y1, x2, y2])
-    return face_boxes
+# Face detection backends (SSD, YOLO, SCRFD, RetinaFace) and detect_faces factory
+# are imported from .detectors above.
 
 
 def _box_iou(box_a: tuple[int, int, int, int], box_b: tuple[int, int, int, int]) -> float:
