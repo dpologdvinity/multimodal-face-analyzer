@@ -4,33 +4,9 @@ from __future__ import annotations
 import numpy as np
 
 try:
-    from src.core.constants import (
-        AGE_MODEL_RELIABILITY,
-        FUSED_MODEL_KEY,
-        RACE_CANONICAL_LABELS,
-        RACE_LABEL_TO_CANONICAL,
-        RACE_LABELS_FAIRFACE,
-        RACE_LABELS_DEEPFACE,
-        RACE_CLOSE_MARGIN,
-        GENDER_FUSION_WEIGHTS,
-        RACE_FUSION_WEIGHTS,
-        EMOTION_FUSION_WEIGHTS,
-        EMOTION_CANONICAL,
-    )
+    from src.core.constants import AGE_MODEL_RELIABILITY, FUSED_MODEL_KEY
 except ImportError:
-    from core.constants import (
-        AGE_MODEL_RELIABILITY,
-        FUSED_MODEL_KEY,
-        RACE_CANONICAL_LABELS,
-        RACE_LABEL_TO_CANONICAL,
-        RACE_LABELS_FAIRFACE,
-        RACE_LABELS_DEEPFACE,
-        RACE_CLOSE_MARGIN,
-        GENDER_FUSION_WEIGHTS,
-        RACE_FUSION_WEIGHTS,
-        EMOTION_FUSION_WEIGHTS,
-        EMOTION_CANONICAL,
-    )
+    from core.constants import AGE_MODEL_RELIABILITY, FUSED_MODEL_KEY
 
 
 def _weighted_median(values: list[float], weights: list[float]) -> float:

@@ -15,7 +15,6 @@ from .ensembles import (
     canonical_race_probabilities,
     fuse_race,
     fuse_emotion,
-    _softmax,
 )
 
 # Re-export constants used by callers (e.g., tests, inference.py) via src.fusion
@@ -63,7 +62,6 @@ __all__ = [
     "canonical_race_probabilities",
     "fuse_race",
     "fuse_emotion",
-    "_softmax",
     # constants re-exported for backward compatibility
     "RACE_CANONICAL_LABELS",
     "RACE_LABEL_TO_CANONICAL",

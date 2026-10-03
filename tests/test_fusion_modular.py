@@ -21,9 +21,11 @@ from src.fusion import (
     canonical_race_probabilities,
     fuse_race,
     fuse_emotion,
-    _softmax,
+    BEST_MODEL_KEY,
+    FUSED_MODEL_KEY,
+    RACE_CANONICAL_LABELS,
+    RACE_LABELS_FAIRFACE,
 )
-from src.fusion import RACE_CANONICAL_LABELS, RACE_LABELS_FAIRFACE
 
 
 class WeightedMedianTests(unittest.TestCase):
@@ -172,23 +174,39 @@ class FormatResultsTests(unittest.TestCase):
         self.assertEqual(_format_results([]), [])
 
 
-class SoftmaxTests(unittest.TestCase):
-    """_softmax: numerically stable softmax."""
+class WithHeadlineTests(unittest.TestCase):
+    """with_headline: prepends headline combined answer to model pairs."""
 
-    def test_outputs_sum_to_one(self):
-        x = np.array([1.0, 2.0, 3.0])
-        result = _softmax(x)
-        self.assertAlmostEqual(float(result.sum()), 1.0, places=6)
+    def test_combined_answer_leads_the_model_pairs(self):
+        self.assertEqual(
+            with_headline([("dan", "happy"), ("ferplus", "happiness")], "happy"),
+            [(FUSED_MODEL_KEY, "happy"), ("dan", "happy"), ("ferplus", "happiness")],
+        )
 
-    def test_larger_input_gets_higher_probability(self):
-        x = np.array([0.0, 10.0])
-        result = _softmax(x)
-        self.assertGreater(result[1], result[0])
+    def test_age_uses_its_own_row_name(self):
+        self.assertEqual(
+            with_headline([("mivolo", "32")], "32 (mivolo)", BEST_MODEL_KEY),
+            [(BEST_MODEL_KEY, "32 (mivolo)"), ("mivolo", "32")],
+        )
 
-    def test_numerical_stability_with_large_values(self):
-        x = np.array([1000.0, 1001.0])
-        result = _softmax(x)
-        self.assertTrue(np.all(np.isfinite(result)))
+    def test_pairs_are_unchanged_without_a_combined_answer(self):
+        self.assertEqual(with_headline([("mivolo", "32")], None), [("mivolo", "32")])
+
+
+class CanonicalRaceProbabilitiesTests(unittest.TestCase):
+    """canonical_race_probabilities: map backend class probs onto canonical categories."""
+
+    def test_reexpresses_probabilities_across_canonical_keys(self):
+        probs = np.array([0.7, 0.1, 0.05, 0.05, 0.05, 0.03, 0.02])
+        canonical = canonical_race_probabilities(probs, RACE_LABELS_FAIRFACE)
+        self.assertAlmostEqual(sum(canonical.values()), 1.0, places=5)
+        for key in RACE_CANONICAL_LABELS:
+            self.assertIn(key, canonical)
+
+    def test_handles_zero_sum_safely(self):
+        probs = np.zeros(len(RACE_LABELS_FAIRFACE))
+        canonical = canonical_race_probabilities(probs, RACE_LABELS_FAIRFACE)
+        self.assertEqual(canonical["white"], 0.0)
 
 
 if __name__ == "__main__":

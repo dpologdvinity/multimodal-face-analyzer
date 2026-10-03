@@ -25,12 +25,6 @@ except ImportError:
     )
 
 
-def _softmax(x: np.ndarray) -> np.ndarray:
-    """Return numerically stable softmax by shifting by the maximum value."""
-    exp = np.exp(x - np.max(x))
-    return exp / exp.sum()
-
-
 def _format_race_label(probs: np.ndarray, labels: list[str]) -> str:
     """Format the top race prediction, showing top-2 together when probabilities are close."""
     order = np.argsort(probs)[::-1]
