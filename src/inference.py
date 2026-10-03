@@ -332,6 +332,11 @@ except ImportError:
     )
     from attributes._lock import _NET_LOCKS, _NET_LOCKS_GUARD
 
+try:
+    from .fusion import *
+except ImportError:
+    from fusion import *
+
 
 # Shared across the process (and every Streamlit session) -- per-feature tasks are short-lived
 # native calls (cv2.dnn/TF/torch all release the GIL during their own compute), so a modest
@@ -663,164 +668,7 @@ GEOMETRIC_TRANSFORM_OPTIONS = ["translate", "reflect", "rotate", "scale", "shear
 # Age, gender, emotion, and alignment functions imported from attributes
 
 
-def _format_results(pairs: list[tuple[str, str]]) -> list[str]:
-    """Plain values only -- no model-name prefix, even with multiple models active per feature."""
-    return [value for _, value in pairs]
-
-
-# --- Multi-model fusion -------------------------------------------------------------------
-# Several models can be active for one feature at a time. Fusion combines them into a single
-# "fused" answer that is more accurate than any one of them, and it is that answer the UI
-# leads with (individual model outputs stay visible underneath).
-#
-# The per-model weights below are measurements, not taste: tools/benchmark.py scores every
-# backend against tools/ground_truth.json (75 hand-labelled faces across the assets/ images)
-# and the weights track those accuracies, so a backend that is materially worse than its peers
-# contributes proportionally less instead of dragging the combined answer toward its own error.
-# Re-run the benchmark after changing a model or its preprocessing and re-derive the weights.
-
-# Row names for a combined answer. Neither is a real backend; both sort ahead of the
-# individual models so the headline a user reads first is the combined one.
-FUSED_MODEL_KEY = "fused"  # several models actually combined
-BEST_MODEL_KEY = "best"    # one model picked as most reliable (age, see select_age)
-HEADLINE_MODEL_KEYS = (FUSED_MODEL_KEY, BEST_MODEL_KEY)
-
-# Age is deliberately NOT fused. Measured on the benchmark corpus: mivolo 92%, fairface 84%,
-# dex 63%, caffe 48%. Every combination tried -- weighted median and weighted mean
-# across a wide range of weights, clipping MiVOLO into FairFace's predicted decade, and
-# overriding MiVOLO only when both others disagreed with it -- scored at or BELOW MiVOLO alone
-# (best combination 90.7%). The backends fail on the same faces (elderly read young), so
-# averaging them moves the answer without correcting it. The headline therefore names the most
-# reliable model present rather than blending toward a worse one. Re-check with
-# tools/benchmark.py if a backend changes; switch to fusion if one ever wins.
-AGE_MODEL_RELIABILITY = ("mivolo", "fairface", "dex", "caffe")
-# Measured: mivolo 100%, fairface 95%, caffe 87%, deepface 84%.
-GENDER_FUSION_WEIGHTS = {"mivolo": 3.0, "fairface": 2.0, "caffe": 0.5, "deepface": 0.5}
-RACE_FUSION_WEIGHTS = {"fairface": 1.0, "deepface": 1.0}
-# Measured: dan 100%, hsemotion 100%, ferplus 98%, mini_xception 95%.
-EMOTION_FUSION_WEIGHTS = {"dan": 3.0, "hsemotion": 3.0, "ferplus": 2.0, "mini_xception": 1.0}
-
-# Inclusive year spans behind each bucketed age model's labels, so a bucket can join a
-# numeric fusion at its midpoint. 70+/60-100 are closed at a nominal 100 for that midpoint.
-FAIRFACE_AGE_RANGES = [(0, 2), (3, 9), (10, 19), (20, 29), (30, 39),
-                       (40, 49), (50, 59), (60, 69), (70, 100)]
-AGE_LIST_RANGES = [(0, 2), (4, 6), (8, 12), (15, 20), (25, 32), (38, 43), (48, 53), (60, 100)]
-
-# Display names must not contain "/" -- _format_race_label joins a close top-2 with "/", so a
-# slash inside a single class name would read (and parse) as two separate predictions.
-RACE_CANONICAL_LABELS = {
-    "white": "White", "black": "Black", "asian": "Asian", "indian": "Indian",
-    "latino": "Latino", "middle_eastern": "Middle Eastern",
-}
-# Both race backends' own class names, mapped onto the shared canonical keys above. FairFace
-# splits Asian into East/Southeast; deepface does not, so both collapse into one "asian" key
-# rather than inventing a distinction the combined answer cannot support.
-RACE_LABEL_TO_CANONICAL = {
-    "white": "white", "black": "black", "indian": "indian",
-    "east asian": "asian", "southeast asian": "asian", "asian": "asian",
-    "latino_hispanic": "latino", "latino hispanic": "latino",
-    "middle eastern": "middle_eastern",
-}
-# Each emotion backend uses its own spelling for the same state (see the EMOTION_LABELS_*
-# constants); fusion votes over these canonical names instead.
-EMOTION_CANONICAL = {
-    "happy": "happy", "happiness": "happy", "sad": "sad", "sadness": "sad",
-    "angry": "angry", "anger": "angry", "surprise": "surprise", "fear": "fear",
-    "disgust": "disgust", "neutral": "neutral", "contempt": "contempt",
-}
-
-
-def _weighted_median(values: list[float], weights: list[float]) -> float:
-    """Value where the cumulative weight first reaches half the total.
-
-    A median rather than a mean so one badly wrong model shifts the answer by at most one
-    rank instead of pulling it arbitrarily far -- age models fail by large margins, not small.
-    """
-    order = np.argsort(values)
-    sorted_values = np.asarray(values, dtype=float)[order]
-    cumulative = np.cumsum(np.asarray(weights, dtype=float)[order])
-    return float(sorted_values[int(np.searchsorted(cumulative, cumulative[-1] / 2.0))])
-
-
-def select_age(estimates: dict[str, float]) -> tuple[str, str] | None:
-    """Pick the headline age: the most reliable model present, as (label, model key).
-
-    Selection rather than fusion, for the reason recorded at AGE_MODEL_RELIABILITY. Returns
-    None when only one model ran, since a "headline" identical to the sole row adds nothing.
-    """
-    usable = {key: value for key, value in estimates.items()
-              if value is not None and np.isfinite(value) and 0 <= value <= 122}
-    if len(usable) < 2:
-        return None
-    ranked = sorted(usable, key=lambda key: AGE_MODEL_RELIABILITY.index(key)
-                    if key in AGE_MODEL_RELIABILITY else len(AGE_MODEL_RELIABILITY))
-    chosen = ranked[0]
-    return f"{usable[chosen]:.0f}", chosen
-
-
-def fuse_gender(male_probabilities: dict[str, float]) -> str | None:
-    """Combine per-model P(Male) into one weighted-mean gender label."""
-    usable = {key: value for key, value in male_probabilities.items()
-              if value is not None and np.isfinite(value)}
-    if len(usable) < 2:
-        return None
-    weights = np.array([GENDER_FUSION_WEIGHTS.get(key, 1.0) for key in usable])
-    probability = float(np.array(list(usable.values())) @ weights / weights.sum())
-    return "Male" if probability >= 0.5 else "Female"
-
-
-def canonical_race_probabilities(probs: np.ndarray, labels: list[str]) -> dict[str, float]:
-    """Re-express one backend's class probabilities over the shared canonical race keys."""
-    total = float(np.sum(probs)) or 1.0
-    combined = dict.fromkeys(RACE_CANONICAL_LABELS, 0.0)
-    for label, probability in zip(labels, probs):
-        key = RACE_LABEL_TO_CANONICAL.get(label.lower())
-        if key is not None:
-            combined[key] += float(probability) / total
-    return combined
-
-
-def fuse_race(canonical_probabilities: dict[str, dict[str, float]]) -> str | None:
-    """Combine per-model canonical race distributions into one label.
-
-    Keeps _format_race_label's convention of showing a close runner-up, because the combined
-    distribution is exactly where a genuinely ambiguous face should stay visible as ambiguous.
-    """
-    if len(canonical_probabilities) < 2:
-        return None
-    weights = {key: RACE_FUSION_WEIGHTS.get(key, 1.0) for key in canonical_probabilities}
-    total_weight = sum(weights.values()) or 1.0
-    blended = {
-        canonical: sum(distribution.get(canonical, 0.0) * weights[model]
-                       for model, distribution in canonical_probabilities.items()) / total_weight
-        for canonical in RACE_CANONICAL_LABELS
-    }
-    ranked = sorted(blended.items(), key=lambda item: -item[1])
-    display = [RACE_CANONICAL_LABELS[key] for key, _ in ranked]
-    values = np.array([value for _, value in ranked])
-    return _format_race_label(values, display)
-
-
-def fuse_emotion(labels: dict[str, str]) -> str | None:
-    """Combine per-model emotion labels into one weighted-vote label."""
-    if len(labels) < 2:
-        return None
-    votes: dict[str, float] = {}
-    for model, label in labels.items():
-        canonical = EMOTION_CANONICAL.get(str(label).lower())
-        if canonical is None:
-            continue
-        votes[canonical] = votes.get(canonical, 0.0) + EMOTION_FUSION_WEIGHTS.get(model, 1.0)
-    if not votes:
-        return None
-    return max(votes.items(), key=lambda item: item[1])[0]
-
-
-def with_headline(
-    pairs: list[tuple[str, str]], headline: str | None, key: str = FUSED_MODEL_KEY,
-) -> list[tuple[str, str]]:
-    """Prepend a combined answer to a feature's model pairs, so it leads every display of them."""
-    return ([(key, headline)] if headline else []) + pairs
+# Fusion (ranking and ensembles) are imported from .fusion above.
 
 
 # Race and FairFace/DeepFace prediction functions imported from attributes.race and attributes.gender
@@ -1017,21 +865,7 @@ def _cached_face_predict(feature: str, model_key: str, face_bgr: np.ndarray, pre
     return value
 
 
-def _sanitize_column_name(feature: str, model_key: str) -> str:
-    """Convert feature/model names into a valid SQLite column identifier."""
-    return f"{feature}_{model_key}".lower().replace(" ", "_").replace("-", "_")
-
-
-def _gather_face_results(pairs_by_feature: dict[str, list[tuple[str, str]]]) -> dict[str, str]:
-    """Flatten analyze_frame's per-feature (model_key, value) pairs into
-    {column_name: value}, one entry per (feature, model) that actually produced a value for
-    this face. A model that wasn't active, or produced no result, contributes no key here --
-    this is what makes save_face()'s column creation lazy/sparse."""
-    results = {}
-    for feature, pairs in pairs_by_feature.items():
-        for model_key, value in pairs:
-            results[_sanitize_column_name(feature, model_key)] = value
-    return results
+# _sanitize_column_name and _gather_face_results imported from .fusion
 
 
 def _crop_and_resize_for_eigenfaces(face_bgr: np.ndarray) -> np.ndarray:
