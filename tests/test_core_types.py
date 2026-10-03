@@ -146,10 +146,11 @@ def test_import_inference_when_only_src_in_sys_path():
     import sys
     from pathlib import Path
 
+    repo_root = str(Path(__file__).resolve().parents[1])
     src_dir = str(Path(__file__).resolve().parents[1] / "src")
     code = (
         "import sys\n"
-        f"sys.path = [{src_dir!r}] + [p for p in sys.path if 'multimodal-face-analyzer' not in p]\n"
+        f"sys.path = [{src_dir!r}] + [p for p in sys.path if p != {repo_root!r}]\n"
         "import inference\n"
         "assert hasattr(inference, 'Models')\n"
         "assert hasattr(inference, 'BoundingBox')\n"
