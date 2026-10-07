@@ -1,10 +1,10 @@
 """Face detector backends and factory dispatch."""
 from .base import BaseFaceDetector
+from .factory import detect_faces
+from .retinaface import detect_faces_retinaface
+from .scrfd import detect_faces_scrfd
 from .ssd import detect_faces_ssd
 from .yolo import detect_faces_yolo
-from .scrfd import detect_faces_scrfd
-from .retinaface import detect_faces_retinaface
-from .factory import detect_faces
 
 __all__ = [
     "BaseFaceDetector",

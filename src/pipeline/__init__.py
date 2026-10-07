@@ -1,21 +1,10 @@
 """Pipeline orchestration subpackage for facial analysis workflow and visualization."""
 from __future__ import annotations
 
-from .config import AnalysisConfig
-from .loader import load_models
-from .tracker import FaceTracker, _box_iou
-from .drawing import (
-    _silence_native_logs,
-    detect_hand_landmarks_mediapipe,
-    draw_face_landmarks,
-    draw_hand_landmarks,
-    draw_outlined_text,
-    draw_recognition_scan,
-)
 from .analyzer import (
-    AGGREGATE_FEATURES,
     _INFERENCE_EXECUTOR,
     _PREDICTION_CACHE,
+    AGGREGATE_FEATURES,
     _cached_face_predict,
     _detect_face_landmarker,
     _record_model_latency,
@@ -26,6 +15,17 @@ from .analyzer import (
     predict_gaze_mediapipe,
     predict_head_pose_mediapipe,
 )
+from .config import AnalysisConfig
+from .drawing import (
+    _silence_native_logs,
+    detect_hand_landmarks_mediapipe,
+    draw_face_landmarks,
+    draw_hand_landmarks,
+    draw_outlined_text,
+    draw_recognition_scan,
+)
+from .loader import load_models
+from .tracker import FaceTracker, _box_iou
 
 __all__ = [
     "AnalysisConfig",

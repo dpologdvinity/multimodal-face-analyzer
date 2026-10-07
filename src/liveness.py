@@ -3,10 +3,9 @@ from __future__ import annotations
 
 import threading
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from statistics import fmean
-from typing import Sequence
-
 
 BLINK_THRESHOLD = 0.55
 TEXTURE_ARTIFACT_THRESHOLD = 0.72

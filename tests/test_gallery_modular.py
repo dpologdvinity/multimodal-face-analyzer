@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import sqlite3
 import tempfile
-import threading
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -107,8 +106,8 @@ class EigenfacesTests(unittest.TestCase):
 
     def test_crop_and_resize_returns_correct_shape(self):
         """_crop_and_resize_for_eigenfaces returns a grayscale image at EIGEN_FACE_SIZE."""
-        from src.gallery.eigenfaces import _crop_and_resize_for_eigenfaces
         from src.core.constants import EIGEN_FACE_SIZE
+        from src.gallery.eigenfaces import _crop_and_resize_for_eigenfaces
 
         face = self._make_face(128)
         result = _crop_and_resize_for_eigenfaces(face)
@@ -117,8 +116,8 @@ class EigenfacesTests(unittest.TestCase):
 
     def test_train_eigenfaces_requires_at_least_two_images(self):
         """_train_eigenfaces returns None when fewer than 2 images exist."""
-        from src.gallery.eigenfaces import _train_eigenfaces
         import src.gallery.eigenfaces as ef_mod
+        from src.gallery.eigenfaces import _train_eigenfaces
 
         with tempfile.TemporaryDirectory() as tmp:
             eigen_dir = Path(tmp)
@@ -129,9 +128,12 @@ class EigenfacesTests(unittest.TestCase):
 
     def test_train_and_match_eigenfaces_with_two_dummy_images(self):
         """_train_eigenfaces and match_face_eigenfaces work end-to-end with 2 dummy images."""
-        from src.gallery.eigenfaces import _train_eigenfaces, match_face_eigenfaces, _crop_and_resize_for_eigenfaces
         import src.gallery.eigenfaces as ef_mod
-        from src.core.constants import EIGEN_FACE_SIZE, EIGENFACE_DISTANCE_THRESHOLD
+        from src.gallery.eigenfaces import (
+            _crop_and_resize_for_eigenfaces,
+            _train_eigenfaces,
+            match_face_eigenfaces,
+        )
 
         face_a = self._make_face(50)
         face_b = self._make_face(200)
@@ -161,8 +163,11 @@ class EigenfacesTests(unittest.TestCase):
 
     def test_match_faces_eigenfaces_batch_returns_one_per_face(self):
         """match_faces_eigenfaces_batch returns a list with one entry per input face."""
-        from src.gallery.eigenfaces import match_faces_eigenfaces_batch, _crop_and_resize_for_eigenfaces
         import src.gallery.eigenfaces as ef_mod
+        from src.gallery.eigenfaces import (
+            _crop_and_resize_for_eigenfaces,
+            match_faces_eigenfaces_batch,
+        )
 
         face_a = self._make_face(80)
         face_b = self._make_face(160)
@@ -182,8 +187,8 @@ class EigenfacesTests(unittest.TestCase):
 
     def test_batch_returns_none_list_when_fewer_than_two_saved(self):
         """match_faces_eigenfaces_batch returns [None] per face when training fails."""
-        from src.gallery.eigenfaces import match_faces_eigenfaces_batch
         import src.gallery.eigenfaces as ef_mod
+        from src.gallery.eigenfaces import match_faces_eigenfaces_batch
 
         face = self._make_face(128)
         with tempfile.TemporaryDirectory() as tmp:
@@ -198,7 +203,9 @@ class SearchTests(unittest.TestCase):
 
     def test_build_gallery_from_directory_with_mocked_detector(self):
         """build_gallery_from_directory correctly skips no-face images and embeds found faces."""
-        from src.gallery.search import build_gallery_from_directory, compute_face_embedding
+        from src.gallery.search import (
+            build_gallery_from_directory,
+        )
 
         dummy_embedding = np.ones(128, dtype=np.float32)
         dummy_embedding /= np.linalg.norm(dummy_embedding)
@@ -248,8 +255,8 @@ class SearchTests(unittest.TestCase):
 
     def test_load_and_save_gallery_round_trip(self):
         """save_gallery writes JSON and load_gallery reads it back to numpy arrays."""
-        from src.gallery.search import load_gallery, save_gallery
         import src.gallery.search as search_mod
+        from src.gallery.search import load_gallery, save_gallery
 
         emb = np.array([0.1, 0.2, 0.3], dtype=np.float32)
         original = {"Alice": emb}
@@ -265,8 +272,8 @@ class SearchTests(unittest.TestCase):
 
     def test_load_gallery_returns_empty_when_file_missing(self):
         """load_gallery returns {} when the gallery file does not exist."""
-        from src.gallery.search import load_gallery
         import src.gallery.search as search_mod
+        from src.gallery.search import load_gallery
 
         with tempfile.TemporaryDirectory() as tmp:
             missing_file = Path(tmp) / "nonexistent.json"
@@ -295,8 +302,8 @@ class SearchTests(unittest.TestCase):
 
     def test_match_face_identity_returns_best_match(self):
         """match_face_identity returns the name with the highest cosine similarity above threshold."""
-        from src.gallery.search import match_face_identity
         import src.gallery.search as search_mod
+        from src.gallery.search import match_face_identity
 
         emb_a = np.array([1.0, 0.0, 0.0], dtype=np.float32)
         emb_b = np.array([0.0, 1.0, 0.0], dtype=np.float32)
@@ -314,8 +321,8 @@ class SearchTests(unittest.TestCase):
 
     def test_match_face_identity_returns_none_below_threshold(self):
         """match_face_identity returns None when similarity is below threshold."""
-        from src.gallery.search import match_face_identity
         import src.gallery.search as search_mod
+        from src.gallery.search import match_face_identity
 
         gallery = {"Alice": np.array([1.0, 0.0, 0.0], dtype=np.float32)}
         query = np.array([0.0, 0.0, 1.0], dtype=np.float32)

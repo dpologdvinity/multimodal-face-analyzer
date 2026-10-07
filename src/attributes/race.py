@@ -2,29 +2,30 @@
 from __future__ import annotations
 
 from typing import Any
+
 import cv2
 import numpy as np
 
 from ._lock import _lock_for
-from .transformers import align_face_with_landmarks, _margin_align
+from .transformers import _margin_align, align_face_with_landmarks
 
 try:
     from src.core import (
-        RACE_CLOSE_MARGIN,
-        RACE_LABELS_FAIRFACE,
         FAIRFACE_AGE_LABELS,
-        RACE_LABELS_DEEPFACE,
         IMAGENET_MEAN,
         IMAGENET_STD,
+        RACE_CLOSE_MARGIN,
+        RACE_LABELS_DEEPFACE,
+        RACE_LABELS_FAIRFACE,
     )
 except ImportError:
     from core import (
-        RACE_CLOSE_MARGIN,
-        RACE_LABELS_FAIRFACE,
         FAIRFACE_AGE_LABELS,
-        RACE_LABELS_DEEPFACE,
         IMAGENET_MEAN,
         IMAGENET_STD,
+        RACE_CLOSE_MARGIN,
+        RACE_LABELS_DEEPFACE,
+        RACE_LABELS_FAIRFACE,
     )
 
 

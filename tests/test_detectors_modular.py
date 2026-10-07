@@ -1,11 +1,11 @@
 """Unit tests for modular face detector subpackage (src/detectors/)."""
 import unittest
 from unittest.mock import MagicMock, patch
+
 import numpy as np
 
 from src.core.types import Models
 from src.detectors import (
-    BaseFaceDetector,
     detect_faces,
     detect_faces_retinaface,
     detect_faces_scrfd,

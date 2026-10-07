@@ -5,23 +5,23 @@ import numpy as np
 
 try:
     from src.core.constants import (
-        GENDER_FUSION_WEIGHTS,
-        RACE_FUSION_WEIGHTS,
-        EMOTION_FUSION_WEIGHTS,
-        RACE_CANONICAL_LABELS,
-        RACE_LABEL_TO_CANONICAL,
-        RACE_CLOSE_MARGIN,
         EMOTION_CANONICAL,
+        EMOTION_FUSION_WEIGHTS,
+        GENDER_FUSION_WEIGHTS,
+        RACE_CANONICAL_LABELS,
+        RACE_CLOSE_MARGIN,
+        RACE_FUSION_WEIGHTS,
+        RACE_LABEL_TO_CANONICAL,
     )
 except ImportError:
     from core.constants import (
-        GENDER_FUSION_WEIGHTS,
-        RACE_FUSION_WEIGHTS,
-        EMOTION_FUSION_WEIGHTS,
-        RACE_CANONICAL_LABELS,
-        RACE_LABEL_TO_CANONICAL,
-        RACE_CLOSE_MARGIN,
         EMOTION_CANONICAL,
+        EMOTION_FUSION_WEIGHTS,
+        GENDER_FUSION_WEIGHTS,
+        RACE_CANONICAL_LABELS,
+        RACE_CLOSE_MARGIN,
+        RACE_FUSION_WEIGHTS,
+        RACE_LABEL_TO_CANONICAL,
     )
 
 
@@ -49,7 +49,7 @@ def canonical_race_probabilities(probs: np.ndarray, labels: list[str]) -> dict[s
     """Re-express one backend's class probabilities over the shared canonical race keys."""
     total = float(np.sum(probs)) or 1.0
     combined = dict.fromkeys(RACE_CANONICAL_LABELS, 0.0)
-    for label, probability in zip(labels, probs):
+    for label, probability in zip(labels, probs, strict=False):
         key = RACE_LABEL_TO_CANONICAL.get(label.lower())
         if key is not None:
             combined[key] += float(probability) / total

@@ -11,20 +11,20 @@ import unittest
 import numpy as np
 
 from src.fusion import (
-    select_age,
-    with_headline,
-    _weighted_median,
-    _format_results,
-    _sanitize_column_name,
-    _gather_face_results,
-    fuse_gender,
-    canonical_race_probabilities,
-    fuse_race,
-    fuse_emotion,
     BEST_MODEL_KEY,
     FUSED_MODEL_KEY,
     RACE_CANONICAL_LABELS,
     RACE_LABELS_FAIRFACE,
+    _format_results,
+    _gather_face_results,
+    _sanitize_column_name,
+    _weighted_median,
+    canonical_race_probabilities,
+    fuse_emotion,
+    fuse_gender,
+    fuse_race,
+    select_age,
+    with_headline,
 )
 
 

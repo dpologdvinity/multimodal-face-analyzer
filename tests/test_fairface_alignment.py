@@ -7,7 +7,6 @@ import numpy as np
 
 from src import inference
 
-
 # dlib get_face_chip_details: outer/inner right eye, outer/inner left eye, nose.
 REFERENCE = (np.array([
     [0.8595674595992, 0.2134981538014], [0.6460604764104, 0.2289674387677],
@@ -48,7 +47,7 @@ class FairFaceAlignmentTests(unittest.TestCase):
         """Convert mediapipe landmark indices to dlib-format points."""
         points = [(0.5, 0.5)] * 468
         # Place reference points at specific mediapipe indices (eye corners, nose)
-        for index, point in zip((263, 362, 33, 133, 1), REFERENCE / 224):
+        for index, point in zip((263, 362, 33, 133, 1), REFERENCE / 224, strict=False):
             points[index] = tuple(point)
         actual = inference.fairface_landmarks_from_mediapipe(points, 224, 224)
         np.testing.assert_allclose(actual, REFERENCE, atol=1e-4)
@@ -74,7 +73,7 @@ class FairFaceAlignmentTests(unittest.TestCase):
         x1, y1, x2, y2 = inference.face_crop_bounds(box, frame.shape[:2])
         points = [(0.5, 0.5)] * 468
         # Place reference points at specific mediapipe indices
-        for index, point in zip((263, 362, 33, 133, 1), REFERENCE / 224):
+        for index, point in zip((263, 362, 33, 133, 1), REFERENCE / 224, strict=False):
             points[index] = tuple(point)
         result = SimpleNamespace(face_landmarks=[
             [SimpleNamespace(x=x, y=y) for x, y in points]

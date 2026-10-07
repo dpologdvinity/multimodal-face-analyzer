@@ -4,6 +4,7 @@ from __future__ import annotations
 import sys
 import unittest
 from pathlib import Path
+
 import cv2
 
 ROOT = Path(__file__).resolve().parents[1]

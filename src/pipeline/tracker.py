@@ -1,8 +1,8 @@
 """Multi-face tracking using greedy IoU matching across video frames."""
 from __future__ import annotations
 
-from dataclasses import dataclass
 import threading
+from dataclasses import dataclass
 
 try:
     from src.core.constants import IOU_TRACKING_THRESHOLD, TRACKING_MAX_MISSED_FRAMES
@@ -59,7 +59,7 @@ class FaceTracker:
 
             track_for_detection: dict[int, int] = {}
             used_tracks: set[int] = set()
-            for iou, track_id, det_index in candidates:
+            for _iou, track_id, det_index in candidates:
                 if track_id in used_tracks or det_index in track_for_detection:
                     continue
                 track_for_detection[det_index] = track_id

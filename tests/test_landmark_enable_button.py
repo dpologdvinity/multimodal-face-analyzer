@@ -1,9 +1,8 @@
 import ast
 import pathlib
-from types import SimpleNamespace
 import unittest
+from types import SimpleNamespace
 from unittest.mock import Mock
-
 
 APP_SOURCE = pathlib.Path(__file__).parents[1].joinpath("src", "app.py").read_text()
 

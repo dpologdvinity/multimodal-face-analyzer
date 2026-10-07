@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import threading
 from typing import Any
+
 import cv2
 import numpy as np
 
@@ -15,31 +16,31 @@ except ImportError:
 
 try:
     from src.core import (
-        IMAGENET_MEAN,
-        IMAGENET_STD,
+        AUDIO_AROUSAL_LOUD_RMS,
+        AUDIO_AROUSAL_QUIET_RMS,
+        AUDIO_AROUSAL_WINDOW_SECONDS,
+        EMOTION_HIGH_AROUSAL_LABELS,
         EMOTION_LABELS_DAN,
-        EMOTION_LABELS_MINI_XCEPTION,
         EMOTION_LABELS_FERPLUS,
         EMOTION_LABELS_HSEMOTION,
-        AUDIO_AROUSAL_WINDOW_SECONDS,
-        AUDIO_AROUSAL_QUIET_RMS,
-        AUDIO_AROUSAL_LOUD_RMS,
-        EMOTION_HIGH_AROUSAL_LABELS,
+        EMOTION_LABELS_MINI_XCEPTION,
         EMOTION_LOW_AROUSAL_LABELS,
+        IMAGENET_MEAN,
+        IMAGENET_STD,
     )
 except ImportError:
     from core import (
-        IMAGENET_MEAN,
-        IMAGENET_STD,
+        AUDIO_AROUSAL_LOUD_RMS,
+        AUDIO_AROUSAL_QUIET_RMS,
+        AUDIO_AROUSAL_WINDOW_SECONDS,
+        EMOTION_HIGH_AROUSAL_LABELS,
         EMOTION_LABELS_DAN,
-        EMOTION_LABELS_MINI_XCEPTION,
         EMOTION_LABELS_FERPLUS,
         EMOTION_LABELS_HSEMOTION,
-        AUDIO_AROUSAL_WINDOW_SECONDS,
-        AUDIO_AROUSAL_QUIET_RMS,
-        AUDIO_AROUSAL_LOUD_RMS,
-        EMOTION_HIGH_AROUSAL_LABELS,
+        EMOTION_LABELS_MINI_XCEPTION,
         EMOTION_LOW_AROUSAL_LABELS,
+        IMAGENET_MEAN,
+        IMAGENET_STD,
     )
 
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 import threading
 from contextlib import nullcontext
 from typing import Any
+
 import cv2
 import numpy as np
 

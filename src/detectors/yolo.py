@@ -2,13 +2,22 @@
 from __future__ import annotations
 
 from typing import Any
+
 import cv2
 import numpy as np
 
 try:
-    from src.core.constants import YOLO_FACE_INPUT_SIZE, YOLO_FACE_STRIDES, YOLO_FACE_IOU_THRESHOLD
+    from src.core.constants import (
+        YOLO_FACE_INPUT_SIZE,
+        YOLO_FACE_IOU_THRESHOLD,
+        YOLO_FACE_STRIDES,
+    )
 except ImportError:
-    from core.constants import YOLO_FACE_INPUT_SIZE, YOLO_FACE_STRIDES, YOLO_FACE_IOU_THRESHOLD
+    from core.constants import (
+        YOLO_FACE_INPUT_SIZE,
+        YOLO_FACE_IOU_THRESHOLD,
+        YOLO_FACE_STRIDES,
+    )
 
 
 def _yolo_letterbox(
@@ -44,7 +53,7 @@ def detect_faces_yolo(session: Any, frame: np.ndarray | None, conf_threshold: fl
     outputs = session.run(None, {input_name: blob})
 
     all_boxes, all_scores = [], []
-    for pred, stride in zip(outputs, YOLO_FACE_STRIDES):
+    for pred, stride in zip(outputs, YOLO_FACE_STRIDES, strict=False):
         _, channels, h, w = pred.shape
         pred = pred.reshape(1, channels, -1).transpose(0, 2, 1)[0]  # (H*W, 80)
 
