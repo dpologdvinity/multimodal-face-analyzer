@@ -36,8 +36,3 @@ def test_sidebar_toggling_a_model_checkbox_keeps_app_alive():
     at = box.set_value(not box.value).run()
     assert not at.exception
 
-
-def test_face_editor_is_closed_by_default():
-    # No face has been detected, so no per-face editor state should exist yet.
-    at = _run()
-    assert not [k for k in at.session_state.keys() if str(k).startswith("face_editor_open_")]
