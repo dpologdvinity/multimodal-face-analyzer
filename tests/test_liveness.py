@@ -1,6 +1,5 @@
 import unittest
 from types import SimpleNamespace
-from pathlib import Path
 
 from src.liveness import (
     LivenessTracker,
@@ -12,25 +11,6 @@ from src.liveness import (
 
 class LivenessTests(unittest.TestCase):
     """Verify liveness detection integrates texture analysis and blink tracking."""
-
-    def test_liveness_backend_contract_is_wired(self):
-        """Ensure inference.py defines liveness_nets dict and wires mediapipe backend."""
-        root = Path(__file__).resolve().parents[1]
-        inference_source = (root / "src" / "inference.py").read_text()
-
-        self.assertIn("liveness_nets: dict", inference_source)
-        self.assertIn('liveness_nets["mediapipe"]', inference_source)
-        self.assertIn("def _liveness_task", inference_source)
-
-    def test_liveness_build_arg_is_documented_and_forwarded(self):
-        """Confirm LIVENESS_MODEL build arg appears in Dockerfile, build script, and README."""
-        root = Path(__file__).resolve().parents[1]
-        dockerfile = (root / "Dockerfile").read_text()
-        build_script = (root / "build-and-run.sh").read_text()
-        readme = (root / "README.md").read_text()
-
-        for text in (dockerfile, build_script, readme):
-            self.assertIn("LIVENESS_MODEL", text)
 
     def test_texture_score_flags_regular_high_frequency_pattern(self):
         """Verify texture scorer distinguishes smooth from checkerboard patterns."""

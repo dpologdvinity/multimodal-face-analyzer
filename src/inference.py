@@ -545,10 +545,6 @@ def analyze_frame(
     None, regardless of active_liveness. active_liveness additionally gates it off within LIVE
     mode itself (unchecked box = skipped); omitted callers default to every loaded backend.
     """
-    def _liveness_task():
-        """Compatibility signature anchor for tests/test_liveness.py."""
-        pass
-
     return _pipeline_analyze_frame(
         models=models,
         frame=frame,
