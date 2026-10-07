@@ -24,21 +24,42 @@ REQUIRED_MODELS = [
 ]
 
 
+# Pinned so the golden does not depend on which optional runtimes (torch/TF/mediapipe) are installed.
+EXPECTED_ACTIVE = {
+    "age": {"caffe", "dex", "fairface"},
+    "gender": {"caffe", "fairface"},
+    "emotion": {"ferplus", "hsemotion"},
+    "race": {"fairface"},
+    "hair_color": {"colorimetric"},
+    "eye_color": {"colorimetric"},
+}
+
+
 def _config(models) -> dict:
     """Build the analyze_frame kwargs; the one place to change if its signature changes."""
-    keys = lambda nets: set(nets)  # noqa: E731
+    loaded = {
+        "age": models.age_nets,
+        "gender": models.gender_nets,
+        "emotion": models.emotion_nets,
+        "race": models.race_nets,
+        "hair_color": models.hair_color_nets,
+        "eye_color": models.eye_color_nets,
+    }
+    for feature, expected in EXPECTED_ACTIVE.items():
+        missing = expected - set(loaded[feature])
+        assert not missing, f"golden backends failed to load for {feature}: {sorted(missing)}"
     return dict(
         conf_threshold=0.5,
-        active_age=keys(models.age_nets),
-        active_gender=keys(models.gender_nets),
-        active_emotion=keys(models.emotion_nets),
-        active_race=keys(models.race_nets),
+        active_age=set(EXPECTED_ACTIVE["age"]),
+        active_gender=set(EXPECTED_ACTIVE["gender"]),
+        active_emotion=set(EXPECTED_ACTIVE["emotion"]),
+        active_race=set(EXPECTED_ACTIVE["race"]),
         active_recognition=set(),
         gallery={},
         active_glasses=set(),
         active_mask=set(),
-        active_hair_color=keys(models.hair_color_nets),
-        active_eye_color=keys(models.eye_color_nets),
+        active_hair_color=set(EXPECTED_ACTIVE["hair_color"]),
+        active_eye_color=set(EXPECTED_ACTIVE["eye_color"]),
         active_face_landmarks=set(),
         active_hands=set(),
         active_gaze=set(),
