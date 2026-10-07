@@ -1,8 +1,8 @@
-streamlit
-opencv-python-headless>=4.8.0,<5.0.0
-numpy
-pillow
-streamlit-webrtc
-streamlit-cropper
-av
-PyWavelets
+streamlit==1.65.0
+opencv-python-headless==4.14.0.94
+numpy==2.4.6
+pillow==12.3.0
+streamlit-webrtc==0.78.1
+streamlit-cropper==0.3.1
+av==17.1.0
+PyWavelets==1.9.0
