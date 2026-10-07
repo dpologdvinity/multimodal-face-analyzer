@@ -206,5 +206,27 @@ class NativeInstallerVerbosityTests(unittest.TestCase):
         self.assertIn("HAIR_COLOR_MODEL=colorimetric", output)
 
 
+class NativeInstallerOpenCVPinTests(unittest.TestCase):
+    """Verify the native OpenCV reinstall keeps the pin from requirements.txt."""
+
+    def test_opencv_reinstall_uses_requirements_pin(self):
+        """The post-uninstall OpenCV install must use the exact pinned version."""
+        root = SCRIPT.parent
+        requirements = (root / "requirements.txt").read_text().splitlines()
+        pinned = [
+            line.split("==", 1)[1].strip()
+            for line in requirements
+            if line.startswith("opencv-python-headless==")
+        ]
+        self.assertEqual(len(pinned), 1)
+
+        install_lines = [
+            line
+            for line in SCRIPT.read_text().splitlines()
+            if 'install "${OPENCV_PACKAGE}' in line
+        ]
+        self.assertEqual(install_lines, [f'"${{PIP[@]}}" install "${{OPENCV_PACKAGE}}=={pinned[0]}"'])
+
+
 if __name__ == "__main__":
     unittest.main()
