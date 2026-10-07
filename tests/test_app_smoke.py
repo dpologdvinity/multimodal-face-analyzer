@@ -1,9 +1,19 @@
 """Smoke tests that execute the Streamlit script headlessly via AppTest."""
 from pathlib import Path
 
+import pytest
 from streamlit.testing.v1 import AppTest
 
+from src.core.constants import MODEL_DIR
+from tests._models import require_all_models
+
 APP = str(Path(__file__).resolve().parents[1] / "src" / "app.py")
+
+
+@pytest.fixture(autouse=True)
+def _real_models_present():
+    """Skip when models are git-lfs pointers: load_models() would fail to parse them."""
+    require_all_models(MODEL_DIR)
 
 
 def _run() -> AppTest:

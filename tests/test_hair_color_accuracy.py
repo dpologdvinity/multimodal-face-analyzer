@@ -7,6 +7,8 @@ from pathlib import Path
 
 import cv2
 
+from tests._models import require_local_data
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
@@ -24,11 +26,17 @@ class TestHairColorAccuracy(unittest.TestCase):
             "3yr-white-girl-sad.jpg": (526, 79, 654, 257),
         }
 
+    def _read_asset(self, name: str):
+        """Load a benchmark photo, skipping the test when the untracked assets are absent."""
+        path = self.assets_dir / name
+        require_local_data(path)
+        return cv2.imread(str(path))
+
     def test_hair_color_biden_white(self):
         """Verify white hair detection on Joe Biden."""
         import inference
 
-        img = cv2.imread(str(self.assets_dir / "joe-biden.jpg"))
+        img = self._read_asset("joe-biden.jpg")
         self.assertIsNotNone(img)
         pred = inference.predict_hair_color_colorimetric(img, self.boxes["joe-biden.jpg"])
         self.assertEqual(pred, "white")
@@ -37,7 +45,7 @@ class TestHairColorAccuracy(unittest.TestCase):
         """Verify black hair detection on Asian child."""
         import inference
 
-        img = cv2.imread(str(self.assets_dir / "5yr-asian-girl-happy.jpg"))
+        img = self._read_asset("5yr-asian-girl-happy.jpg")
         self.assertIsNotNone(img)
         pred = inference.predict_hair_color_colorimetric(img, self.boxes["5yr-asian-girl-happy.jpg"])
         self.assertEqual(pred, "black")
@@ -46,7 +54,7 @@ class TestHairColorAccuracy(unittest.TestCase):
         """Verify blonde hair detection on White child."""
         import inference
 
-        img = cv2.imread(str(self.assets_dir / "3yr-white-girl-sad.jpg"))
+        img = self._read_asset("3yr-white-girl-sad.jpg")
         self.assertIsNotNone(img)
         pred = inference.predict_hair_color_colorimetric(img, self.boxes["3yr-white-girl-sad.jpg"])
         self.assertEqual(pred, "blonde")
