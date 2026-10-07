@@ -86,8 +86,8 @@ class FairFaceAlignmentTests(unittest.TestCase):
         models = inference.Models(face_net=None, age_nets={"fairface": net},
                                   face_landmarks_nets={"mediapipe": object()})
         # Mock face detection and landmark detection; analyze_frame should produce same blob
-        with patch.object(inference, "detect_faces", return_value=[box]), \
-             patch.object(inference, "_detect_face_landmarker", return_value=result):
+        with patch("src.pipeline.analyzer.detect_faces", return_value=[box]) as detect, \
+             patch("src.pipeline.analyzer._detect_face_landmarker", return_value=result) as landmarker:
             output = inference.analyze_frame(
                 models, frame, 0.5, active_age={"fairface"}, active_gender=set(),
                 active_emotion=set(), active_race=set(), active_recognition=set(), gallery={},
@@ -95,6 +95,8 @@ class FairFaceAlignmentTests(unittest.TestCase):
                 active_face_landmarks=set(), active_hands=set(), active_gaze=set(),
                 global_adjustments={}, face_adjustments={},
             )
+        detect.assert_called()
+        landmarker.assert_called()
         self.assertEqual(output[1][0]["raw_columns"]["age_fairface"], "70+")
         # Float32 landmark roundoff can move interpolation by one uint8 level.
         np.testing.assert_allclose(net.blob, expected, atol=1 / (255 * 0.224))

@@ -1,17 +1,7 @@
 """Facade interface for facial analysis pipeline, models, attributes, detectors, and gallery."""
 from __future__ import annotations
 
-import contextlib
-import io
-import os
-import random
-import sys
-import threading
-import time
 from typing import Any
-
-import cv2
-import numpy as np
 
 # Core types, constants, and image processing utilities
 try:
@@ -65,6 +55,7 @@ try:
         HEADLINE_MODEL_KEYS,
         HSEMOTION_MODEL,
         IMAGE_ADJUSTMENT_RANGES,
+        IMAGE_FILE_EXTENSIONS,
         IMAGE_OP_OPTIONS,
         INTENSITY_METHODS,
         KNOWN_PEOPLE_DIR,
@@ -141,6 +132,7 @@ except ImportError:
         HEADLINE_MODEL_KEYS,
         HSEMOTION_MODEL,
         IMAGE_ADJUSTMENT_RANGES,
+        IMAGE_FILE_EXTENSIONS,
         IMAGE_OP_OPTIONS,
         INTENSITY_METHODS,
         KNOWN_PEOPLE_DIR,
@@ -194,7 +186,6 @@ try:
         _estimate_roll_angle,
         _fairface_forward,
         _format_race_label,
-        _lock_for,
         _margin_align,
         _rotate_region,
         align_face_with_landmarks,
@@ -254,7 +245,6 @@ except ImportError:
         _estimate_roll_angle,
         _fairface_forward,
         _format_race_label,
-        _lock_for,
         _margin_align,
         _rotate_region,
         align_face_with_landmarks,
@@ -380,22 +370,21 @@ try:
         _box_iou,
         _cached_face_predict,
         _record_model_latency,
-        _silence_native_logs,
         aggregate_demographics,
+        analyze_frame,
         analyze_frame_with_config,
         draw_face_landmarks,
         draw_hand_landmarks,
         draw_outlined_text,
         draw_recognition_scan,
+        load_models,
         predict_face_landmarks_mediapipe,
         predict_gaze_mediapipe,
         predict_head_pose_mediapipe,
     )
-    from src.pipeline import (
-        analyze_frame as _pipeline_analyze_frame,
-    )
-    from src.pipeline import (
-        load_models as _pipeline_load_models,
+    from src.pipeline.landmarks import (
+        _detect_face_landmarker,
+        detect_hand_landmarks_mediapipe,
     )
 except ImportError:
     from pipeline import (
@@ -407,22 +396,21 @@ except ImportError:
         _box_iou,
         _cached_face_predict,
         _record_model_latency,
-        _silence_native_logs,
         aggregate_demographics,
+        analyze_frame,
         analyze_frame_with_config,
         draw_face_landmarks,
         draw_hand_landmarks,
         draw_outlined_text,
         draw_recognition_scan,
+        load_models,
         predict_face_landmarks_mediapipe,
         predict_gaze_mediapipe,
         predict_head_pose_mediapipe,
     )
-    from pipeline import (
-        analyze_frame as _pipeline_analyze_frame,
-    )
-    from pipeline import (
-        load_models as _pipeline_load_models,
+    from pipeline.landmarks import (
+        _detect_face_landmarker,
+        detect_hand_landmarks_mediapipe,
     )
 
 try:
@@ -460,12 +448,6 @@ except ImportError:
         landmarks_5pt_from_mediapipe = None
         reconstruct_face_3d = None
 
-try:
-    import mediapipe as mp
-except ImportError:
-    mp = None
-
-
 __all__ = [
     "AGE_LIST",
     "AGE_LIST_RANGES",
@@ -500,6 +482,7 @@ __all__ = [
     "_box_iou",
     "build_gallery_from_directory",
     "_cached_face_predict",
+    "_detect_face_landmarker",
     "caffe_probabilities",
     "canonical_race_probabilities",
     "classify_voice_arousal",
@@ -508,7 +491,6 @@ __all__ = [
     "COLORIZATION_PTS",
     "colorize_frame",
     "compute_face_embedding",
-    "contextlib",
     "crop_face_dex",
     "crop_region",
     "decode_image_bytes",
@@ -581,10 +563,10 @@ __all__ = [
     "HEADLINE_MODEL_KEYS",
     "HSEMOTION_MODEL",
     "IMAGE_ADJUSTMENT_RANGES",
+    "IMAGE_FILE_EXTENSIONS",
     "IMAGE_OP_OPTIONS",
     "_INFERENCE_EXECUTOR",
     "INTENSITY_METHODS",
-    "io",
     "is_grayscale_frame",
     "_is_skin_hsv",
     "KNOWN_PEOPLE_DIR",
@@ -602,9 +584,9 @@ __all__ = [
     "mivolo_estimate",
     "MIVOLO_MODEL",
     "MiVOLOInference",
+    "Models",
     "MODEL_DIR",
     "MODEL_MEAN_VALUES",
-    "os",
     "predict_age_caffe",
     "predict_age_dex",
     "predict_age_fairface",
@@ -632,7 +614,6 @@ __all__ = [
     "RACE_CANONICAL_LABELS",
     "RACE_LABELS_DEEPFACE",
     "RACE_LABELS_FAIRFACE",
-    "random",
     "_record_model_latency",
     "RETINAFACE_MODEL",
     "_rotate_region",
@@ -644,10 +625,7 @@ __all__ = [
     "SCRFD_FACE_MODEL",
     "select_age",
     "SHARPEN_METHODS",
-    "sys",
     "texture_artifact_score",
-    "threading",
-    "time",
     "train_lbph_recognizer",
     "validate_lbph_name",
     "VoiceFaceFusion",
@@ -655,115 +633,3 @@ __all__ = [
     "with_headline",
     "YOLO_FACE_MODEL",
 ]
-
-
-def load_models() -> Models:
-    """Load every model whose file(s)/dependencies are present.
-
-    Includes dictionary mapping for liveness_nets: dict and liveness_nets["mediapipe"].
-    """
-    return _pipeline_load_models()
-
-
-def _detect_face_landmarker(landmarker: Any, face_bgr: np.ndarray) -> Any:
-    """Run MediaPipe FaceLandmarker on one face crop with thread-safe locking."""
-    face_rgb = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2RGB)
-    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=face_rgb)
-    with _lock_for(landmarker):
-        with _silence_native_logs():
-            return landmarker.detect(mp_image)
-
-
-def detect_hand_landmarks_mediapipe(landmarker: Any, frame_bgr: np.ndarray) -> list[list[tuple[int, int]]]:
-    """MediaPipe HandLandmarker, whole-frame (hands aren't tied to a detected face box)."""
-    frame_h, frame_w = frame_bgr.shape[:2]
-    frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
-    with _lock_for(landmarker):
-        with _silence_native_logs():
-            result = landmarker.detect(mp_image)
-    return [
-        [(int(lm.x * frame_w), int(lm.y * frame_h)) for lm in hand]
-        for hand in result.hand_landmarks
-    ]
-
-
-def analyze_frame(
-    models: Models,
-    frame: np.ndarray,
-    conf_threshold: float,
-    active_age: set,
-    active_gender: set,
-    active_emotion: set,
-    active_race: set,
-    active_recognition: set,
-    gallery: dict,
-    active_glasses: set,
-    active_mask: set,
-    active_hair_color: set,
-    active_eye_color: set,
-    active_face_landmarks: set,
-    active_hands: set,
-    active_gaze: set,
-    global_adjustments: dict,
-    face_adjustments: dict,
-    face_detector: str = "yolo",
-    metrics: dict | None = None,
-    tracker: Any | None = None,
-    liveness_tracker: Any | None = None,
-    active_liveness: set | None = None,
-) -> tuple[np.ndarray, list[dict], bool, bool]:
-    """Detect faces and run inference for whichever model keys are active per feature.
-
-    Multiple active models for the same feature (e.g. active_age = {"caffe", "fairface"})
-    all run and are shown together. No Streamlit calls (safe for background threads).
-
-    global_adjustments apply to the whole frame first, before face detection even runs --
-    every output derived from this call (the annotated image, every face crop, every
-    classification) sees the adjusted pixels. face_adjustments apply again, per detected
-    face, to that face's own crop only, after detection but before classification -- they
-    affect just that one face's thumbnail/attributes, not the shared frame or other faces.
-
-    face_detector picks which face detection backend runs (unlike every other feature,
-    exactly one runs per frame -- running two detectors and merging their boxes would just
-    produce duplicate/overlapping faces, not a meaningfully combined result). "yolo"/"scrfd"/
-    "retinaface" fall back to "ssd" (the always-required detector) if that model isn't loaded.
-
-    tracker (#2) is optional and stays None for single-image callers (upload/snapshot have no
-    "next frame" for an ID to persist into). When a FaceTracker is passed -- video/webcam LIVE
-    mode only -- each face's dict also carries a stable "track_id" (see FaceTracker), and the
-    number burned into the annotated frame is that track_id instead of this frame's
-    detection-order position, so tracking is visible, not just data the caller ignores).
-
-    liveness_tracker is only ever passed by video/webcam LIVE mode -- a single static image has
-    no blink transitions to observe, so liveness is unavailable there by design (not just
-    unchecked): static callers (upload/snapshot) never pass a tracker, and analyze_frame skips
-    liveness entirely -- no "liveness" pairs, no LivenessResult -- whenever liveness_tracker is
-    None, regardless of active_liveness. active_liveness additionally gates it off within LIVE
-    mode itself (unchecked box = skipped); omitted callers default to every loaded backend.
-    """
-    return _pipeline_analyze_frame(
-        models=models,
-        frame=frame,
-        conf_threshold=conf_threshold,
-        active_age=active_age,
-        active_gender=active_gender,
-        active_emotion=active_emotion,
-        active_race=active_race,
-        active_recognition=active_recognition,
-        gallery=gallery,
-        active_glasses=active_glasses,
-        active_mask=active_mask,
-        active_hair_color=active_hair_color,
-        active_eye_color=active_eye_color,
-        active_face_landmarks=active_face_landmarks,
-        active_hands=active_hands,
-        active_gaze=active_gaze,
-        global_adjustments=global_adjustments,
-        face_adjustments=face_adjustments,
-        face_detector=face_detector,
-        metrics=metrics,
-        tracker=tracker,
-        liveness_tracker=liveness_tracker,
-        active_liveness=active_liveness,
-    )

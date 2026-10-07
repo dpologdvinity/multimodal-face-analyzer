@@ -15,15 +15,17 @@ class ExpressionCropTests(unittest.TestCase):
             eye_color_nets={"colorimetric": object()},
         )
         box = (30, 20, 70, 70)
-        with (patch.object(inference, "detect_faces", return_value=[box]),
-              patch.object(inference, "_estimate_roll_angle", return_value=12),
-              patch.object(inference, "_rotate_region", return_value=(255 - frame, box)),
-              patch.object(inference, "predict_emotion_ferplus", return_value="happiness") as ferplus,
-              patch.object(inference, "predict_emotion_hsemotion", return_value="happiness") as hse):
+        with (patch("src.pipeline.analyzer.detect_faces", return_value=[box]) as detect,
+              patch("src.pipeline.analyzer._estimate_roll_angle", return_value=12) as roll,
+              patch("src.pipeline.analyzer._rotate_region", return_value=(255 - frame, box)) as rotate,
+              patch("src.pipeline.analyzer.predict_emotion_ferplus", return_value="happiness") as ferplus,
+              patch("src.pipeline.analyzer.predict_emotion_hsemotion", return_value="happiness") as hse):
             _, faces, _, _ = inference.analyze_frame(
                 models, frame, .5, set(), set(), {"ferplus", "hsemotion"}, set(), set(), {},
                 set(), set(), set(), set(), set(), set(), set(), {}, {}, face_detector="ssd",
             )
+        for mocked in (detect, roll, rotate, ferplus, hse):
+            mocked.assert_called()
         np.testing.assert_array_equal(ferplus.call_args.args[1], frame[20:70, 30:70])
         rx1, ry1, rx2, ry2 = inference.face_crop_bounds(box, frame.shape[:2])
         np.testing.assert_array_equal(hse.call_args.args[1], (255 - frame)[ry1:ry2, rx1:rx2])

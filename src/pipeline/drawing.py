@@ -9,10 +9,8 @@ import cv2
 import numpy as np
 
 try:
-    from src.attributes import _lock_for
     from src.core.constants import HAND_CONNECTIONS
 except ImportError:
-    from attributes import _lock_for
     from core.constants import HAND_CONNECTIONS
 
 @contextlib.contextmanager
@@ -38,8 +36,9 @@ def _silence_native_logs():
             pass
 
 try:
+    # Imported only to probe availability; the import is noisy, hence the silencing.
     with _silence_native_logs():
-        import mediapipe as mp
+        import mediapipe  # noqa: F401
     MEDIAPIPE_SUPPORTED = True
 except ImportError:
     MEDIAPIPE_SUPPORTED = False
@@ -55,20 +54,6 @@ def draw_face_landmarks(
     w, h = x2 - x1, y2 - y1
     for nx, ny in points_normalized:
         cv2.circle(frame, (x1 + int(nx * w), y1 + int(ny * h)), 1, (255, 0, 255), thickness=-1, lineType=cv2.LINE_AA)
-
-
-def detect_hand_landmarks_mediapipe(landmarker, frame_bgr: np.ndarray) -> list[list[tuple[int, int]]]:
-    """Detect hand landmarks across the entire frame using MediaPipe HandLandmarker."""
-    frame_h, frame_w = frame_bgr.shape[:2]
-    frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
-    with _lock_for(landmarker):
-        with _silence_native_logs():
-            result = landmarker.detect(mp_image)
-    return [
-        [(int(lm.x * frame_w), int(lm.y * frame_h)) for lm in hand]
-        for hand in result.hand_landmarks
-    ]
 
 
 def draw_hand_landmarks(frame: np.ndarray, hands: list[list[tuple[int, int]]]) -> None:
@@ -119,7 +104,6 @@ def draw_recognition_scan(
 __all__ = [
     "_silence_native_logs",
     "draw_face_landmarks",
-    "detect_hand_landmarks_mediapipe",
     "draw_hand_landmarks",
     "draw_outlined_text",
     "draw_recognition_scan",

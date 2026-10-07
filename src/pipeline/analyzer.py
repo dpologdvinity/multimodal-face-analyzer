@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import hashlib
 import os
-import sys
 import time
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
@@ -16,7 +15,6 @@ try:
     from src.attributes import (
         _estimate_roll_angle,
         _format_race_label,
-        _lock_for,
         _rotate_region,
         caffe_probabilities,
         crop_face_dex,
@@ -84,18 +82,18 @@ try:
     )
     from src.pipeline.config import AnalysisConfig
     from src.pipeline.drawing import (
-        MEDIAPIPE_SUPPORTED,
-        _silence_native_logs,
-        detect_hand_landmarks_mediapipe,
         draw_face_landmarks,
         draw_hand_landmarks,
         draw_outlined_text,
+    )
+    from src.pipeline.landmarks import (
+        _detect_face_landmarker,
+        detect_hand_landmarks_mediapipe,
     )
 except ImportError:
     from attributes import (
         _estimate_roll_angle,
         _format_race_label,
-        _lock_for,
         _rotate_region,
         caffe_probabilities,
         crop_face_dex,
@@ -163,33 +161,14 @@ except ImportError:
     )
     from pipeline.config import AnalysisConfig
     from pipeline.drawing import (
-        MEDIAPIPE_SUPPORTED,
-        _silence_native_logs,
-        detect_hand_landmarks_mediapipe,
         draw_face_landmarks,
         draw_hand_landmarks,
         draw_outlined_text,
     )
-
-if MEDIAPIPE_SUPPORTED:
-    import mediapipe as mp
-
-
-def _dispatch(name: str, fallback: Any) -> Any:
-    """Retrieve attribute from src.inference if defined (honoring test mocks), else fallback."""
-    from unittest.mock import Mock
-    if isinstance(fallback, Mock):
-        return fallback
-    inf = sys.modules.get("src.inference")
-    if inf is not None and hasattr(inf, name):
-        return getattr(inf, name)
-    return fallback
-
-
-def _dispatch_detect_faces(*args: Any, **kwargs: Any) -> Any:
-    """Dispatch detect_faces respecting test mocks on src.inference."""
-    fn = _dispatch("detect_faces", detect_faces)
-    return fn(*args, **kwargs)
+    from pipeline.landmarks import (
+        _detect_face_landmarker,
+        detect_hand_landmarks_mediapipe,
+    )
 
 
 _INFERENCE_EXECUTOR = ThreadPoolExecutor(
@@ -219,21 +198,11 @@ def _cached_face_predict(feature: str, model_key: str, face_bgr: np.ndarray, pre
     return value
 
 
-def _detect_face_landmarker(landmarker: Any, face_bgr: np.ndarray) -> Any:
-    """Run MediaPipe FaceLandmarker on one face crop with thread-safe locking."""
-    face_rgb = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2RGB)
-    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=face_rgb)
-    with _lock_for(landmarker):
-        with _silence_native_logs():
-            return landmarker.detect(mp_image)
-
-
 def predict_face_landmarks_mediapipe(
     landmarker: Any, face_bgr: np.ndarray, result: Any = None
 ) -> list[tuple[float, float]] | None:
     """MediaPipe FaceLandmarker face-mesh points used by the landmark and gaze features."""
-    detect_fn = _dispatch("_detect_face_landmarker", _detect_face_landmarker)
-    result = result if result is not None else detect_fn(landmarker, face_bgr)
+    result = result if result is not None else _detect_face_landmarker(landmarker, face_bgr)
     if not result.face_landmarks:
         return None
     return [(lm.x, lm.y) for lm in result.face_landmarks[0]]
@@ -331,7 +300,32 @@ def analyze_frame(
 ) -> tuple[np.ndarray, list[dict], bool, bool]:
     """Detect faces and run inference for whichever model keys are active per feature.
 
-    face_detector picks which face detection backend runs (default: "yolo").
+    Multiple active models for the same feature (e.g. active_age = {"caffe", "fairface"})
+    all run and are shown together. No Streamlit calls (safe for background threads).
+
+    global_adjustments apply to the whole frame first, before face detection even runs --
+    every output derived from this call (the annotated image, every face crop, every
+    classification) sees the adjusted pixels. face_adjustments apply again, per detected
+    face, to that face's own crop only, after detection but before classification -- they
+    affect just that one face's thumbnail/attributes, not the shared frame or other faces.
+
+    face_detector picks which face detection backend runs (unlike every other feature,
+    exactly one runs per frame -- running two detectors and merging their boxes would just
+    produce duplicate/overlapping faces, not a meaningfully combined result). "yolo"/"scrfd"/
+    "retinaface" fall back to "ssd" (the always-required detector) if that model isn't loaded.
+
+    tracker (#2) is optional and stays None for single-image callers (upload/snapshot have no
+    "next frame" for an ID to persist into). When a FaceTracker is passed -- video/webcam LIVE
+    mode only -- each face's dict also carries a stable "track_id" (see FaceTracker), and the
+    number burned into the annotated frame is that track_id instead of this frame's
+    detection-order position, so tracking is visible, not just data the caller ignores).
+
+    liveness_tracker is only ever passed by video/webcam LIVE mode -- a single static image has
+    no blink transitions to observe, so liveness is unavailable there by design (not just
+    unchecked): static callers (upload/snapshot) never pass a tracker, and analyze_frame skips
+    liveness entirely -- no "liveness" pairs, no LivenessResult -- whenever liveness_tracker is
+    None, regardless of active_liveness. active_liveness additionally gates it off within LIVE
+    mode itself (unchecked box = skipped); omitted callers default to every loaded backend.
     """
     if active_liveness is None:
         active_liveness = set(models.liveness_nets)
@@ -343,26 +337,21 @@ def analyze_frame(
     scrfd_net = models.scrfd_face_nets.get("scrfd")
     retinaface_net = models.retinaface_nets.get("retinaface")
 
-    detect_yolo_fn = _dispatch("detect_faces_yolo", detect_faces_yolo)
-    detect_scrfd_fn = _dispatch("detect_faces_scrfd", detect_faces_scrfd)
-    detect_retinaface_fn = _dispatch("detect_faces_retinaface", detect_faces_retinaface)
-    detect_ssd_fn = _dispatch("detect_faces", detect_faces)
-
     if face_detector == "yolo" and yolo_net is not None:
         face_boxes = _cached_face_predict(
-            "face_detection", f"yolo:{conf_threshold}", frame, detect_yolo_fn, yolo_net, frame, conf_threshold
+            "face_detection", f"yolo:{conf_threshold}", frame, detect_faces_yolo, yolo_net, frame, conf_threshold
         )
     elif face_detector == "scrfd" and scrfd_net is not None:
         face_boxes = _cached_face_predict(
-            "face_detection", f"scrfd:{conf_threshold}", frame, detect_scrfd_fn, scrfd_net, frame, conf_threshold
+            "face_detection", f"scrfd:{conf_threshold}", frame, detect_faces_scrfd, scrfd_net, frame, conf_threshold
         )
     elif face_detector == "retinaface" and retinaface_net is not None:
         face_boxes = _cached_face_predict(
-            "face_detection", f"retinaface:{conf_threshold}", frame, detect_retinaface_fn, retinaface_net, frame, conf_threshold
+            "face_detection", f"retinaface:{conf_threshold}", frame, detect_faces_retinaface, retinaface_net, frame, conf_threshold
         )
     else:
         face_boxes = _cached_face_predict(
-            "face_detection", f"ssd:{conf_threshold}", frame, detect_ssd_fn, models.face_net, frame, conf_threshold
+            "face_detection", f"ssd:{conf_threshold}", frame, detect_faces, models.face_net, frame, conf_threshold
         )
 
     track_ids = tracker.update(face_boxes) if tracker is not None else [None] * len(face_boxes)
@@ -370,8 +359,7 @@ def analyze_frame(
     hands_detected = False
     hand_net = models.hand_nets.get("mediapipe")
     if hand_net is not None and "mediapipe" in active_hands:
-        detect_hands_fn = _dispatch("detect_hand_landmarks_mediapipe", detect_hand_landmarks_mediapipe)
-        hands = _cached_face_predict("hand_landmarks", "mediapipe", frame, detect_hands_fn, hand_net, frame)
+        hands = _cached_face_predict("hand_landmarks", "mediapipe", frame, detect_hand_landmarks_mediapipe, hand_net, frame)
         if hands:
             hands_detected = True
             draw_hand_landmarks(annotated_frame, hands)
@@ -380,26 +368,18 @@ def analyze_frame(
                    ("caffe" in active_gender and "caffe" in models.gender_nets)
 
     eye_cascade = models.eye_color_nets.get("colorimetric")
-    train_lbph_fn = _dispatch("train_lbph_recognizer", train_lbph_recognizer)
-    lbph_trained = train_lbph_fn() if "lbph" in active_recognition and models.recognition_nets.get("lbph") else None
-
-    roll_angle_fn = _dispatch("_estimate_roll_angle", _estimate_roll_angle)
-    rotate_region_fn = _dispatch("_rotate_region", _rotate_region)
-    detect_landmarker_fn = _dispatch("_detect_face_landmarker", _detect_face_landmarker)
-    ferplus_fn = _dispatch("predict_emotion_ferplus", predict_emotion_ferplus)
-    hsemotion_fn = _dispatch("predict_emotion_hsemotion", predict_emotion_hsemotion)
-    fairface_landmarks_fn = _dispatch("fairface_landmarks_from_mediapipe", fairface_landmarks_from_mediapipe)
+    lbph_trained = train_lbph_recognizer() if "lbph" in active_recognition and models.recognition_nets.get("lbph") else None
 
     for idx, ((x1, y1, x2, y2), track_id) in enumerate(zip(face_boxes, track_ids, strict=False), 1):
         crop_frame, (cx1, cy1, cx2, cy2) = frame, (x1, y1, x2, y2)
         if eye_cascade is not None:
             probe = frame[max(0, y1 - 20):min(y2 + 20, frame.shape[0]), max(0, x1 - 20):min(x2 + 20, frame.shape[1])]
             angle = (
-                _cached_face_predict("roll_angle", "haarcascade", probe, roll_angle_fn, probe, eye_cascade)
+                _cached_face_predict("roll_angle", "haarcascade", probe, _estimate_roll_angle, probe, eye_cascade)
                 if probe.size else None
             )
             if angle is not None and abs(angle) > 3:
-                crop_frame, (cx1, cy1, cx2, cy2) = rotate_region_fn(frame, (x1, y1, x2, y2), angle)
+                crop_frame, (cx1, cy1, cx2, cy2) = _rotate_region(frame, (x1, y1, x2, y2), angle)
 
         x1_crop, y1_crop, x2_crop, y2_crop = face_crop_bounds(
             (cx1, cy1, cx2, cy2), crop_frame.shape[:2],
@@ -424,7 +404,7 @@ def analyze_frame(
             or face_landmarker is not None
         )
         landmarker_result = (
-            detect_landmarker_fn(face_landmarker, face)
+            _detect_face_landmarker(face_landmarker, face)
             if face_landmarker is not None and needs_face_landmarks
             else None
         )
@@ -433,7 +413,7 @@ def analyze_frame(
         if landmarker_result is not None and face_landmarker is not None:
             points = predict_face_landmarks_mediapipe(face_landmarker, face, landmarker_result)
             if points is not None:
-                local_landmarks = fairface_landmarks_fn(points, face.shape[1], face.shape[0])
+                local_landmarks = fairface_landmarks_from_mediapipe(points, face.shape[1], face.shape[0])
                 if local_landmarks is not None:
                     local_landmarks += np.array([x1_crop, y1_crop], dtype=np.float32)
                     fairface_landmarks = local_landmarks
@@ -542,10 +522,10 @@ def analyze_frame(
                     if face_adjustments and any(face_adjustments.values()):
                         ferplus_face = apply_image_adjustments(ferplus_face, face_adjustments)
                     value = _cached_face_predict(
-                        "emotion", key, ferplus_face, ferplus_fn, net, ferplus_face,
+                        "emotion", key, ferplus_face, predict_emotion_ferplus, net, ferplus_face,
                     )
                 else:
-                    value = _cached_face_predict("emotion", key, face, hsemotion_fn, net, face)
+                    value = _cached_face_predict("emotion", key, face, predict_emotion_hsemotion, net, face)
                 pairs.append((key, value))
                 _record_model_latency(metrics, "emotion", key, started)
             return pairs, fuse_emotion(dict(pairs))
@@ -845,7 +825,6 @@ __all__ = [
     "analyze_frame_with_config",
     "aggregate_demographics",
     "_cached_face_predict",
-    "_detect_face_landmarker",
     "predict_face_landmarks_mediapipe",
     "predict_gaze_mediapipe",
     "predict_head_pose_mediapipe",

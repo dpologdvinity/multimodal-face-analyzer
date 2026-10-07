@@ -61,8 +61,8 @@ class DexPreprocessingTests(unittest.TestCase):
                        active_mask=set(), active_hair_color=set(), active_eye_color=set(),
                        active_face_landmarks=set(), active_hands=set(), active_gaze=set(),
                        global_adjustments={}, face_adjustments={"brightness": 10})
-        with patch.object(inference, "detect_faces", return_value=[box]), \
-             patch.object(inference, "_estimate_roll_angle", return_value=20):
+        with patch("src.pipeline.analyzer.detect_faces", return_value=[box]) as detect, \
+             patch("src.pipeline.analyzer._estimate_roll_angle", return_value=20) as roll:
             for context_pixel in (20, 200):
                 frame[40:55, 40:130] = context_pixel
                 output = inference.analyze_frame(models, frame, 0.5, **options)
@@ -70,6 +70,8 @@ class DexPreprocessingTests(unittest.TestCase):
                 expected = cv2.dnn.blobFromImage(crop, 1.0, (224, 224), inference.DEX_MEAN_VALUES, swapRB=False, crop=False)
                 np.testing.assert_array_equal(net.blob, expected)
                 self.assertEqual(output[1][0]["raw_columns"]["age_dex"], "31")
+        detect.assert_called()
+        roll.assert_called()
 
 
 if __name__ == "__main__":
