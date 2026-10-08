@@ -1,0 +1,593 @@
+{
+  "version": 1,
+  "hf_repo": "kaitlynbassford/face-analyzer-weights",
+  "files": [
+    {
+      "path": "opencv_face_detector.pbtxt",
+      "size": 34911,
+      "sha256": "2e2c720657684a43c7c99f321cd872138aa3e68cb036f6103c1d8a4f732608e0",
+      "features": [
+        "face detection"
+      ],
+      "models": {},
+      "required": true,
+      "license": "Apache-2.0",
+      "source": "hf",
+      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/main/opencv_face_detector.pbtxt",
+      "upstream": "https://github.com/opencv/opencv/tree/4.x/samples/dnn/face_detector",
+      "in_git": true,
+      "attribution": "OpenCV face detector config, opencv/opencv samples/dnn/face_detector (Apache-2.0)"
+    },
+    {
+      "path": "opencv_face_detector_uint8.pb",
+      "size": 2727750,
+      "sha256": "5c71d752ef2cbf2f457ac82fdd580fcb2522fd04c5efdaed18eb6d9e2843fbed",
+      "features": [
+        "face detection"
+      ],
+      "models": {},
+      "required": true,
+      "license": "Not stated upstream (the OpenCV repositories are Apache-2.0; the weight file has no license statement)",
+      "source": "upstream",
+      "url": "https://raw.githubusercontent.com/opencv/opencv_3rdparty/7b425df276ba2161b8edaab0f0756f4a735d61b9/opencv_face_detector_uint8.pb",
+      "upstream": "https://github.com/opencv/opencv_3rdparty/tree/dnn_samples_face_detector_20180220_uint8",
+      "in_git": true
+    },
+    {
+      "path": "yolov8n_face.onnx",
+      "size": 12364932,
+      "sha256": "33f3951af7fc0c4d9b321b29cdcd8c9a59d0a29a8d4bdc01fcb5507d5c714809",
+      "features": [
+        "face detection"
+      ],
+      "models": {
+        "YOLO_FACE_MODEL": "yolo"
+      },
+      "required": false,
+      "license": "Not stated upstream; lineage derronqi/yolov8-face (GPL-3.0) and Ultralytics (AGPL-3.0)",
+      "source": "upstream",
+      "url": "https://github.com/yakhyo/yolov8-face-onnx-inference/releases/download/weights/yolov8n-face.onnx",
+      "upstream": "https://github.com/yakhyo/yolov8-face-onnx-inference",
+      "in_git": false
+    },
+    {
+      "path": "scrfd_2.5g_bnkps.onnx",
+      "size": 3292009,
+      "sha256": "041f73f47371333d1d17a6fee6c8ab4e6aecabefe398ff32cca4e2d5eaee0af9",
+      "features": [
+        "face detection"
+      ],
+      "models": {
+        "SCRFD_FACE_MODEL": "scrfd"
+      },
+      "required": false,
+      "license": "InsightFace pretrained models: non-commercial research purposes only",
+      "source": "upstream",
+      "url": "https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_m.zip",
+      "upstream": "https://github.com/deepinsight/insightface/tree/master/detection/scrfd",
+      "in_git": false,
+      "archive_member": "buffalo_m/det_2.5g.onnx",
+      "note": "SCRFD-2.5GF with keypoints from InsightFace's buffalo_m pack. A byte-different export of the same network this repo used earlier; outputs match it to within 1.4e-6."
+    },
+    {
+      "path": "retinaface_mobilenet0.25.onnx",
+      "size": 1767506,
+      "sha256": "3b29de703b4641cb995754bc6294bd58b0fa5d859c838e9484c86d00251f8a08",
+      "features": [
+        "face detection"
+      ],
+      "models": {
+        "RETINAFACE_MODEL": "retinaface"
+      },
+      "required": false,
+      "license": "MIT (biubug6/Pytorch_Retinaface); ONNX re-export Apache-2.0 (amd/retinaface)",
+      "source": "hf",
+      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/main/retinaface_mobilenet0.25.onnx",
+      "upstream": "https://huggingface.co/amd/retinaface",
+      "in_git": false,
+      "attribution": "RetinaFace MobileNet-0.25 by biubug6 (MIT), ONNX export by AMD (Apache-2.0)"
+    },
+    {
+      "path": "age_deploy.prototxt",
+      "size": 2308,
+      "sha256": "f58b73e2e20766f54c583cb1a9404f45dab8901773da6864d94b63212ed37ca0",
+      "features": [
+        "age"
+      ],
+      "models": {
+        "AGE_MODEL": "caffe"
+      },
+      "required": false,
+      "license": "Not stated upstream",
+      "source": "upstream",
+      "url": "https://raw.githubusercontent.com/GilLevi/AgeGenderDeepLearning/2d591d4663b3faf778377f6b4377285a96262cb5/age_net_definitions/deploy.prototxt",
+      "upstream": "https://github.com/GilLevi/AgeGenderDeepLearning",
+      "in_git": false,
+      "note": "Upstream file; differs from the copy this repo committed earlier only by a trailing newline."
+    },
+    {
+      "path": "age_net.caffemodel",
+      "size": 45661480,
+      "sha256": "6dde5d07df5ca1d66ff39e525693f05ccfb9d2c437e188fdd1a10d42e57fabd6",
+      "features": [
+        "age"
+      ],
+      "models": {
+        "AGE_MODEL": "caffe"
+      },
+      "required": false,
+      "license": "Not stated upstream",
+      "source": "upstream",
+      "url": "https://raw.githubusercontent.com/GilLevi/AgeGenderDeepLearning/2d591d4663b3faf778377f6b4377285a96262cb5/models/age_net.caffemodel",
+      "upstream": "https://github.com/GilLevi/AgeGenderDeepLearning",
+      "in_git": false
+    },
+    {
+      "path": "gender_deploy.prototxt",
+      "size": 2309,
+      "sha256": "7379953e048e5bffad9dfc6b3a8807f7fc826e2f27432df56d4c2670784b8e78",
+      "features": [
+        "gender"
+      ],
+      "models": {
+        "GENDER_MODEL": "caffe"
+      },
+      "required": false,
+      "license": "Not stated upstream",
+      "source": "upstream",
+      "url": "https://raw.githubusercontent.com/GilLevi/AgeGenderDeepLearning/2d591d4663b3faf778377f6b4377285a96262cb5/gender_net_definitions/deploy.prototxt",
+      "upstream": "https://github.com/GilLevi/AgeGenderDeepLearning",
+      "in_git": false,
+      "note": "Upstream file; differs from the copy this repo committed earlier only by a trailing newline."
+    },
+    {
+      "path": "gender_net.caffemodel",
+      "size": 45649168,
+      "sha256": "ac7571b281ae078817764b645a20541bd6aa1babeac20a45e6d8de7d61ba0e50",
+      "features": [
+        "gender"
+      ],
+      "models": {
+        "GENDER_MODEL": "caffe"
+      },
+      "required": false,
+      "license": "Not stated upstream",
+      "source": "upstream",
+      "url": "https://raw.githubusercontent.com/GilLevi/AgeGenderDeepLearning/2d591d4663b3faf778377f6b4377285a96262cb5/models/gender_net.caffemodel",
+      "upstream": "https://github.com/GilLevi/AgeGenderDeepLearning",
+      "in_git": false
+    },
+    {
+      "path": "fairface_7class.onnx",
+      "size": 85160429,
+      "sha256": "9c8c47d437cd310538d233f2465f9ed0524cb7fb51882a37f74e8bc22437fdbf",
+      "features": [
+        "age",
+        "gender",
+        "race"
+      ],
+      "models": {
+        "AGE_MODEL": "fairface",
+        "GENDER_MODEL": "fairface",
+        "RACE_MODEL": "fairface"
+      },
+      "required": false,
+      "license": "CC BY 4.0",
+      "source": "hf",
+      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/main/fairface_7class.onnx",
+      "upstream": "https://github.com/dchen236/FairFace",
+      "in_git": false,
+      "attribution": "FairFace (Karkkainen and Joo, WACV 2021), dchen236/FairFace, CC BY 4.0. ONNX conversion of the 7-race FairFace model; the conversion's origin is not recorded."
+    },
+    {
+      "path": "dex_age.prototxt",
+      "size": 4824,
+      "sha256": "25d2060917868a94657755c5b6bb99cc471594e0c1db95d04cc43fce43743948",
+      "features": [
+        "age"
+      ],
+      "models": {
+        "AGE_MODEL": "dex"
+      },
+      "required": false,
+      "license": "Research use only (IMDB-WIKI dataset is academic research only; the pretrained model license is not stated)",
+      "source": "upstream",
+      "url": "https://data.vision.ee.ethz.ch/cvl/rrothe/imdb-wiki/static/age.prototxt",
+      "upstream": "https://data.vision.ee.ethz.ch/cvl/rrothe/imdb-wiki/",
+      "in_git": false
+    },
+    {
+      "path": "dex_age.caffemodel",
+      "size": 538700275,
+      "sha256": "234d423f8fa527f69c41382062aed906add83271847ecbe6ccf3be962028cc1a",
+      "features": [
+        "age"
+      ],
+      "models": {
+        "AGE_MODEL": "dex"
+      },
+      "required": false,
+      "license": "Research use only (IMDB-WIKI dataset is academic research only; the pretrained model license is not stated)",
+      "source": "upstream",
+      "url": "https://data.vision.ee.ethz.ch/cvl/rrothe/imdb-wiki/static/dex_imdb_wiki.caffemodel",
+      "upstream": "https://data.vision.ee.ethz.ch/cvl/rrothe/imdb-wiki/",
+      "in_git": false
+    },
+    {
+      "path": "mivolo_v2.safetensors",
+      "size": 115078528,
+      "sha256": "96efb47051c038ebeec74b73b4253c5fd000433e5afcab7deee0bd8f3fa7bf18",
+      "features": [
+        "age",
+        "gender"
+      ],
+      "models": {
+        "AGE_MODEL": "mivolo",
+        "GENDER_MODEL": "mivolo"
+      },
+      "required": false,
+      "license": "Apache-2.0",
+      "source": "hf",
+      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/main/mivolo_v2.safetensors",
+      "upstream": "https://huggingface.co/iitolstykh/mivolo_v2",
+      "in_git": false,
+      "attribution": "MiVOLO v2 (WildChlamydia/MiVOLO, iitolstykh/mivolo_v2), Apache-2.0"
+    },
+    {
+      "path": "mivolo_v2_config.json",
+      "size": 225,
+      "sha256": "9746265e1d3e50666b9d4a1b3368221ae9bc7b55401b8051914cca38025b2490",
+      "features": [
+        "age",
+        "gender"
+      ],
+      "models": {
+        "AGE_MODEL": "mivolo",
+        "GENDER_MODEL": "mivolo"
+      },
+      "required": false,
+      "license": "Apache-2.0",
+      "source": "hf",
+      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/main/mivolo_v2_config.json",
+      "upstream": "https://huggingface.co/iitolstykh/mivolo_v2",
+      "in_git": true,
+      "attribution": "MiVOLO v2 (WildChlamydia/MiVOLO, iitolstykh/mivolo_v2), Apache-2.0"
+    },
+    {
+      "path": "deepface_gender.h5",
+      "size": 537149760,
+      "sha256": "45513ce5678549112d25ab85b1926fb65986507d49c674a3d04b2ba70dba2eb5",
+      "features": [
+        "gender"
+      ],
+      "models": {
+        "GENDER_MODEL": "deepface"
+      },
+      "required": false,
+      "license": "Non-commercial: deepface_models repo is MIT, but the weights are fine-tuned from VGG-Face, whose authors allow non-commercial research use only (CC BY-NC 4.0)",
+      "source": "upstream",
+      "url": "https://github.com/serengil/deepface_models/releases/download/v1.0/gender_model_weights.h5",
+      "upstream": "https://github.com/serengil/deepface_models",
+      "in_git": false
+    },
+    {
+      "path": "deepface_race.h5",
+      "size": 537215296,
+      "sha256": "eb22b28b1f6dfce65b64040af4e86003a5edccb169a1a338470dde270b6f5e54",
+      "features": [
+        "race"
+      ],
+      "models": {
+        "RACE_MODEL": "deepface"
+      },
+      "required": false,
+      "license": "Non-commercial: deepface_models repo is MIT, but the weights are fine-tuned from VGG-Face, whose authors allow non-commercial research use only (CC BY-NC 4.0)",
+      "source": "upstream",
+      "url": "https://github.com/serengil/deepface_models/releases/download/v1.0/race_model_single_batch.h5",
+      "upstream": "https://github.com/serengil/deepface_models",
+      "in_git": false
+    },
+    {
+      "path": "deepface_vgg.h5",
+      "size": 580085408,
+      "sha256": "759266b9614d0fd5d65b97bf716818b746cc77ab5944c7bffc937c6ba9455d8c",
+      "features": [
+        "recognition",
+        "identity search"
+      ],
+      "models": {
+        "RECOGNITION_MODEL": "vggface"
+      },
+      "required": false,
+      "license": "Non-commercial: deepface_models repo is MIT, but the weights are fine-tuned from VGG-Face, whose authors allow non-commercial research use only (CC BY-NC 4.0)",
+      "source": "upstream",
+      "url": "https://github.com/serengil/deepface_models/releases/download/v1.0/vgg_face_weights.h5",
+      "upstream": "https://github.com/serengil/deepface_models",
+      "in_git": false
+    },
+    {
+      "path": "dan_affecnet7.pth",
+      "size": 237009185,
+      "sha256": "3189a13f28592c20ce9b9dd57e457caabf6a7bb80c36df94d3d0348829cec752",
+      "features": [
+        "emotion"
+      ],
+      "models": {
+        "EMOTION_MODEL": "dan"
+      },
+      "required": false,
+      "license": "Code MIT; Not stated upstream for the weights; trained on AffectNet (non-commercial research and education only)",
+      "source": "manual",
+      "upstream": "https://github.com/yaoing/DAN",
+      "in_git": false,
+      "instructions": "Download the AffectNet-7 checkpoint from the Google Drive link in the 'Pre-trained models' table of https://github.com/yaoing/DAN#readme (AffectNet-7 row) and save it as {dest}."
+    },
+    {
+      "path": "hsemotion_enet_b0_8_best_vgaf.onnx",
+      "size": 16039595,
+      "sha256": "fa07e841fd06c7a67ee651ea4e6e4a3a2bb5695f47b37a7da50492526f59c898",
+      "features": [
+        "emotion"
+      ],
+      "models": {
+        "EMOTION_MODEL": "hsemotion"
+      },
+      "required": false,
+      "license": "Code Apache-2.0; Not stated upstream for the weights; trained on AffectNet (non-commercial research and education only)",
+      "source": "upstream",
+      "url": "https://raw.githubusercontent.com/HSE-asavchenko/face-emotion-recognition/520a051c64cd191521e5934655314e769a319684/models/affectnet_emotions/onnx/enet_b0_8_best_vgaf.onnx",
+      "upstream": "https://github.com/HSE-asavchenko/face-emotion-recognition",
+      "in_git": false
+    },
+    {
+      "path": "emotion_ferplus.onnx",
+      "size": 35040571,
+      "sha256": "a2a2ba6a335a3b29c21acb6272f962bd3d47f84952aaffa03b60986e04efa61c",
+      "features": [
+        "emotion"
+      ],
+      "models": {
+        "EMOTION_MODEL": "ferplus"
+      },
+      "required": false,
+      "license": "MIT",
+      "source": "hf",
+      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/main/emotion_ferplus.onnx",
+      "upstream": "https://github.com/onnx/models/tree/main/validated/vision/body_analysis/emotion_ferplus",
+      "in_git": false,
+      "attribution": "FER+ emotion model from the ONNX Model Zoo (onnx/models), MIT"
+    },
+    {
+      "path": "mini_xception_fer.h5",
+      "size": 872856,
+      "sha256": "59534287fdfb125e30a94400296c25ea9f5d706fca93dd8adbbbed916799ea0e",
+      "features": [
+        "emotion"
+      ],
+      "models": {
+        "EMOTION_MODEL": "mini_xception"
+      },
+      "required": false,
+      "license": "MIT",
+      "source": "hf",
+      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/main/mini_xception_fer.h5",
+      "upstream": "https://github.com/oarriaga/face_classification",
+      "in_git": false,
+      "attribution": "mini-Xception FER2013 model by Octavio Arriaga (oarriaga/face_classification), MIT"
+    },
+    {
+      "path": "face_landmarker.task",
+      "size": 3758596,
+      "sha256": "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff",
+      "features": [
+        "face landmarks",
+        "gaze",
+        "liveness"
+      ],
+      "models": {
+        "FACE_LANDMARKS_MODEL": "mediapipe",
+        "LIVENESS_MODEL": "mediapipe"
+      },
+      "required": false,
+      "license": "Apache-2.0",
+      "source": "hf",
+      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/main/face_landmarker.task",
+      "upstream": "https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker",
+      "in_git": false,
+      "attribution": "MediaPipe Face Landmarker (Face Mesh V2) by Google, Apache-2.0"
+    },
+    {
+      "path": "hand_landmarker.task",
+      "size": 7819105,
+      "sha256": "fbc2a30080c3c557093b5ddfc334698132eb341044ccee322ccf8bcf3607cde1",
+      "features": [
+        "hand landmarks"
+      ],
+      "models": {
+        "HAND_MODEL": "mediapipe"
+      },
+      "required": false,
+      "license": "Apache-2.0",
+      "source": "hf",
+      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/main/hand_landmarker.task",
+      "upstream": "https://ai.google.dev/edge/mediapipe/solutions/vision/hand_landmarker",
+      "in_git": false,
+      "attribution": "MediaPipe Hand Landmarker by Google, Apache-2.0"
+    },
+    {
+      "path": "glasses_detector.onnx",
+      "size": 16812681,
+      "sha256": "80966ec3bfd5b5f679632e0910d45732d3082efae05516b60bcb6c9daf80cfc9",
+      "features": [
+        "glasses"
+      ],
+      "models": {
+        "GLASSES_MODEL": "mobilenet"
+      },
+      "required": false,
+      "license": "Not stated upstream (no LICENSE file)",
+      "source": "upstream",
+      "url": "https://raw.githubusercontent.com/Sorour190/Glasses-Detector/bb91b228d73a5ba3489789a8b2b2b6c8c45f9643/models/glasses_face224.onnx",
+      "upstream": "https://github.com/Sorour190/Glasses-Detector",
+      "in_git": false
+    },
+    {
+      "path": "mask_detector.h5",
+      "size": 11490448,
+      "sha256": "d0b30e2c7f8f187c143d655dee8697fcfbe8678889565670cd7314fb064eadc8",
+      "features": [
+        "mask"
+      ],
+      "models": {
+        "MASK_MODEL": "mobilenetv2"
+      },
+      "required": false,
+      "license": "MIT",
+      "source": "hf",
+      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/main/mask_detector.h5",
+      "upstream": "https://github.com/chandrikadeb7/Face-Mask-Detection",
+      "in_git": false,
+      "attribution": "Face mask detector by Chandrika Deb (chandrikadeb7/Face-Mask-Detection), MIT"
+    },
+    {
+      "path": "colorization_deploy_v2.prototxt",
+      "size": 9945,
+      "sha256": "d16418cef8df4ccd703a55ae0ef3960861d5010418f77c90d0a47689998a7169",
+      "features": [
+        "colorization"
+      ],
+      "models": {
+        "COLORIZATION_MODEL": "eccv16"
+      },
+      "required": false,
+      "license": "BSD-2-Clause",
+      "source": "hf",
+      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/main/colorization_deploy_v2.prototxt",
+      "upstream": "https://github.com/richzhang/colorization",
+      "in_git": true,
+      "attribution": "Colorful Image Colorization (Zhang, Isola, Efros, ECCV 2016), richzhang/colorization, BSD-2-Clause"
+    },
+    {
+      "path": "colorization_release_v2.caffemodel",
+      "size": 128946764,
+      "sha256": "f5af1e602646328c792e1094f9876fe9cd4c09ac46fa886e5708a1abc89137b1",
+      "features": [
+        "colorization"
+      ],
+      "models": {
+        "COLORIZATION_MODEL": "eccv16"
+      },
+      "required": false,
+      "license": "BSD-2-Clause",
+      "source": "hf",
+      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/main/colorization_release_v2.caffemodel",
+      "upstream": "https://github.com/richzhang/colorization",
+      "in_git": false,
+      "attribution": "Colorful Image Colorization (Zhang, Isola, Efros, ECCV 2016), richzhang/colorization, BSD-2-Clause"
+    },
+    {
+      "path": "pts_in_hull.npy",
+      "size": 5088,
+      "sha256": "b5dec01315c34f43f1c8c089e84c45ae35d1838d8e77ed0e7ca930f79ffa450e",
+      "features": [
+        "colorization"
+      ],
+      "models": {
+        "COLORIZATION_MODEL": "eccv16"
+      },
+      "required": false,
+      "license": "BSD-2-Clause",
+      "source": "hf",
+      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/main/pts_in_hull.npy",
+      "upstream": "https://github.com/richzhang/colorization",
+      "in_git": true,
+      "attribution": "Colorful Image Colorization (Zhang, Isola, Efros, ECCV 2016), richzhang/colorization, BSD-2-Clause"
+    },
+    {
+      "path": "haarcascade_eye.xml",
+      "size": 341406,
+      "sha256": "71cc64fc305a355dc60067880f6fbbd43dd155bd63ee3844661a1bda34b2fd8c",
+      "features": [
+        "eye color",
+        "roll alignment"
+      ],
+      "models": {},
+      "required": true,
+      "license": "Intel License Agreement (BSD-style, in the file header)",
+      "source": "hf",
+      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/main/haarcascade_eye.xml",
+      "upstream": "https://github.com/opencv/opencv/tree/4.x/data/haarcascades",
+      "in_git": true,
+      "attribution": "OpenCV Haar eye cascade, Intel License Agreement (BSD-style; full text in the file header)"
+    },
+    {
+      "path": "deep3d_recon_resnet50.pth",
+      "size": 96455971,
+      "sha256": "db690e225d19b00098725679204bd0b9f49e9eb72df7199824895b9b51a47f64",
+      "features": [
+        "3d reconstruction"
+      ],
+      "models": {
+        "RECONSTRUCTION_3D_MODEL": "deep3d"
+      },
+      "required": false,
+      "license": "Code MIT; the checkpoint has no separate license statement",
+      "source": "manual",
+      "upstream": "https://github.com/sicxu/Deep3DFaceRecon_pytorch",
+      "in_git": false,
+      "instructions": "Download the pretrained model (epoch_20.pth) from the Google Drive link in https://github.com/sicxu/Deep3DFaceRecon_pytorch#readme, take its 'net_recon' state dict, remap it onto this app's ReconNetWrapper layout (backbone.N.* and heads.N.*, see src/face_analyzer/nets/deep3d_recon.py) and save it with torch.save as {dest}. Also needs BFM/BFM_model_front.mat."
+    },
+    {
+      "path": "BFM/similarity_Lm3D_all.mat",
+      "size": 994,
+      "sha256": "53b83ce6e35c50ddc3e97603650cef4970320c157e75c241c844f29c1dcba65a",
+      "features": [
+        "3d reconstruction"
+      ],
+      "models": {
+        "RECONSTRUCTION_3D_MODEL": "deep3d"
+      },
+      "required": false,
+      "license": "MIT",
+      "source": "hf",
+      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/main/BFM/similarity_Lm3D_all.mat",
+      "upstream": "https://github.com/sicxu/Deep3DFaceRecon_pytorch",
+      "in_git": true,
+      "attribution": "Landmark alignment template from sicxu/Deep3DFaceRecon_pytorch (MIT)"
+    },
+    {
+      "path": "BFM/BFM_model_front.mat",
+      "size": 127170280,
+      "sha256": "e14bea88f0bae68cc3d8f9ab467f4792ef6ef2fa8c1e36596a5860902a5164e4",
+      "features": [
+        "3d reconstruction"
+      ],
+      "models": {
+        "RECONSTRUCTION_3D_MODEL": "deep3d"
+      },
+      "required": false,
+      "license": "Basel Face Model 2009: registration required; internal, non-commercial research, evaluation or testing only; no redistribution",
+      "source": "manual",
+      "upstream": "https://faces.dmi.unibas.ch/bfm/",
+      "in_git": false,
+      "instructions": "Register at https://faces.dmi.unibas.ch/bfm/ to get BFM09 (01_MorphableModel.mat), get the expression basis (Exp_Pca.bin) linked from https://github.com/sicxu/Deep3DFaceRecon_pytorch#readme, and convert them with that repo's util/load_mats.py transferBFM09(). Save the result as {dest}."
+    },
+    {
+      "path": "face_reaging_unet.pth",
+      "size": 124275652,
+      "sha256": "230b6a007c65af43a67dcbbb46f4504cff71031e6d410952ef195ba6db90e942",
+      "features": [
+        "age progression"
+      ],
+      "models": {
+        "AGE_PROGRESSION_MODEL": "franunet"
+      },
+      "required": false,
+      "license": "Weights MIT (model card), but inference needs BlurPool code from adobe/antialiased-cnns (CC BY-NC-SA 4.0): non-commercial, share-alike",
+      "source": "upstream",
+      "url": "https://huggingface.co/timroelofs123/face_re-aging/resolve/12164f166f68247b3041f1981f04935c49aaec08/best_unet_model.pth",
+      "upstream": "https://huggingface.co/timroelofs123/face_re-aging",
+      "in_git": false
+    }
+  ]
+}
