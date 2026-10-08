@@ -30,10 +30,11 @@ no model re-run, after the race headline change below), SSD detector, two CPU co
 
 "App (shipped)" is what the app shows as its headline: the `fused` gender row and the `best` age
 and race rows. `select_age` picked `mivolo` for 1,001 of the 1,002 test faces, so the app's age
-is MiVOLO's; `select_race` picked `fairface` for all 1,002, so the app's race is FairFace's. The shipped gender fusion is MiVOLO's answer by construction: MiVOLO's P(Male) is a
-hard 0 or 1 carrying weight 3 of the 6 total, so the weighted mean is at least 0.5 whenever MiVOLO
-says Male and at most 0.5 whenever it says Female, and the other three backends can never
-overrule it (short of an exact 0.5 tie).
+is MiVOLO's; `select_race` picked `fairface` for all 1,002, so the app's race is FairFace's. The
+shipped gender fusion is MiVOLO's answer by construction: MiVOLO's P(Male) is a hard 0 or 1
+carrying weight 3 of the 6 total, so the weighted mean is at least 0.5 whenever MiVOLO says Male
+and at most 0.5 whenever it says Female, and the other three backends can never overrule it
+(short of an exact 0.5 tie).
 
 `fairface`'s native seven-class race accuracy (East and Southeast Asian kept apart) is 70.6%
 (67.9-73.5). Within one age bucket: `mivolo` 97.0%, `fairface` 95.4%, `dex` 84.9%, `caffe` 62.0%.

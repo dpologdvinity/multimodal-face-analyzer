@@ -34,7 +34,11 @@ def fuse_gender(male_probabilities: dict[str, float]) -> str | None:
 
 
 def canonical_race_probabilities(probs: np.ndarray, labels: list[str]) -> dict[str, float]:
-    """Re-express one backend's class probabilities over the shared canonical race keys."""
+    """Re-express one backend's class probabilities over the shared canonical race keys.
+
+    The app no longer calls this (race names its best model instead of fusing); it is kept for
+    the held-out eval's comparison against the previous race fusion.
+    """
     total = float(np.sum(probs)) or 1.0
     combined = dict.fromkeys(RACE_CANONICAL_LABELS, 0.0)
     for label, probability in zip(labels, probs, strict=False):

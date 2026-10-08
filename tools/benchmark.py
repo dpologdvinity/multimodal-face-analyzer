@@ -40,7 +40,7 @@ RACE_ALIASES = {
     "indian": "indian",
     "latino_hispanic": "latino",
     "latino hispanic": "latino",
-    "latino": "latino",  # inference.RACE_CANONICAL_LABELS' name, used by the fused answer
+    "latino": "latino",  # RACE_CANONICAL_LABELS' name, kept for outputs from the old fused race answer
     "middle eastern": "middle_eastern",
 }
 
