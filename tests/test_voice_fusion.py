@@ -2,7 +2,7 @@ import unittest
 
 import numpy as np
 
-from src.inference import (
+from face_analyzer.inference import (
     AUDIO_AROUSAL_LOUD_RMS,
     AUDIO_AROUSAL_QUIET_RMS,
     VoiceFaceFusion,

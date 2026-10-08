@@ -1,7 +1,7 @@
 import unittest
 from types import SimpleNamespace
 
-from src.liveness import (
+from face_analyzer.liveness import (
     LivenessTracker,
     assess_static_liveness,
     blink_score_from_landmarker,

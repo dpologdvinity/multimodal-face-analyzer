@@ -1,6 +1,6 @@
 import unittest
 
-from src.inference import FaceTracker
+from face_analyzer.inference import FaceTracker
 
 
 class FaceTrackerTests(unittest.TestCase):

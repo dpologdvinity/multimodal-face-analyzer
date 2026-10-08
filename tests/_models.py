@@ -15,13 +15,6 @@ def require_model(path: Path) -> None:
             pytest.skip(f"model file is an LFS pointer: {path.name}")
 
 
-def require_all_models(model_dir: Path) -> None:
-    """Skip the calling test unless every file under model_dir is a real (non-pointer) file."""
-    for path in sorted(model_dir.rglob("*")):
-        if path.is_file():
-            require_model(path)
-
-
 def require_local_data(path: Path) -> None:
     """Skip the calling test when an untracked local data file (e.g. a benchmark photo) is absent."""
     if not path.is_file():

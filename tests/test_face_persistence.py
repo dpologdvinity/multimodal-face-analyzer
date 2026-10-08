@@ -1,12 +1,14 @@
+import random
 import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
+import cv2
 import numpy as np
 
-from src import inference
+from face_analyzer.gallery import database
 
 
 class FacePersistenceTests(unittest.TestCase):
@@ -20,11 +22,11 @@ class FacePersistenceTests(unittest.TestCase):
             face = np.zeros((32, 32, 3), dtype=np.uint8)
 
             # Mock module-level paths to isolate test to temp directories
-            with mock.patch.object(inference, "FACES_DB_FILE", db_file), \
-                 mock.patch.object(inference, "FACES_DIR", faces_dir), \
-                 mock.patch.object(inference, "EIGEN_DIR", eigen_dir), \
-                 mock.patch.object(inference.random, "randint", return_value=123):
-                face_id = inference.save_face(face, {"age_caffe": "25-32"})
+            with mock.patch.object(database, "FACES_DB_FILE", db_file), \
+                 mock.patch.object(database, "FACES_DIR", faces_dir), \
+                 mock.patch.object(database, "EIGEN_DIR", eigen_dir), \
+                 mock.patch.object(random, "randint", return_value=123):
+                face_id = database.save_face(face, {"age_caffe": "25-32"})
 
             self.assertEqual(face_id, 123)
             self.assertTrue((faces_dir / "123.jpg").is_file())
@@ -42,13 +44,13 @@ class FacePersistenceTests(unittest.TestCase):
             face = np.zeros((32, 32, 3), dtype=np.uint8)
 
             # Mock module-level paths and imwrite to simulate second file write failure
-            with mock.patch.object(inference, "FACES_DB_FILE", db_file), \
-                 mock.patch.object(inference, "FACES_DIR", faces_dir), \
-                 mock.patch.object(inference, "EIGEN_DIR", eigen_dir), \
-                 mock.patch.object(inference.random, "randint", return_value=123), \
-                 mock.patch.object(inference.cv2, "imwrite", side_effect=[True, False]):
+            with mock.patch.object(database, "FACES_DB_FILE", db_file), \
+                 mock.patch.object(database, "FACES_DIR", faces_dir), \
+                 mock.patch.object(database, "EIGEN_DIR", eigen_dir), \
+                 mock.patch.object(random, "randint", return_value=123), \
+                 mock.patch.object(cv2, "imwrite", side_effect=[True, False]):
                 with self.assertRaises(OSError):
-                    inference.save_face(face, {"age_caffe": "25-32"})
+                    database.save_face(face, {"age_caffe": "25-32"})
 
             self.assertFalse((faces_dir / "123.jpg").exists())
             self.assertFalse((eigen_dir / "123.jpg").exists())

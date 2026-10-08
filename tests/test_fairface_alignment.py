@@ -5,7 +5,7 @@ from unittest.mock import patch
 import cv2
 import numpy as np
 
-from src import inference
+from face_analyzer import inference
 
 # dlib get_face_chip_details: outer/inner right eye, outer/inner left eye, nose.
 REFERENCE = (np.array([
@@ -86,15 +86,13 @@ class FairFaceAlignmentTests(unittest.TestCase):
         models = inference.Models(face_net=None, age_nets={"fairface": net},
                                   face_landmarks_nets={"mediapipe": object()})
         # Mock face detection and landmark detection; analyze_frame should produce same blob
-        with patch.object(inference, "detect_faces", return_value=[box]), \
-             patch.object(inference, "_detect_face_landmarker", return_value=result):
+        with patch("face_analyzer.pipeline.stages.detect_faces", return_value=[box]) as detect, \
+             patch("face_analyzer.pipeline.stages._detect_face_landmarker", return_value=result) as landmarker:
             output = inference.analyze_frame(
-                models, frame, 0.5, active_age={"fairface"}, active_gender=set(),
-                active_emotion=set(), active_race=set(), active_recognition=set(), gallery={},
-                active_glasses=set(), active_mask=set(), active_hair_color=set(), active_eye_color=set(),
-                active_face_landmarks=set(), active_hands=set(), active_gaze=set(),
-                global_adjustments={}, face_adjustments={},
+                models, frame, inference.AnalysisConfig(active_age={"fairface"}),
             )
+        detect.assert_called()
+        landmarker.assert_called()
         self.assertEqual(output[1][0]["raw_columns"]["age_fairface"], "70+")
         # Float32 landmark roundoff can move interpolation by one uint8 level.
         np.testing.assert_allclose(net.blob, expected, atol=1 / (255 * 0.224))

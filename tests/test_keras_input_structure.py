@@ -1,7 +1,7 @@
 import unittest
 from pathlib import Path
 
-NETS_DIR = Path(__file__).parents[1] / "src" / "nets"
+NETS_DIR = Path(__file__).parents[1] / "src" / "face_analyzer" / "nets"
 
 
 class KerasInputStructureTests(unittest.TestCase):
@@ -18,7 +18,7 @@ class KerasInputStructureTests(unittest.TestCase):
 
     def test_mediapipe_detection_runs_inside_native_log_suppression(self):
         """Keep MediaPipe's non-actionable native projection diagnostics out of Streamlit logs."""
-        source = (NETS_DIR.parent / "inference.py").read_text()
+        source = (NETS_DIR.parent / "pipeline" / "landmarks.py").read_text()
         self.assertIn("with _silence_native_logs():\n            return landmarker.detect(mp_image)", source)
         self.assertIn("with _silence_native_logs():\n            result = landmarker.detect(mp_image)", source)
 

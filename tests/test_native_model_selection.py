@@ -2,7 +2,7 @@ import os
 import unittest
 from unittest.mock import patch
 
-from src.model_selection import native_model_selected
+from face_analyzer.model_selection import native_model_selected
 
 
 class NativeModelSelectionTests(unittest.TestCase):

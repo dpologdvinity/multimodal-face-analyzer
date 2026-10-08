@@ -16,16 +16,15 @@ import argparse
 import hashlib
 import json
 import re
-import sys
 from collections import defaultdict
 from pathlib import Path
 
 import cv2
 
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "src"))
+from face_analyzer import inference
 
-import inference  # noqa: E402
+ROOT = Path(__file__).resolve().parent.parent
+
 
 # A detection counts as "the labelled face" only within this normalized centre distance.
 CENTER_MATCH_TOLERANCE = 0.05
@@ -167,9 +166,13 @@ def run_confirmed(args) -> None:
         if frame is None:
             raise ValueError(f"Cannot read confirmed asset: {path}")
         _, faces, _, _ = inference.analyze_frame(
-            models, frame, args.conf, set(models.age_nets), set(), set(models.emotion_nets),
-            set(), set(), {}, set(), set(), set(models.hair_color_nets),
-            set(models.eye_color_nets), set(), set(), set(), {}, {}, face_detector=args.detector,
+            models, frame,
+            inference.AnalysisConfig(
+                conf_threshold=args.conf, active_age=set(models.age_nets),
+                active_emotion=set(models.emotion_nets),
+                active_hair_color=set(models.hair_color_nets),
+                active_eye_color=set(models.eye_color_nets), face_detector=args.detector,
+            ),
         )
         records.append({"image": name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
                         "truth": truth, "detections": len(faces),
@@ -289,10 +292,12 @@ def main() -> None:
             continue
         height, width = frame.shape[:2]
         _, cropped, _, _ = inference.analyze_frame(
-            models, frame, args.conf,
-            every(models.age_nets), every(models.gender_nets), every(models.emotion_nets),
-            every(models.race_nets), set(), {}, set(), set(), set(), set(), set(), set(), set(),
-            {}, {}, face_detector=args.detector,
+            models, frame,
+            inference.AnalysisConfig(
+                conf_threshold=args.conf, active_age=every(models.age_nets),
+                active_gender=every(models.gender_nets), active_emotion=every(models.emotion_nets),
+                active_race=every(models.race_nets), face_detector=args.detector,
+            ),
         )
         labelled_total += len(faces)
         matched = set()

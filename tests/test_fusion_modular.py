@@ -1,7 +1,7 @@
-"""Tests for the src/fusion subpackage (ranking.py + ensembles.py).
+"""Tests for the src/face_analyzer/fusion subpackage (ranking.py + ensembles.py).
 
 Verifies that all exported symbols exist and behave correctly when imported
-directly from src.fusion rather than through src.inference -- i.e. that
+directly from face_analyzer.fusion rather than through face_analyzer.inference -- i.e. that
 the subpackage is a self-contained, importable unit.
 """
 from __future__ import annotations
@@ -10,7 +10,7 @@ import unittest
 
 import numpy as np
 
-from src.fusion import (
+from face_analyzer.fusion import (
     BEST_MODEL_KEY,
     FUSED_MODEL_KEY,
     RACE_CANONICAL_LABELS,

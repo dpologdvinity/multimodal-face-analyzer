@@ -7,8 +7,8 @@ import cv2
 import numpy as np
 import pytest
 
-from src.core import constants as C
-from src.inference import analyze_frame, load_models
+from face_analyzer.core import constants as C
+from face_analyzer.inference import AnalysisConfig, analyze_frame, load_models
 from tests._models import require_model
 
 FIXTURE = Path(__file__).parent / "fixtures" / "crew_portrait.jpg"
@@ -35,8 +35,8 @@ EXPECTED_ACTIVE = {
 }
 
 
-def _config(models) -> dict:
-    """Build the analyze_frame kwargs; the one place to change if its signature changes."""
+def _config(models) -> AnalysisConfig:
+    """Build the golden run's AnalysisConfig, checking the pinned backends loaded."""
     loaded = {
         "age": models.age_nets,
         "gender": models.gender_nets,
@@ -47,24 +47,18 @@ def _config(models) -> dict:
     }
     for feature, expected in EXPECTED_ACTIVE.items():
         missing = expected - set(loaded[feature])
-        assert not missing, f"golden backends failed to load for {feature}: {sorted(missing)}"
-    return dict(
+        if missing:
+            # Explicit raise: a bare assert is stripped under -O and would let a partial
+            # backend set silently produce a different golden output.
+            raise AssertionError(f"golden backends failed to load for {feature}: {sorted(missing)}")
+    return AnalysisConfig(
         conf_threshold=0.5,
         active_age=set(EXPECTED_ACTIVE["age"]),
         active_gender=set(EXPECTED_ACTIVE["gender"]),
         active_emotion=set(EXPECTED_ACTIVE["emotion"]),
         active_race=set(EXPECTED_ACTIVE["race"]),
-        active_recognition=set(),
-        gallery={},
-        active_glasses=set(),
-        active_mask=set(),
         active_hair_color=set(EXPECTED_ACTIVE["hair_color"]),
         active_eye_color=set(EXPECTED_ACTIVE["eye_color"]),
-        active_face_landmarks=set(),
-        active_hands=set(),
-        active_gaze=set(),
-        global_adjustments={},
-        face_adjustments={},
         face_detector="ssd",
     )
 
@@ -99,7 +93,7 @@ def test_analyze_frame_matches_golden():
         require_model(path)
     models = load_models()
     frame = cv2.imread(str(FIXTURE))
-    _, faces, *_ = analyze_frame(models, frame, **_config(models))
+    _, faces, *_ = analyze_frame(models, frame, _config(models))
     actual = normalize(faces)
     if os.environ.get("UPDATE_GOLDEN") == "1":
         GOLDEN.write_text(json.dumps(actual, indent=2, sort_keys=True) + "\n")

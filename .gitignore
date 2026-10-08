@@ -43,3 +43,7 @@ Thumbs.db
 # it's an already-committed placeholder the Dockerfile unconditionally bind-mounts;
 # see the skip-worktree note in that same README section instead.)
 models/BFM/BFM_model_front.mat
+
+# Packaging artifacts (pip install . / pip install -e .)
+*.egg-info/
+/build/

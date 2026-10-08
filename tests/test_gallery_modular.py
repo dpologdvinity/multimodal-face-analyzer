@@ -1,4 +1,4 @@
-"""Tests for the gallery subpackage (src/gallery/): database, eigenfaces, and identity search."""
+"""Tests for the gallery subpackage (src/face_analyzer/gallery/): database, eigenfaces, and identity search."""
 from __future__ import annotations
 
 import sqlite3
@@ -12,11 +12,11 @@ import numpy as np
 
 
 class DatabaseTests(unittest.TestCase):
-    """Tests for src/gallery/database.py: SQLite schema management and save_face."""
+    """Tests for src/face_analyzer/gallery/database.py: SQLite schema management and save_face."""
 
     def test_save_face_inserts_row_and_writes_files(self):
         """save_face returns an int face_id and creates image artifacts plus a DB row."""
-        from src.gallery.database import save_face
+        from face_analyzer.gallery.database import save_face
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -25,7 +25,7 @@ class DatabaseTests(unittest.TestCase):
             eigen_dir = root / "eigen"
             face = np.zeros((32, 32, 3), dtype=np.uint8)
 
-            import src.gallery.database as db_mod
+            import face_analyzer.gallery.database as db_mod
             with (
                 mock.patch.object(db_mod, "FACES_DB_FILE", db_file),
                 mock.patch.object(db_mod, "FACES_DIR", faces_dir),
@@ -43,7 +43,7 @@ class DatabaseTests(unittest.TestCase):
 
     def test_save_face_rollback_on_write_failure(self):
         """save_face rolls back the DB row and cleans up partial files when imwrite fails."""
-        from src.gallery.database import save_face
+        from face_analyzer.gallery.database import save_face
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -52,7 +52,7 @@ class DatabaseTests(unittest.TestCase):
             eigen_dir = root / "eigen"
             face = np.zeros((32, 32, 3), dtype=np.uint8)
 
-            import src.gallery.database as db_mod
+            import face_analyzer.gallery.database as db_mod
             with (
                 mock.patch.object(db_mod, "FACES_DB_FILE", db_file),
                 mock.patch.object(db_mod, "FACES_DIR", faces_dir),
@@ -71,7 +71,7 @@ class DatabaseTests(unittest.TestCase):
 
     def test_save_face_creates_columns_dynamically(self):
         """save_face adds new columns to the faces table on the fly."""
-        from src.gallery.database import save_face
+        from face_analyzer.gallery.database import save_face
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -80,7 +80,7 @@ class DatabaseTests(unittest.TestCase):
             eigen_dir = root / "eigen"
             face = np.zeros((32, 32, 3), dtype=np.uint8)
 
-            import src.gallery.database as db_mod
+            import face_analyzer.gallery.database as db_mod
             with (
                 mock.patch.object(db_mod, "FACES_DB_FILE", db_file),
                 mock.patch.object(db_mod, "FACES_DIR", faces_dir),
@@ -97,7 +97,7 @@ class DatabaseTests(unittest.TestCase):
 
 
 class EigenfacesTests(unittest.TestCase):
-    """Tests for src/gallery/eigenfaces.py: PCA training and matching."""
+    """Tests for src/face_analyzer/gallery/eigenfaces.py: PCA training and matching."""
 
     def _make_face(self, value: int) -> np.ndarray:
         """Create a simple solid-color BGR face for testing."""
@@ -106,8 +106,8 @@ class EigenfacesTests(unittest.TestCase):
 
     def test_crop_and_resize_returns_correct_shape(self):
         """_crop_and_resize_for_eigenfaces returns a grayscale image at EIGEN_FACE_SIZE."""
-        from src.core.constants import EIGEN_FACE_SIZE
-        from src.gallery.eigenfaces import _crop_and_resize_for_eigenfaces
+        from face_analyzer.core.constants import EIGEN_FACE_SIZE
+        from face_analyzer.gallery.eigenfaces import _crop_and_resize_for_eigenfaces
 
         face = self._make_face(128)
         result = _crop_and_resize_for_eigenfaces(face)
@@ -116,8 +116,8 @@ class EigenfacesTests(unittest.TestCase):
 
     def test_train_eigenfaces_requires_at_least_two_images(self):
         """_train_eigenfaces returns None when fewer than 2 images exist."""
-        import src.gallery.eigenfaces as ef_mod
-        from src.gallery.eigenfaces import _train_eigenfaces
+        import face_analyzer.gallery.eigenfaces as ef_mod
+        from face_analyzer.gallery.eigenfaces import _train_eigenfaces
 
         with tempfile.TemporaryDirectory() as tmp:
             eigen_dir = Path(tmp)
@@ -128,8 +128,8 @@ class EigenfacesTests(unittest.TestCase):
 
     def test_train_and_match_eigenfaces_with_two_dummy_images(self):
         """_train_eigenfaces and match_face_eigenfaces work end-to-end with 2 dummy images."""
-        import src.gallery.eigenfaces as ef_mod
-        from src.gallery.eigenfaces import (
+        import face_analyzer.gallery.eigenfaces as ef_mod
+        from face_analyzer.gallery.eigenfaces import (
             _crop_and_resize_for_eigenfaces,
             _train_eigenfaces,
             match_face_eigenfaces,
@@ -163,8 +163,8 @@ class EigenfacesTests(unittest.TestCase):
 
     def test_match_faces_eigenfaces_batch_returns_one_per_face(self):
         """match_faces_eigenfaces_batch returns a list with one entry per input face."""
-        import src.gallery.eigenfaces as ef_mod
-        from src.gallery.eigenfaces import (
+        import face_analyzer.gallery.eigenfaces as ef_mod
+        from face_analyzer.gallery.eigenfaces import (
             _crop_and_resize_for_eigenfaces,
             match_faces_eigenfaces_batch,
         )
@@ -187,8 +187,8 @@ class EigenfacesTests(unittest.TestCase):
 
     def test_batch_returns_none_list_when_fewer_than_two_saved(self):
         """match_faces_eigenfaces_batch returns [None] per face when training fails."""
-        import src.gallery.eigenfaces as ef_mod
-        from src.gallery.eigenfaces import match_faces_eigenfaces_batch
+        import face_analyzer.gallery.eigenfaces as ef_mod
+        from face_analyzer.gallery.eigenfaces import match_faces_eigenfaces_batch
 
         face = self._make_face(128)
         with tempfile.TemporaryDirectory() as tmp:
@@ -199,11 +199,11 @@ class EigenfacesTests(unittest.TestCase):
 
 
 class SearchTests(unittest.TestCase):
-    """Tests for src/gallery/search.py: embedding, identity matching, LBPH, gallery I/O."""
+    """Tests for src/face_analyzer/gallery/search.py: embedding, identity matching, LBPH, gallery I/O."""
 
     def test_build_gallery_from_directory_with_mocked_detector(self):
         """build_gallery_from_directory correctly skips no-face images and embeds found faces."""
-        from src.gallery.search import (
+        from face_analyzer.gallery.search import (
             build_gallery_from_directory,
         )
 
@@ -226,8 +226,8 @@ class SearchTests(unittest.TestCase):
             # Mock detect_faces to return one box for every image
             fake_box = (0, 0, 64, 64)
             with (
-                mock.patch("src.gallery.search.detect_faces", return_value=[fake_box]),
-                mock.patch("src.gallery.search.compute_face_embedding", return_value=dummy_embedding),
+                mock.patch("face_analyzer.gallery.search.detect_faces", return_value=[fake_box]),
+                mock.patch("face_analyzer.gallery.search.compute_face_embedding", return_value=dummy_embedding),
             ):
                 gallery = build_gallery_from_directory(mock_face_net, mock_recog_net, gallery_dir)
 
@@ -238,7 +238,7 @@ class SearchTests(unittest.TestCase):
 
     def test_build_gallery_skips_images_with_no_face(self):
         """build_gallery_from_directory omits images where detect_faces returns empty."""
-        from src.gallery.search import build_gallery_from_directory
+        from face_analyzer.gallery.search import build_gallery_from_directory
 
         with tempfile.TemporaryDirectory() as tmp:
             gallery_dir = Path(tmp)
@@ -248,15 +248,15 @@ class SearchTests(unittest.TestCase):
             mock_face_net = mock.MagicMock()
             mock_recog_net = mock.MagicMock()
 
-            with mock.patch("src.gallery.search.detect_faces", return_value=[]):
+            with mock.patch("face_analyzer.gallery.search.detect_faces", return_value=[]):
                 gallery = build_gallery_from_directory(mock_face_net, mock_recog_net, gallery_dir)
 
         self.assertEqual(gallery, {})
 
     def test_load_and_save_gallery_round_trip(self):
         """save_gallery writes JSON and load_gallery reads it back to numpy arrays."""
-        import src.gallery.search as search_mod
-        from src.gallery.search import load_gallery, save_gallery
+        import face_analyzer.gallery.search as search_mod
+        from face_analyzer.gallery.search import load_gallery, save_gallery
 
         emb = np.array([0.1, 0.2, 0.3], dtype=np.float32)
         original = {"Alice": emb}
@@ -272,8 +272,8 @@ class SearchTests(unittest.TestCase):
 
     def test_load_gallery_returns_empty_when_file_missing(self):
         """load_gallery returns {} when the gallery file does not exist."""
-        import src.gallery.search as search_mod
-        from src.gallery.search import load_gallery
+        import face_analyzer.gallery.search as search_mod
+        from face_analyzer.gallery.search import load_gallery
 
         with tempfile.TemporaryDirectory() as tmp:
             missing_file = Path(tmp) / "nonexistent.json"
@@ -284,14 +284,14 @@ class SearchTests(unittest.TestCase):
 
     def test_validate_lbph_name_strips_and_allows_normal_names(self):
         """validate_lbph_name returns the stripped name for normal inputs."""
-        from src.gallery.search import validate_lbph_name
+        from face_analyzer.gallery.search import validate_lbph_name
 
         self.assertEqual(validate_lbph_name("  Alice  "), "Alice")
         self.assertEqual(validate_lbph_name("Bob"), "Bob")
 
     def test_validate_lbph_name_raises_for_path_traversal(self):
         """validate_lbph_name raises ValueError for path traversal inputs."""
-        from src.gallery.search import validate_lbph_name
+        from face_analyzer.gallery.search import validate_lbph_name
 
         with self.assertRaises(ValueError):
             validate_lbph_name("../evil")
@@ -302,8 +302,8 @@ class SearchTests(unittest.TestCase):
 
     def test_match_face_identity_returns_best_match(self):
         """match_face_identity returns the name with the highest cosine similarity above threshold."""
-        import src.gallery.search as search_mod
-        from src.gallery.search import match_face_identity
+        import face_analyzer.gallery.search as search_mod
+        from face_analyzer.gallery.search import match_face_identity
 
         emb_a = np.array([1.0, 0.0, 0.0], dtype=np.float32)
         emb_b = np.array([0.0, 1.0, 0.0], dtype=np.float32)
@@ -321,8 +321,8 @@ class SearchTests(unittest.TestCase):
 
     def test_match_face_identity_returns_none_below_threshold(self):
         """match_face_identity returns None when similarity is below threshold."""
-        import src.gallery.search as search_mod
-        from src.gallery.search import match_face_identity
+        import face_analyzer.gallery.search as search_mod
+        from face_analyzer.gallery.search import match_face_identity
 
         gallery = {"Alice": np.array([1.0, 0.0, 0.0], dtype=np.float32)}
         query = np.array([0.0, 0.0, 1.0], dtype=np.float32)
@@ -334,7 +334,7 @@ class SearchTests(unittest.TestCase):
 
     def test_decode_image_bytes_returns_bgr_array(self):
         """decode_image_bytes decodes JPEG bytes into a BGR ndarray."""
-        from src.gallery.search import decode_image_bytes
+        from face_analyzer.gallery.search import decode_image_bytes
 
         img = np.full((32, 32, 3), 128, dtype=np.uint8)
         ok, buf = cv2.imencode(".jpg", img)
@@ -346,14 +346,14 @@ class SearchTests(unittest.TestCase):
 
     def test_decode_image_bytes_raises_on_empty(self):
         """decode_image_bytes raises ValueError for empty bytes."""
-        from src.gallery.search import decode_image_bytes
+        from face_analyzer.gallery.search import decode_image_bytes
 
         with self.assertRaises(ValueError):
             decode_image_bytes(b"")
 
 
 class GalleryInitExportsTests(unittest.TestCase):
-    """Verify src/gallery/__init__.py exports all required symbols."""
+    """Verify src/face_analyzer/gallery/__init__.py exports all required symbols."""
 
     REQUIRED_SYMBOLS = [
         # database
@@ -381,26 +381,26 @@ class GalleryInitExportsTests(unittest.TestCase):
     ]
 
     def test_all_symbols_exported(self):
-        """All required gallery symbols are importable from src.gallery."""
-        import src.gallery as gallery_pkg
+        """All required gallery symbols are importable from face_analyzer.gallery."""
+        import face_analyzer.gallery as gallery_pkg
 
         for symbol in self.REQUIRED_SYMBOLS:
             with self.subTest(symbol=symbol):
                 self.assertTrue(
                     hasattr(gallery_pkg, symbol),
-                    f"src.gallery missing symbol: {symbol}",
+                    f"face_analyzer.gallery missing symbol: {symbol}",
                 )
 
     def test_all_symbols_in_dunder_all(self):
-        """All required gallery symbols appear in src.gallery.__all__."""
-        import src.gallery as gallery_pkg
+        """All required gallery symbols appear in face_analyzer.gallery.__all__."""
+        import face_analyzer.gallery as gallery_pkg
 
         for symbol in self.REQUIRED_SYMBOLS:
             with self.subTest(symbol=symbol):
                 self.assertIn(
                     symbol,
                     gallery_pkg.__all__,
-                    f"src.gallery.__all__ missing: {symbol}",
+                    f"face_analyzer.gallery.__all__ missing: {symbol}",
                 )
 
 

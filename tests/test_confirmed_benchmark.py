@@ -1,10 +1,15 @@
 """Keep confirmed evaluation independent of guessed labels and missing outputs."""
-import sys
+import importlib.util
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-import benchmark
+# tools/ is a script directory, not a package; load the module by path instead of
+# prepending tools/ to sys.path for the whole test session.
+_SPEC = importlib.util.spec_from_file_location(
+    "benchmark", Path(__file__).resolve().parents[1] / "tools" / "benchmark.py"
+)
+benchmark = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(benchmark)
 
 
 class ConfirmedBenchmarkTests(unittest.TestCase):

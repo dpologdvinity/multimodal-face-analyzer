@@ -45,7 +45,7 @@ FROM python:3.11-slim
 # registration respectively); this ARG alone will never produce a working reconstruction.
 # See README's Known Issues for what the user must supply themselves.
 # AGE_PROGRESSION_MODEL (franunet, timroelofs123/face_reaging) needs torch. Its BlurPool
-# component is vendored directly into src/nets/face_reaging_model.py from Adobe's
+# component is vendored directly into src/face_analyzer/nets/face_reaging_model.py from Adobe's
 # antialiased-cnns, which is CC BY-NC-SA 4.0 (non-commercial) -- a required inference-time
 # dependency, not just a training-data provenance caveat like this repo's other NC-flagged
 # models. See README.
@@ -148,12 +148,13 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # package, opencv-contrib-python, both >=5.0 -- pip happily installs both alongside
 # opencv-python-headless, and whichever's "cv2" package wins the import silently lacks
 # Caffe support (removed in OpenCV 5.0), breaking caffe/dex age, caffe gender, and
-# Caffe models and the eye cascade use cv2.dnn/CascadeClassifier. Uninstall
-# every opencv variant before reinstalling the one pinned version, so there's no
-# ambiguity about which package's cv2 gets imported. lbph (recognition) needs cv2.face,
-# which only ships in the "contrib" build -- swap the pinned package for that build (still
-# <5.0.0, still has Caffe support -- contrib is a strict superset of the main build) when
-# lbph is requested, otherwise stick with the smaller opencv-python-headless.
+# eccv16 colorization, which all load through cv2.dnn's Caffe importer. Uninstall
+# every opencv variant before reinstalling the single 4.14.0.94 pin (the same one
+# requirements.txt uses), so there's no ambiguity about which package's cv2 gets imported.
+# lbph (recognition) needs cv2.face, which only ships in the "contrib" build -- install
+# that build at the same 4.14.0.94 pin (contrib is a strict superset of the main build,
+# Caffe support included) when lbph is requested, otherwise stick with the smaller
+# opencv-python-headless.
 RUN --mount=type=cache,target=/root/.cache/pip \
     recognition_csv=",$RECOGNITION_MODEL,"; opencv_pkg="opencv-python-headless"; \
     case "$recognition_csv" in *,lbph,*) opencv_pkg="opencv-contrib-python-headless" ;; esac; \
@@ -161,7 +162,13 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     pip install "${opencv_pkg}==4.14.0.94"
 
 # Application code and always-required model files (face detector)
+COPY pyproject.toml ./
 COPY src/ src/
+# Editable so face_analyzer resolves to /app/src (BASE_DIR, and therefore models/, is derived
+# from the package's own path) and so build-and-run.sh's src/ dev mount takes effect.
+# --no-deps: requirements.txt and the per-model extras are already installed above.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-deps -e .
 COPY models/opencv_face_detector.pbtxt models/opencv_face_detector_uint8.pb models/
 
 # BuildKit resolves bind-mount sources at solve time, before conditional RUN logic executes,
@@ -204,5 +211,5 @@ RUN --mount=type=bind,source=models,target=/tmp/models \
 # Expose default Streamlit port
 EXPOSE 8501
 
-# Run Streamlit web app from src directory
-CMD ["streamlit", "run", "src/app.py", "--server.address=0.0.0.0", "--server.port=8501", "--server.enableXsrfProtection=true"]
+# Run the Streamlit web app from the installed package's source directory
+CMD ["streamlit", "run", "src/face_analyzer/app.py", "--server.address=0.0.0.0", "--server.port=8501", "--server.enableXsrfProtection=true"]

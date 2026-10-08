@@ -7,9 +7,10 @@ Docker build arguments. For what each model does, see [models.md](models.md).
 
 Every `*.h5`, `*.pth`, `*.pt`, `*.caffemodel`, `*.safetensors`, `*.onnx`, and `*.task` file in
 `models/` is stored with [git-lfs](https://git-lfs.com/). The full tracked set is about 3.2 GB.
-A clone without LFS contains small pointer files in their place, which the model loaders cannot
-read, so pull the weights before running natively. A model whose file is absent altogether is
-skipped and reported as unavailable; a pointer file is not.
+A clone without LFS contains small pointer files in their place. The app still starts on such a
+clone (the SSD face detector is not stored in LFS), but every model whose weights are still
+pointers is skipped and reported as unavailable, exactly like a missing file, so pull the
+weights you want before running.
 
 ```bash
 git lfs install
@@ -29,8 +30,13 @@ The base install covers the required SSD face detector and every OpenCV-only bac
 conda create -n vision_env python=3.11 -y
 conda activate vision_env
 pip install -r requirements.txt
-streamlit run src/app.py
+pip install --no-deps -e .
+streamlit run src/face_analyzer/app.py
 ```
+
+The source is the installable `face_analyzer` package (`src/` layout); the editable install makes
+it importable while keeping `models/` and the runtime data directories resolved from the
+repository root.
 
 Optional backends need heavier packages (PyTorch, TensorFlow, MediaPipe, onnxruntime). The
 easiest way to get them is the [guided installer](#native-install-and-run), which installs only
@@ -59,7 +65,7 @@ Without an optional package installed, the models that need it are skipped, not 
 ### Tests and lint
 
 ```bash
-pip install -r requirements-dev.txt
+pip install -r requirements-dev.txt   # also installs face_analyzer in editable mode
 python -m pytest -q
 ruff check .
 ```
@@ -233,14 +239,16 @@ multimodal-face-analyzer/
 ├── install-and-run.sh             # guided native install
 ├── requirements*.txt, pyproject.toml
 ├── models/                        # weights and configs (git-lfs)
-├── src/
-│   ├── app.py                     # Streamlit UI (layout, sidebar, tabs)
+├── src/face_analyzer/             # the installable face_analyzer package
+│   ├── app.py                     # Streamlit entry point: page setup, model load, sidebar -> tabs wiring
 │   ├── inference.py               # facade re-exporting the modules below
 │   ├── core/                      # constants (paths, fusion weights), types (Models), image utils
 │   ├── detectors/                 # BaseFaceDetector + factory; SSD, YOLO, SCRFD, RetinaFace
 │   ├── attributes/                # per-face predictors: age, gender, emotion, race, accessories, ...
 │   ├── fusion/                    # combined answers: fuse_gender/race/emotion, select_age
-│   ├── pipeline/                  # loader (load_models), analyzer (analyze_frame), drawing, tracker
+│   ├── pipeline/                  # loader (load_models), analyzer (analyze_frame), config (AnalysisConfig),
+│   │                              #   stages, face_tasks, cache, landmarks, drawing, tracker
+│   ├── ui/                        # Streamlit views: theme (+ theme.css), sidebar, adjustments, results, live webcam tab
 │   ├── gallery/                   # SQLite saved faces, eigenfaces, identity search
 │   ├── liveness.py, model_selection.py
 │   └── nets/                      # vendored third-party model architectures

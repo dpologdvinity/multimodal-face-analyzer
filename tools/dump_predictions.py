@@ -6,16 +6,14 @@ models for every idea. Run this again whenever a model's preprocessing changes.
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 import cv2
 import numpy as np
 
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "src"))
+from face_analyzer import inference as inf
 
-import inference as inf  # noqa: E402
+ROOT = Path(__file__).resolve().parent.parent
 
 
 def _face_crop(frame: np.ndarray, box, ratio: float = 0.1) -> np.ndarray:

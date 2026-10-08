@@ -219,7 +219,7 @@ cleanup_build_context() {
 }
 trap cleanup_build_context EXIT
 
-cp -a "$PROJECT_ROOT/Dockerfile" "$PROJECT_ROOT/requirements.txt" "$BUILD_CONTEXT/"
+cp -a "$PROJECT_ROOT/Dockerfile" "$PROJECT_ROOT/pyproject.toml" "$PROJECT_ROOT/requirements.txt" "$BUILD_CONTEXT/"
 cp -a "$PROJECT_ROOT/src" "$BUILD_CONTEXT/src"
 mkdir -p "$BUILD_CONTEXT/models"
 
@@ -341,7 +341,7 @@ if [[ "$dev_mount" =~ ^[Yy] ]]; then
         -v "$PROJECT_ROOT/src:/app/src" \
         "$IMAGE_TAG"
     echo "" >&2
-    echo "Dev mode: edit src/*.py locally, Streamlit auto-reruns in the container." >&2
+    echo "Dev mode: edit src/face_analyzer/*.py locally, Streamlit auto-reruns in the container." >&2
 else
     docker run -d -p "127.0.0.1:${PORT}:8501" --name "$CONTAINER_NAME" \
         -e "HAIR_COLOR_MODEL=$HAIR_COLOR_MODEL" "$IMAGE_TAG"

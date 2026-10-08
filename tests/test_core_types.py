@@ -1,7 +1,7 @@
 import numpy as np
 
-import src.inference as inference
-from src.core.constants import (
+import face_analyzer.inference as inference
+from face_analyzer.core.constants import (
     AGE_LIST,
     EMOTION_LABELS_DAN,
     EMOTION_LABELS_FERPLUS,
@@ -12,13 +12,13 @@ from src.core.constants import (
     HAIR_COLOR_LABELS,
     RACE_CANONICAL_LABELS,
 )
-from src.core.image_utils import (
+from face_analyzer.core.image_utils import (
     _is_skin_hsv,
     apply_image_adjustments,
     crop_region,
     face_crop_bounds,
 )
-from src.core.types import BoundingBox, Detection, FaceResult, Models
+from face_analyzer.core.types import BoundingBox, Detection, FaceResult, Models
 
 
 def test_bounding_box_init_and_properties():
@@ -93,7 +93,7 @@ def test_constants_integrity():
     assert "black" in HAIR_COLOR_LABELS
     assert "brown" in EYE_COLOR_LABELS
 
-    # Re-export check in src.inference
+    # Re-export check in face_analyzer.inference
     assert inference.AGE_LIST == AGE_LIST
     assert inference.GENDER_LIST == GENDER_LIST
     assert inference.RACE_CANONICAL_LABELS == RACE_CANONICAL_LABELS
@@ -140,22 +140,9 @@ def test_crop_helpers():
     assert crop.shape == (40, 40, 3)
 
 
-def test_import_inference_when_only_src_in_sys_path():
-    """Verify that inference and core import cleanly when only src/ is on sys.path."""
-    import subprocess
-    import sys
-    from pathlib import Path
+def test_base_dir_is_repo_root():
+    """Resolve BASE_DIR to the repository root from inside the installed package."""
+    from face_analyzer.core.constants import BASE_DIR
 
-    repo_root = str(Path(__file__).resolve().parents[1])
-    src_dir = str(Path(__file__).resolve().parents[1] / "src")
-    code = (
-        "import sys\n"
-        f"sys.path = [{src_dir!r}] + [p for p in sys.path if p != {repo_root!r}]\n"
-        "import inference\n"
-        "assert hasattr(inference, 'Models')\n"
-        "assert hasattr(inference, 'BoundingBox')\n"
-        "assert hasattr(inference, 'apply_image_adjustments')\n"
-    )
-    res = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
-    assert res.returncode == 0, f"Import failed with stderr: {res.stderr}"
+    assert (BASE_DIR / "models").is_dir() and (BASE_DIR / "pyproject.toml").is_file()
 

@@ -462,6 +462,8 @@ PIP=("$VENV_PYTHON" -m pip)
 echo "Installing base requirements from requirements.txt" >&2
 "${PIP[@]}" install --upgrade pip
 "${PIP[@]}" install -r requirements.txt
+echo "Installing the face_analyzer package (editable)" >&2
+"${PIP[@]}" install --no-deps -e .
 
 if [ "$NEED_TORCH" = true ]; then
     echo "Installing: torch, torchvision (CPU wheels)" >&2
@@ -508,7 +510,7 @@ export AGE_MODEL GENDER_MODEL RACE_MODEL EMOTION_MODEL RECOGNITION_MODEL \
     GLASSES_MODEL MASK_MODEL HAIR_COLOR_MODEL COLORIZATION_MODEL HAND_MODEL \
     RECONSTRUCTION_3D_MODEL AGE_PROGRESSION_MODEL YOLO_FACE_MODEL \
     SCRFD_FACE_MODEL RETINAFACE_MODEL
-exec "${VENV_PYTHON}" -m streamlit run src/app.py \
+exec "${VENV_PYTHON}" -m streamlit run src/face_analyzer/app.py \
     --server.address=127.0.0.1 \
     --server.port="${PORT}" \
     --server.enableXsrfProtection=true
