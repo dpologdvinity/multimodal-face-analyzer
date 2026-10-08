@@ -32,7 +32,7 @@ def test_normal_frame_returns_same_size_frame_and_records_metrics():
     """A normal frame comes back as a same-size VideoFrame and records one metrics sample."""
     config = AnalysisConfig(face_detector="ssd")
     callback = live.make_video_frame_callback(_models, lambda: config)
-    with patch("src.pipeline.analyzer.detect_faces", return_value=[]):
+    with patch("src.pipeline.stages.detect_faces", return_value=[]):
         out = callback(_frame())
     assert isinstance(out, av.VideoFrame)
     assert (out.width, out.height) == (320, 240)
@@ -80,7 +80,7 @@ def test_frame_skip_path_survives_the_real_pipeline():
     """Both the skipped and the classifier frame run through the real analyze_frame cleanly."""
     config = AnalysisConfig(face_detector="ssd", active_age={"caffe"})
     callback = live.make_video_frame_callback(_models, lambda: config, frame_skip=2)
-    with patch("src.pipeline.analyzer.detect_faces", return_value=[]):
+    with patch("src.pipeline.stages.detect_faces", return_value=[]):
         skipped = callback(_frame())
         ran = callback(_frame())
     assert (skipped.width, skipped.height) == (ran.width, ran.height) == (320, 240)

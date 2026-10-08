@@ -175,7 +175,7 @@ class TestAnalyzeFrameModular(unittest.TestCase):
         """Verify analyze_frame returns empty face list when no faces detected."""
         frame = np.zeros((100, 100, 3), dtype=np.uint8)
         models = Models(face_net=MagicMock())
-        with patch("src.pipeline.analyzer.detect_faces", return_value=[]):
+        with patch("src.pipeline.stages.detect_faces", return_value=[]):
             annotated, faces, has_faces, hands = analyze_frame(models, frame, AnalysisConfig())
             self.assertEqual(len(faces), 0)
             self.assertFalse(has_faces)
@@ -187,7 +187,7 @@ class TestAnalyzeFrameModular(unittest.TestCase):
         frame = np.zeros((100, 100, 3), dtype=np.uint8)
         models = Models(face_net=MagicMock())
         config = AnalysisConfig(conf_threshold=0.6, face_detector="ssd")
-        with patch("src.pipeline.analyzer.detect_faces", return_value=[]) as detect:
+        with patch("src.pipeline.stages.detect_faces", return_value=[]) as detect:
             analyze_frame(models, frame, config)
         self.assertEqual(detect.call_args.args[-1], 0.6)
 

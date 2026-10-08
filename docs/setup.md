@@ -240,7 +240,7 @@ multimodal-face-analyzer/
 │   ├── detectors/                 # BaseFaceDetector + factory; SSD, YOLO, SCRFD, RetinaFace
 │   ├── attributes/                # per-face predictors: age, gender, emotion, race, accessories, ...
 │   ├── fusion/                    # combined answers: fuse_gender/race/emotion, select_age
-│   ├── pipeline/                  # loader (load_models), analyzer (analyze_frame), drawing, tracker
+│   ├── pipeline/                  # loader (load_models), analyzer (analyze_frame) + stages, drawing, tracker
 │   ├── ui/                        # live webcam frame callback (make_video_frame_callback)
 │   ├── gallery/                   # SQLite saved faces, eigenfaces, identity search
 │   ├── liveness.py, model_selection.py
