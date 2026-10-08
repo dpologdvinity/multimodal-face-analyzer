@@ -722,6 +722,7 @@ def main() -> None:
                    "stratified_by": "race", "allocation": "proportional",
                    "bootstrap_resamples": args.resamples},
         "run": {**meta, "scored_on": date.today().isoformat(),
+                "scoring_git_commit": _versions()["git_commit"],
                 "seconds_per_image_mean": round(float(np.mean(seconds)), 3),
                 "seconds_per_image_median": round(float(np.median(seconds)), 3),
                 "total_inference_minutes": round(sum(seconds) / 60, 1)},
