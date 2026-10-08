@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import http.client
 import json
 import os
 import shutil
@@ -112,11 +113,14 @@ def download(url: str, part: Path) -> None:
     try:
         response = urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS)
     except urllib.error.HTTPError as exc:
-        if exc.code == 416 and offset:
-            # The partial file is already complete (or bogus); hashing decides which.
+        if offset:
+            # A stale or oversized partial file can make the Range request fail; start over once.
+            print(f"  resume of {part.name} failed (HTTP {exc.code}); restarting", file=sys.stderr)
+            part.unlink()
+            download(url, part)
             return
         raise FetchError(f"HTTP {exc.code} for {url}") from exc
-    except (urllib.error.URLError, OSError) as exc:
+    except (urllib.error.URLError, http.client.HTTPException, OSError) as exc:
         raise FetchError(f"cannot reach {url}: {exc}") from exc
     with response:
         resumed = offset and getattr(response, "status", 200) == 206
@@ -125,8 +129,9 @@ def download(url: str, part: Path) -> None:
         try:
             with part.open("ab" if resumed else "wb") as fh:
                 shutil.copyfileobj(response, fh, CHUNK_SIZE)
-        except OSError as exc:
-            raise FetchError(f"download of {url} interrupted: {exc}; rerun to resume") from exc
+        except (http.client.HTTPException, OSError) as exc:
+            # The .part file is kept so the next run resumes from where this one stopped.
+            raise FetchError(f"download of {url} incomplete ({exc!r}); rerun to resume") from exc
 
 
 def fetch_entry(entry: dict, model_dir: Path, force: bool = False) -> str:
@@ -158,14 +163,23 @@ def fetch_entry(entry: dict, model_dir: Path, force: bool = False) -> str:
     if member:
         extracted = dest.with_name(dest.name + ".tmp")
         try:
-            with zipfile.ZipFile(part) as archive, archive.open(member) as src, extracted.open("wb") as dst:
-                shutil.copyfileobj(src, dst, CHUNK_SIZE)
-        except (zipfile.BadZipFile, KeyError) as exc:
+            with zipfile.ZipFile(part) as archive:
+                member_size = archive.getinfo(member).file_size
+                if member_size != entry["size"]:
+                    raise FetchError(f"{entry['url']}: {member} is {member_size} bytes, expected {entry['size']}")
+                with archive.open(member) as src, extracted.open("wb") as dst:
+                    shutil.copyfileobj(src, dst, CHUNK_SIZE)
+        except (zipfile.BadZipFile, KeyError, OSError, FetchError) as exc:
             part.unlink(missing_ok=True)
             extracted.unlink(missing_ok=True)
+            if isinstance(exc, FetchError):
+                raise
             raise FetchError(f"{entry['url']}: cannot extract {member}: {exc}") from exc
         part.unlink()
         part = extracted
+    elif part.stat().st_size < entry["size"]:
+        raise FetchError(f"{entry['path']} incomplete ({part.stat().st_size} of {entry['size']} bytes); "
+                         "rerun to resume")
     actual = sha256_of(part)
     if actual != expected:
         part.unlink()
