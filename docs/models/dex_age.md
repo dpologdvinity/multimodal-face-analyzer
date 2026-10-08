@@ -90,7 +90,7 @@ predicted_age_class = np.argmax(probs)  # Integer in [0, 100]
 ## Model Loading (cv2.dnn)
 
 ### Docker Environment (Recommended)
-The Docker image uses `opencv-python-headless>=4.8.0,<5.0.0` (from `requirements.txt`), which includes full Caffe support:
+The Docker image pins `opencv-python-headless==4.14.0.94` (from `requirements.txt`; the final Dockerfile step reinstalls that exact version), which includes full Caffe support:
 
 ```python
 import cv2
