@@ -61,10 +61,11 @@ The source is the installable `face_analyzer` package; paths below are relative 
 (`pipeline/config.py`); the stages live in `pipeline/stages.py` (per-feature face tasks in
 `pipeline/face_tasks.py`, the prediction cache and thread pool in `pipeline/cache.py`). Model
 loading is in `pipeline/loader.py`, fusion in `fusion/`, and vendored third-party architectures
-in `nets/`; `inference.py` is a facade that re-exports them for the UI. The Streamlit entry
-point `app.py` only wires these together: the theme (`ui/theme.py` plus `theme.css`), the
-sidebar (`ui/sidebar.py`), the image adjustment sliders (`ui/adjustments.py`), the per-image
-results view (`ui/results.py`), and the Live webcam tab (`ui/live.py`).
+in `nets/`; `inference.py` is a facade that re-exports the public names the UI, tools and
+tests use. The Streamlit entry point `app.py` only wires these together: the theme
+(`ui/theme.py` plus `theme.css`), the sidebar (`ui/sidebar.py`), the image adjustment sliders
+(`ui/adjustments.py`), the per-image results view (`ui/results.py`), and the Live webcam tab
+(`ui/live.py`).
 
 ## Results
 
