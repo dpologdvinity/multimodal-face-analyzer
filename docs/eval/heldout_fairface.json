@@ -62,7 +62,7 @@
     },
     "date": "2026-10-08",
     "scored_on": "2026-10-08",
-    "scoring_git_commit": "af53bf4",
+    "scoring_git_commit": "3711744",
     "seconds_per_image_mean": 4.686,
     "seconds_per_image_median": 4.741,
     "total_inference_minutes": 156.2
@@ -135,7 +135,7 @@
         }
       },
       "race": {
-        "shipped_weights": {
+        "previous_weights": {
           "fairface": 1.0,
           "deepface": 1.0
         },
@@ -147,7 +147,7 @@
           "fairface": 2.602,
           "deepface": 2.168
         },
-        "test_shipped": {
+        "test_previous": {
           "value": 0.6327,
           "ci95": [
             0.6048,
@@ -163,11 +163,27 @@
           ],
           "n": 1002
         },
-        "test_fitted_minus_shipped": {
+        "test_fitted_minus_previous": {
           "value": 0.0679,
           "ci95": [
             0.0509,
             0.0848
+          ],
+          "n": 1002
+        },
+        "test_best_shipped": {
+          "value": 0.7655,
+          "ci95": [
+            0.7395,
+            0.7924
+          ],
+          "n": 1002
+        },
+        "test_best_minus_fitted": {
+          "value": 0.0649,
+          "ci95": [
+            0.0379,
+            0.0928
           ],
           "n": 1002
         }
@@ -178,7 +194,7 @@
       "race": 0,
       "best_age": 0,
       "fused_gender": 0,
-      "fused_race": 0
+      "previous_fused_race": 0
     },
     "fairface_landmark_alignment_share": 0.8993,
     "gender": {
@@ -257,37 +273,43 @@
           "n": 191,
           "fairface": 0.7487,
           "deepface": 0.6859,
-          "fused_shipped": 0.6859
+          "best_shipped": 0.7487,
+          "fused_previous": 0.6859
         },
         "black": {
           "n": 142,
           "fairface": 0.8944,
           "deepface": 0.8169,
-          "fused_shipped": 0.8169
+          "best_shipped": 0.8944,
+          "fused_previous": 0.8169
         },
         "asian": {
           "n": 271,
           "fairface": 0.9004,
           "deepface": 0.7343,
-          "fused_shipped": 0.7417
+          "best_shipped": 0.9004,
+          "fused_previous": 0.7417
         },
         "indian": {
           "n": 139,
           "fairface": 0.6978,
           "deepface": 0.6835,
-          "fused_shipped": 0.6835
+          "best_shipped": 0.6978,
+          "fused_previous": 0.6835
         },
         "latino": {
           "n": 148,
           "fairface": 0.5676,
           "deepface": 0.4257,
-          "fused_shipped": 0.4324
+          "best_shipped": 0.5676,
+          "fused_previous": 0.4324
         },
         "middle_eastern": {
           "n": 111,
           "fairface": 0.6486,
           "deepface": 0.2432,
-          "fused_shipped": 0.2432
+          "best_shipped": 0.6486,
+          "fused_previous": 0.2432
         }
       },
       "fairface_7class": {
@@ -298,11 +320,31 @@
         ],
         "n": 1002
       },
-      "fused_shipped": {
+      "best_shipped": {
+        "value": 0.7655,
+        "ci95": [
+          0.7395,
+          0.7924
+        ],
+        "n": 1002,
+        "chosen_backend": {
+          "fairface": 1002,
+          "deepface": 0
+        }
+      },
+      "fused_previous": {
         "value": 0.6327,
         "ci95": [
           0.6048,
           0.6627
+        ],
+        "n": 1002
+      },
+      "best_minus_fused_previous": {
+        "value": 0.1327,
+        "ci95": [
+          0.1018,
+          0.1637
         ],
         "n": 1002
       },

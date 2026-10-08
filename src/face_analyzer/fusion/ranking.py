@@ -1,9 +1,13 @@
-"""Ranking utilities for multi-model age selection and result formatting."""
+"""Ranking utilities for multi-model age/race selection and result formatting."""
 from __future__ import annotations
 
 import numpy as np
 
-from ..core.constants import AGE_MODEL_RELIABILITY, FUSED_MODEL_KEY
+from ..core.constants import (
+    AGE_MODEL_RELIABILITY,
+    FUSED_MODEL_KEY,
+    RACE_MODEL_RELIABILITY,
+)
 
 
 def select_age(estimates: dict[str, float]) -> tuple[str, str] | None:
@@ -16,6 +20,17 @@ def select_age(estimates: dict[str, float]) -> tuple[str, str] | None:
                     if key in AGE_MODEL_RELIABILITY else len(AGE_MODEL_RELIABILITY))
     chosen = ranked[0]
     return f"{usable[chosen]:.0f}", chosen
+
+
+def select_race(labels: dict[str, str]) -> tuple[str, str] | None:
+    """Pick the headline race as the most reliable model present, returning (label, model_key)."""
+    usable = {key: label for key, label in labels.items() if label}
+    if len(usable) < 2:
+        return None
+    ranked = sorted(usable, key=lambda key: RACE_MODEL_RELIABILITY.index(key)
+                    if key in RACE_MODEL_RELIABILITY else len(RACE_MODEL_RELIABILITY))
+    chosen = ranked[0]
+    return usable[chosen], chosen
 
 
 def with_headline(

@@ -55,23 +55,16 @@ class CanonicalRaceTests(unittest.TestCase):
             self.assertNotIn("/", label)
 
 
-class FuseRaceTests(unittest.TestCase):
-    def test_blends_both_backends(self):
-        fused = inference.fuse_race({
-            "fairface": {"white": 0.9, "black": 0.1},
-            "deepface": {"white": 0.7, "black": 0.3},
-        })
-        self.assertEqual(fused, "White")
+class SelectRaceTests(unittest.TestCase):
+    """Race names its most reliable model rather than blending -- see RACE_MODEL_RELIABILITY."""
 
-    def test_shows_close_runner_up(self):
-        fused = inference.fuse_race({
-            "fairface": {"white": 0.52, "black": 0.48},
-            "deepface": {"white": 0.5, "black": 0.5},
-        })
-        self.assertEqual(fused, "White (51%)/Black (49%)")
+    def test_picks_fairface_over_deepface(self):
+        self.assertEqual(
+            inference.select_race({"deepface": "black", "fairface": "White"}), ("White", "fairface"),
+        )
 
     def test_needs_at_least_two_models(self):
-        self.assertIsNone(inference.fuse_race({"fairface": {"white": 1.0}}))
+        self.assertIsNone(inference.select_race({"deepface": "black"}))
 
 
 class FuseEmotionTests(unittest.TestCase):

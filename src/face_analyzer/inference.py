@@ -69,8 +69,8 @@ from .fusion import (
     canonical_race_probabilities,
     fuse_emotion,
     fuse_gender,
-    fuse_race,
     select_age,
+    select_race,
     with_headline,
 )
 
@@ -145,7 +145,6 @@ __all__ = [
     "format_dex_age",
     "fuse_emotion",
     "fuse_gender",
-    "fuse_race",
     "fuse_voice_and_emotion",
     "GENDER_LIST",
     "HEADLINE_MODEL_KEYS",
@@ -180,6 +179,7 @@ __all__ = [
     "save_face",
     "save_gallery",
     "select_age",
+    "select_race",
     "SHARPEN_METHODS",
     "validate_lbph_name",
     "VoiceFaceFusion",

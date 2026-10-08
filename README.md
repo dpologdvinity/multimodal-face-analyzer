@@ -19,12 +19,12 @@ their answers.
 
 - **Interchangeable face detectors.** SSD, YOLOv8-Face, SCRFD, and RetinaFace share a common call
   shape in `src/face_analyzer/detectors/`, selected per frame by a factory with SSD as the fallback.
-- **Fusion across label taxonomies.** Gender, race, and emotion backends are combined by
-  weighted mean, blend, or vote. Race and emotion labels are first mapped onto shared canonical
-  classes (FairFace's East and Southeast Asian become one `Asian` class; `happy` and `happiness`
-  are one vote).
-- **Age fusion rejected on evidence.** Every age fusion rule tried scored at or below the best
-  single model, so the app names its most reliable age model instead of averaging.
+- **Fusion across label taxonomies.** Gender and emotion backends are fused, by weighted mean
+  of P(Male) and by weighted vote. Emotion labels are first mapped onto shared canonical classes
+  (`happy` and `happiness` are one vote).
+- **Fusion rejected where the evidence says so.** Age and race name their most reliable model
+  instead of fusing, each chosen by held-out evidence: every age fusion rule tried scored at or
+  below MiVOLO alone, and on held-out FairFace faces the race blend trailed `fairface` alone.
 - **Concurrent, cached inference.** Per-face attribute models run in parallel on a thread pool,
   outputs are memoized on a hash of the exact model input, and LIVE mode shows FPS and
   per-model latency.
@@ -46,7 +46,7 @@ flowchart LR
         E --> H["Hand landmarks (whole frame)"]
         E --> F["Per face: roll alignment, crop, face adjustments, face landmarks"]
         F --> G["Attribute backends in parallel"]
-        G --> I["Fusion and best-age selection"]
+        G --> I["Fusion and best-model selection"]
         I --> J[Annotated overlay]
         H --> J
     end
@@ -75,21 +75,23 @@ validation split (race-stratified sample, seed 0; 95% bootstrap intervals; detec
 | Feature | App (shipped) | Best single model |
 | ------- | ------------- | ----------------- |
 | Gender  | **96.7%** (95.5-97.7) | `mivolo` 96.7% |
-| Race, 6 classes | **63.3%** (60.5-66.3) | `fairface` 76.5% (74.0-79.2) |
+| Race, 6 classes | **76.5%** (74.0-79.2) | `fairface` 76.5% (74.0-79.2) |
 | Age, 9 buckets | **62.3%** (59.2-65.1) | `mivolo` 62.3% (97.0% within one bucket) |
 
 - Gender and age: the headline numbers are MiVOLO's, and the shipped gender fusion always returns
   MiVOLO's answer. MiVOLO's training data is not published, so overlap with FairFace cannot be
   ruled out.
-- Race: `fairface` and `deepface` race were trained on FairFace's training split, so these are
-  in-distribution; the fused answer trails `fairface` alone because `deepface`'s overconfident
-  probabilities dominate the blend.
+- Race: the headline names its most reliable model (`fairface`) instead of fusing, because this
+  evaluation showed the previous equal-weight fusion trailing `fairface` alone (63.3% against
+  76.5%): `deepface`'s overconfident probabilities dominated the blend. `fairface` and `deepface`
+  race were both trained on FairFace's training split, so these numbers are in-distribution and
+  the ranking may not carry over to other photos.
 - Age: FairFace labels age in nine ranges (mostly decades), so this is bucket accuracy, not
   error in years.
 - Emotion is not evaluated (FairFace has no emotion labels).
 
-Fusion weights fitted on the other half of the sample beat the shipped race weights by 6.8 points
-and match the gender ones; the shipped weights are unchanged. Full tables, label mappings and
+Fusion weights fitted on the other half of the sample match the shipped gender ones; for race,
+fitted weights (70.1%) still trailed `fairface` alone. Full tables, label mappings and
 caveats: [docs/eval/heldout_fairface.md](docs/eval/heldout_fairface.md). The earlier 75-face,
 in-sample benchmark (the set the weights were hand-set on) is kept in
 [docs/benchmark.md](docs/benchmark.md).
@@ -130,7 +132,7 @@ arguments, manual setup, and the remote-access notes (the app has no authenticat
 | Face detection | `ssd` (required), `yolo`, `scrfd`, `retinaface` | One detector per frame |
 | Age | `mivolo`, `fairface`, `dex`, `caffe` | Headline names the most reliable model present |
 | Gender | `mivolo`, `fairface`, `caffe`, `deepface` | Fused |
-| Race | `fairface`, `deepface` | Fused; close runner-up shown |
+| Race | `fairface`, `deepface` | Headline names the most reliable model present; close runner-up shown |
 | Emotion | `hsemotion`, `dan`, `ferplus`, `mini_xception` | Fused vote over canonical labels |
 | Gaze and head pose | `mediapipe` | Coarse direction, eye contact, yaw and pitch |
 | Liveness | `mediapipe` + texture heuristic | Blink and replay cues; a screening signal only |

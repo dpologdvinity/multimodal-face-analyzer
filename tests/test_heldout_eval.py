@@ -11,7 +11,6 @@ from face_analyzer.core.constants import (
     AGE_LIST,
     GENDER_FUSION_WEIGHTS,
     RACE_CANONICAL_LABELS,
-    RACE_FUSION_WEIGHTS,
     RACE_LABELS_DEEPFACE,
     RACE_LABELS_FAIRFACE,
 )
@@ -140,7 +139,7 @@ class FusionWeightTests(unittest.TestCase):
         self.assertEqual(eval_heldout.log_odds_weights({"a": 0.5, "b": 0.4}, 2), {"a": 1.0, "b": 1.0})
 
     def test_substitute_weights_change_the_answer_without_touching_shipped_ones(self):
-        shipped_gender, shipped_race = dict(GENDER_FUSION_WEIGHTS), dict(RACE_FUSION_WEIGHTS)
+        shipped_gender = dict(GENDER_FUSION_WEIGHTS)
         raw = {"mivolo/face": [30.0, "Male"], "gender_probs/fairface": [0.2, 0.8],
                "gender_probs/caffe": [0.1, 0.9], "gender_probs/deepface": [0.9, 0.1]}
         self.assertEqual(eval_heldout.fused_gender(raw), "Male")
@@ -148,14 +147,31 @@ class FusionWeightTests(unittest.TestCase):
         self.assertEqual(eval_heldout.fused_gender(raw, without_mivolo), "Female")
         race_raw = {"race_probs/fairface": [0.9, 0.1, 0, 0, 0, 0, 0],
                     "race_probs/deepface": [0, 0, 1.0, 0, 0, 0]}
-        self.assertEqual(eval_heldout.fused_race(race_raw), "black")
-        self.assertEqual(eval_heldout.fused_race(race_raw, {"fairface": 3.0, "deepface": 1.0}), "white")
+        self.assertEqual(eval_heldout.previous_fused_race(race_raw), "black")
+        self.assertEqual(eval_heldout.previous_fused_race(race_raw, {"fairface": 3.0, "deepface": 1.0}),
+                         "white")
         for index, key in enumerate(["asian", "indian", "black", "white", "middle_eastern", "latino"]):
             deepface_only = {"race_probs/fairface": [1 / 7] * 7,
                              "race_probs/deepface": [float(i == index) for i in range(6)]}
-            self.assertEqual(eval_heldout.fused_race(deepface_only), key)
+            self.assertEqual(eval_heldout.previous_fused_race(deepface_only), key)
         self.assertEqual(GENDER_FUSION_WEIGHTS, shipped_gender)
-        self.assertEqual(RACE_FUSION_WEIGHTS, shipped_race)
+        self.assertEqual(eval_heldout.PREVIOUS_RACE_FUSION_WEIGHTS, {"fairface": 1.0, "deepface": 1.0})
+
+    def test_previous_fusion_label_keeps_the_close_runner_up(self):
+        raw = {"race_probs/fairface": [0.52, 0.48, 0, 0, 0, 0, 0],
+               "race_probs/deepface": [0, 0, 0.5, 0.5, 0, 0]}
+        self.assertEqual(eval_heldout.previous_fused_race_label(raw), "White (51%)/Black (49%)")
+        self.assertIsNone(eval_heldout.previous_fused_race_label({"race_probs/fairface": [1, 0, 0, 0, 0, 0, 0]}))
+
+
+class BestRaceTests(unittest.TestCase):
+    def test_headline_race_is_fairface_top1_when_both_backends_answer(self):
+        raw = {"race_probs/fairface": [0.1, 0, 0, 0.5, 0.4, 0, 0],
+               "race_probs/deepface": [0, 0, 1.0, 0, 0, 0]}
+        self.assertEqual(eval_heldout.best_race(raw), ("asian", "fairface"))
+
+    def test_one_backend_gives_no_headline(self):
+        self.assertIsNone(eval_heldout.best_race({"race_probs/deepface": [0, 0, 1.0, 0, 0, 0]}))
 
 
 class ScoreTests(unittest.TestCase):
@@ -163,7 +179,7 @@ class ScoreTests(unittest.TestCase):
         white, black = 3, 2  # dataset race indices
         good = {"gender_probs/fairface": [0.9, 0.1], "gender_probs/caffe": [0.2, 0.8],
                 "race_probs/fairface": [0.9, 0.1, 0, 0, 0, 0, 0],
-                "race_probs/deepface": [0, 0, 0.6, 0.4, 0, 0],
+                "race_probs/deepface": [0, 0, 1.0, 0, 0, 0],
                 "age_probs/fairface": [0, 0, 0, 1.0, 0, 0, 0, 0, 0],
                 "mivolo/face": [34.0, "Male"]}
         # The fit rows give different outputs from the test rows, so weights fitted on the test
@@ -183,6 +199,13 @@ class ScoreTests(unittest.TestCase):
         self.assertGreater(report["fusion"]["gender"]["fitted_weights"]["caffe"], 0.0)
         self.assertEqual(report["fusion"]["gender"]["fit_half_accuracy"]["caffe"], 1.0)
         self.assertEqual(report["fusion"]["race"]["fit_half_accuracy"], {"fairface": 1.0, "deepface": 1.0})
+        # Test rows: fairface says White (right); deepface says Black with probability 1, which
+        # the equal blend follows.
+        self.assertEqual(report["race"]["best_shipped"]["value"], 1.0)
+        self.assertEqual(report["race"]["best_shipped"]["chosen_backend"], {"fairface": 2, "deepface": 0})
+        self.assertEqual(report["race"]["fused_previous"]["value"], 0.0)
+        self.assertEqual(report["race"]["best_minus_fused_previous"]["value"], 1.0)
+        self.assertEqual(report["race"]["per_class_recall"]["white"]["best_shipped"], 1.0)
 
 
 if __name__ == "__main__":

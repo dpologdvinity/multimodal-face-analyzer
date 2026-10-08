@@ -305,7 +305,7 @@ def _face_record(idx: int, analysis: dict) -> dict:
     age_pairs, best_age = analysis["age"]
     gender_pairs, fused_gender = analysis["gender"]
     emotion_pairs, fused_emotion = analysis["emotion"]
-    race_pairs, fused_race = analysis["race"]
+    race_pairs, best_race = analysis["race"]
     gaze_pairs = analysis["gaze"]
     head_pose_pairs = analysis["head_pose"]
     recognition_pairs, face_embedding = analysis["recognition"]
@@ -323,7 +323,11 @@ def _face_record(idx: int, analysis: dict) -> dict:
         BEST_MODEL_KEY,
     )
     gender_pairs = with_headline(gender_pairs, fused_gender)
-    race_pairs = with_headline(race_pairs, fused_race)
+    race_pairs = with_headline(
+        race_pairs,
+        f"{best_race[0]} ({best_race[1]})" if best_race else None,
+        BEST_MODEL_KEY,
+    )
     emotion_pairs = with_headline(emotion_pairs, fused_emotion)
 
     raw_columns = _gather_face_results({
@@ -358,7 +362,7 @@ def _face_record(idx: int, analysis: dict) -> dict:
         "headline": {
             "age": best_age[0] if best_age else None,
             "gender": fused_gender,
-            "race": fused_race,
+            "race": best_race[0] if best_race else None,
             "emotion": fused_emotion,
         },
         "gender": _format_results(gender_pairs),

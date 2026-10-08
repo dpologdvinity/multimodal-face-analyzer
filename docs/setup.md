@@ -277,7 +277,7 @@ multimodal-face-analyzer/
 │   ├── core/                      # constants (paths, fusion weights), types (Models), image utils
 │   ├── detectors/                 # factory + backends: SSD, YOLO, SCRFD, RetinaFace
 │   ├── attributes/                # per-face predictors: age, gender, emotion, race, accessories, ...
-│   ├── fusion/                    # combined answers: fuse_gender/race/emotion, select_age
+│   ├── fusion/                    # combined answers: fuse_gender/emotion, select_age/race
 │   ├── pipeline/                  # loader (load_models), analyzer (analyze_frame), config (AnalysisConfig),
 │   │                              #   stages, face_tasks, cache, landmarks, drawing, tracker
 │   ├── ui/                        # Streamlit views: theme (+ theme.css), sidebar, adjustments, results, live webcam tab

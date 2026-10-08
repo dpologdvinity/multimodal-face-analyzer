@@ -12,19 +12,20 @@ from .ensembles import (
     canonical_race_probabilities,
     fuse_emotion,
     fuse_gender,
-    fuse_race,
 )
 from .ranking import (
     _format_results,
     _gather_face_results,
     _sanitize_column_name,
     select_age,
+    select_race,
     with_headline,
 )
 
 __all__ = [
     # ranking
     "select_age",
+    "select_race",
     "with_headline",
     "_format_results",
     "_sanitize_column_name",
@@ -32,7 +33,6 @@ __all__ = [
     # ensembles
     "fuse_gender",
     "canonical_race_probabilities",
-    "fuse_race",
     "fuse_emotion",
     # constants re-exported for backward compatibility
     "RACE_CANONICAL_LABELS",
