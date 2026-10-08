@@ -126,7 +126,8 @@ def load_models() -> Models:
     """Load every model whose file(s)/dependencies are present and return a Models container."""
     if not _present(FACE_PROTO, FACE_MODEL):
         raise FileNotFoundError(
-            f"Missing face detector file(s) in {MODEL_DIR}: {FACE_PROTO.name}, {FACE_MODEL.name} (required)."
+            f"Missing face detector file(s) in {MODEL_DIR}: {FACE_PROTO.name}, {FACE_MODEL.name} (required). "
+            "Run `python tools/fetch_models.py --keys` to download them."
         )
     face_net = cv2.dnn.readNet(str(FACE_MODEL), str(FACE_PROTO))
 

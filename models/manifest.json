@@ -1,6 +1,7 @@
 {
   "version": 1,
   "hf_repo": "kaitlynbassford/face-analyzer-weights",
+  "hf_revision": "4c7e361417a96595a4a57f19a659186cca434e6d",
   "files": [
     {
       "path": "opencv_face_detector.pbtxt",
@@ -13,7 +14,7 @@
       "required": true,
       "license": "Apache-2.0",
       "source": "hf",
-      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/main/opencv_face_detector.pbtxt",
+      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/4c7e361417a96595a4a57f19a659186cca434e6d/opencv_face_detector.pbtxt",
       "upstream": "https://github.com/opencv/opencv/tree/4.x/samples/dnn/face_detector",
       "in_git": true,
       "attribution": "OpenCV face detector config, opencv/opencv samples/dnn/face_detector (Apache-2.0)"
@@ -82,7 +83,7 @@
       "required": false,
       "license": "MIT (biubug6/Pytorch_Retinaface); ONNX re-export Apache-2.0 (amd/retinaface)",
       "source": "hf",
-      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/main/retinaface_mobilenet0.25.onnx",
+      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/4c7e361417a96595a4a57f19a659186cca434e6d/retinaface_mobilenet0.25.onnx",
       "upstream": "https://huggingface.co/amd/retinaface",
       "in_git": false,
       "attribution": "RetinaFace MobileNet-0.25 by biubug6 (MIT), ONNX export by AMD (Apache-2.0)"
@@ -174,7 +175,7 @@
       "required": false,
       "license": "CC BY 4.0",
       "source": "hf",
-      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/main/fairface_7class.onnx",
+      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/4c7e361417a96595a4a57f19a659186cca434e6d/fairface_7class.onnx",
       "upstream": "https://github.com/dchen236/FairFace",
       "in_git": false,
       "attribution": "FairFace (Karkkainen and Joo, WACV 2021), dchen236/FairFace, CC BY 4.0. ONNX conversion of the 7-race FairFace model; the conversion's origin is not recorded."
@@ -228,7 +229,7 @@
       "required": false,
       "license": "Apache-2.0",
       "source": "hf",
-      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/main/mivolo_v2.safetensors",
+      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/4c7e361417a96595a4a57f19a659186cca434e6d/mivolo_v2.safetensors",
       "upstream": "https://huggingface.co/iitolstykh/mivolo_v2",
       "in_git": false,
       "attribution": "MiVOLO v2 (WildChlamydia/MiVOLO, iitolstykh/mivolo_v2), Apache-2.0"
@@ -248,7 +249,7 @@
       "required": false,
       "license": "Apache-2.0",
       "source": "hf",
-      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/main/mivolo_v2_config.json",
+      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/4c7e361417a96595a4a57f19a659186cca434e6d/mivolo_v2_config.json",
       "upstream": "https://huggingface.co/iitolstykh/mivolo_v2",
       "in_git": true,
       "attribution": "MiVOLO v2 (WildChlamydia/MiVOLO, iitolstykh/mivolo_v2), Apache-2.0"
@@ -352,7 +353,7 @@
       "required": false,
       "license": "MIT",
       "source": "hf",
-      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/main/emotion_ferplus.onnx",
+      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/4c7e361417a96595a4a57f19a659186cca434e6d/emotion_ferplus.onnx",
       "upstream": "https://github.com/onnx/models/tree/main/validated/vision/body_analysis/emotion_ferplus",
       "in_git": false,
       "attribution": "FER+ emotion model from the ONNX Model Zoo (onnx/models), MIT"
@@ -370,7 +371,7 @@
       "required": false,
       "license": "MIT",
       "source": "hf",
-      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/main/mini_xception_fer.h5",
+      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/4c7e361417a96595a4a57f19a659186cca434e6d/mini_xception_fer.h5",
       "upstream": "https://github.com/oarriaga/face_classification",
       "in_git": false,
       "attribution": "mini-Xception FER2013 model by Octavio Arriaga (oarriaga/face_classification), MIT"
@@ -391,7 +392,7 @@
       "required": false,
       "license": "Apache-2.0",
       "source": "hf",
-      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/main/face_landmarker.task",
+      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/4c7e361417a96595a4a57f19a659186cca434e6d/face_landmarker.task",
       "upstream": "https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker",
       "in_git": false,
       "attribution": "MediaPipe Face Landmarker (Face Mesh V2) by Google, Apache-2.0"
@@ -409,7 +410,7 @@
       "required": false,
       "license": "Apache-2.0",
       "source": "hf",
-      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/main/hand_landmarker.task",
+      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/4c7e361417a96595a4a57f19a659186cca434e6d/hand_landmarker.task",
       "upstream": "https://ai.google.dev/edge/mediapipe/solutions/vision/hand_landmarker",
       "in_git": false,
       "attribution": "MediaPipe Hand Landmarker by Google, Apache-2.0"
@@ -444,7 +445,7 @@
       "required": false,
       "license": "MIT",
       "source": "hf",
-      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/main/mask_detector.h5",
+      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/4c7e361417a96595a4a57f19a659186cca434e6d/mask_detector.h5",
       "upstream": "https://github.com/chandrikadeb7/Face-Mask-Detection",
       "in_git": false,
       "attribution": "Face mask detector by Chandrika Deb (chandrikadeb7/Face-Mask-Detection), MIT"
@@ -462,7 +463,7 @@
       "required": false,
       "license": "BSD-2-Clause",
       "source": "hf",
-      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/main/colorization_deploy_v2.prototxt",
+      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/4c7e361417a96595a4a57f19a659186cca434e6d/colorization_deploy_v2.prototxt",
       "upstream": "https://github.com/richzhang/colorization",
       "in_git": true,
       "attribution": "Colorful Image Colorization (Zhang, Isola, Efros, ECCV 2016), richzhang/colorization, BSD-2-Clause"
@@ -480,7 +481,7 @@
       "required": false,
       "license": "BSD-2-Clause",
       "source": "hf",
-      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/main/colorization_release_v2.caffemodel",
+      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/4c7e361417a96595a4a57f19a659186cca434e6d/colorization_release_v2.caffemodel",
       "upstream": "https://github.com/richzhang/colorization",
       "in_git": false,
       "attribution": "Colorful Image Colorization (Zhang, Isola, Efros, ECCV 2016), richzhang/colorization, BSD-2-Clause"
@@ -498,7 +499,7 @@
       "required": false,
       "license": "BSD-2-Clause",
       "source": "hf",
-      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/main/pts_in_hull.npy",
+      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/4c7e361417a96595a4a57f19a659186cca434e6d/pts_in_hull.npy",
       "upstream": "https://github.com/richzhang/colorization",
       "in_git": true,
       "attribution": "Colorful Image Colorization (Zhang, Isola, Efros, ECCV 2016), richzhang/colorization, BSD-2-Clause"
@@ -515,7 +516,7 @@
       "required": true,
       "license": "Intel License Agreement (BSD-style, in the file header)",
       "source": "hf",
-      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/main/haarcascade_eye.xml",
+      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/4c7e361417a96595a4a57f19a659186cca434e6d/haarcascade_eye.xml",
       "upstream": "https://github.com/opencv/opencv/tree/4.x/data/haarcascades",
       "in_git": true,
       "attribution": "OpenCV Haar eye cascade, Intel License Agreement (BSD-style; full text in the file header)"
@@ -535,7 +536,8 @@
       "source": "manual",
       "upstream": "https://github.com/sicxu/Deep3DFaceRecon_pytorch",
       "in_git": false,
-      "instructions": "Download the pretrained model (epoch_20.pth) from the Google Drive link in https://github.com/sicxu/Deep3DFaceRecon_pytorch#readme, take its 'net_recon' state dict, remap it onto this app's ReconNetWrapper layout (backbone.N.* and heads.N.*, see src/face_analyzer/nets/deep3d_recon.py) and save it with torch.save as {dest}. Also needs BFM/BFM_model_front.mat."
+      "instructions": "Download the pretrained model (epoch_20.pth) from the Google Drive link in https://github.com/sicxu/Deep3DFaceRecon_pytorch#readme, take its 'net_recon' state dict, remap it onto this app's ReconNetWrapper layout (backbone.N.* and heads.N.*, see src/face_analyzer/nets/deep3d_recon.py) and save it with torch.save as {dest}. Also needs BFM/BFM_model_front.mat.",
+      "note": "This hash is the working checkpoint (upstream net_recon weights remapped to this app's ReconNetWrapper layout). It differs from the file older commits kept in git-lfs (oid 967c0365e4715ca51aec66b911fd783244db3fca8d420e53287605afaecd0358, 96464867 bytes), which was a placeholder that does not produce valid reconstructions."
     },
     {
       "path": "BFM/similarity_Lm3D_all.mat",
@@ -550,7 +552,7 @@
       "required": false,
       "license": "MIT",
       "source": "hf",
-      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/main/BFM/similarity_Lm3D_all.mat",
+      "url": "https://huggingface.co/kaitlynbassford/face-analyzer-weights/resolve/4c7e361417a96595a4a57f19a659186cca434e6d/BFM/similarity_Lm3D_all.mat",
       "upstream": "https://github.com/sicxu/Deep3DFaceRecon_pytorch",
       "in_git": true,
       "attribution": "Landmark alignment template from sicxu/Deep3DFaceRecon_pytorch (MIT)"

@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import subprocess
 import tempfile
 import unittest
@@ -123,6 +124,19 @@ class BuildPromptFormattingTests(unittest.TestCase):
             declared = {line.split()[1].split("=")[0] for line in dockerfile.splitlines() if line.startswith("ARG ")}
             forwarded = {arg.split("=")[0] for arg in args if "=" in arg}
             self.assertEqual(declared, forwarded)
+
+
+class DockerfileFetchTests(unittest.TestCase):
+    def test_fetch_step_passes_every_model_arg(self):
+        """The Dockerfile's fetch_models.py RUN line must forward all 16 model build args."""
+        dockerfile = (SCRIPT.parent / "Dockerfile").read_text()
+        declared = {line.split()[1].split("=")[0] for line in dockerfile.splitlines() if line.startswith("ARG ")}
+        self.assertEqual(len(declared), 16)
+        joined = dockerfile.replace("\\\n", " ")
+        fetch_lines = [line for line in joined.splitlines() if line.startswith("RUN python tools/fetch_models.py --keys")]
+        self.assertEqual(len(fetch_lines), 1)
+        passed = set(re.findall(r'"([A-Z0-9_]+)=\$([A-Z0-9_]+)"', fetch_lines[0]))
+        self.assertEqual(passed, {(arg, arg) for arg in declared})
 
 
 class DockerIgnoreTests(unittest.TestCase):
