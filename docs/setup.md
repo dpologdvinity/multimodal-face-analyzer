@@ -101,7 +101,10 @@ from its cache if interrupted, and rewrites `docs/eval/heldout_fairface.json`):
 FACE_ANALYZER_MODEL_DIR=$PWD/models .venv-eval/bin/python tools/eval_heldout.py --n 2000
 ```
 
-`--score-only` re-scores the cached outputs in `data/eval_cache/` without loading any model.
+`--score-only` re-scores the cached outputs in `data/eval_cache/` without loading any model. It
+still rewrites the tracked `docs/eval/heldout_fairface.json`, and `scored_on` and
+`scoring_git_commit` change on every run. For checks that should leave the JSON alone, add
+`--output <path>`.
 
 ## Guided run scripts
 

@@ -1,9 +1,11 @@
 # Held-out evaluation: FairFace validation
 
 Age, gender and race accuracy of every backend, and of the app's combined answers, on a public,
-labelled dataset that none of the app's settings were tuned on. Every number below is in
+labelled dataset that none of the app's settings were tuned on. The table numbers come from
 [heldout_fairface.json](heldout_fairface.json), together with the sample, seed, dataset revision,
-package versions and date. The older 75-face benchmark is in [../benchmark.md](../benchmark.md).
+package versions and date; the diagnostic figures (latencies, saturation statistics, the
+200-crop padding check) were measured separately during the run and are not in the JSON.
+The older 75-face benchmark is in [../benchmark.md](../benchmark.md).
 
 ## Results
 
@@ -94,9 +96,9 @@ partly helps, because a weight scales a near one-hot distribution without making
 2. **Padding.** The eval uses the 1.25-padding images (448x448, the face with its surroundings),
    not the tighter 0.25-padding crops (224x224). On the 0.25 crops the face fills the frame, and
    OpenCV's SSD detector then returns boxes that lie mostly or wholly outside the image (normalized
-   coordinates above 1). In a one-off check on 200 random 0.25 crops (not part of the eval tool), it returned at least one box for all 200, but
-   only 102 had a box inside the frame; on the same 200 images at 1.25 padding, all 200 did. The
-   0.25 crops would therefore measure that detector failure rather than the attribute models.
+   coordinates above 1). In a one-off check on 200 random 0.25 crops (not part of the eval tool),
+   it returned at least one box for all 200, but only 102 had a box inside the frame; on the same
+   200 images at 1.25 padding, all 200 did. The 0.25 crops would therefore measure that detector failure rather than the attribute models.
    This is a real limitation of the app on very tight close-ups (it does not reject out-of-frame
    SSD boxes), noted here rather than fixed in this change.
 3. **Sample.** 2,000 images drawn with seed 0, stratified by race with proportional allocation,
@@ -106,9 +108,10 @@ partly helps, because a weight scales a near one-hot distribution without making
 4. **Inference.** `tools/eval_heldout.py` runs the real `analyze_frame()` on each image with every
    loaded age, gender, race and emotion backend active and the SSD detector, exactly as the app
    would (roll alignment, MediaPipe landmarks for FairFace alignment, per-backend crops). Two
-   pieces of instrumentation are added around it, neither of which changes any output: the
-   detector's result is reduced to the box with the largest in-frame area (FairFace images are
-   single-subject crops), and the memoization helper the per-face tasks call is wrapped to record
+   pieces of instrumentation are added around it, neither of which changes any per-face output
+   (keeping only the largest in-frame box does decide which face is analysed; FairFace images are
+   single-subject crops): the detector's result is reduced to the box with the largest in-frame
+   area, and the memoization helper the per-face tasks call is wrapped to record
    each backend's raw output (probabilities where the backend exposes them). Those are cached in
    `data/eval_cache/<config>/predictions.jsonl`, so re-scoring never re-runs a model. As a check,
    the labels and combined answers rebuilt from the cache are compared with what `analyze_frame()`
@@ -196,8 +199,9 @@ is the paired per-face difference:
   `fairface` alone (76.5%) beats both. Because `deepface`'s probabilities are saturated, the blend
   only defers to `fairface` once `deepface`'s weight is close to zero, which amounts to using
   `fairface` alone. The options are to lead the race headline with `fairface` alone, or to
-  calibrate `deepface` (for example temperature scaling fitted on the fit half) before blending. Both FairFace-trained backends are in-distribution here, so this ranking
-  may not carry over to other photos; the 75-face set ranked `deepface` first.
+  calibrate `deepface` (for example temperature scaling fitted on the fit half) before blending. Both FairFace-trained backends are in-distribution here, so this
+  ranking may not carry over to other photos; the 75-face set (in-sample) ranked `deepface`
+  first.
 
 ## Reproduce
 

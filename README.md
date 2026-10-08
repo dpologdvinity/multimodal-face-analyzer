@@ -80,7 +80,8 @@ validation split (race-stratified sample, seed 0; 95% bootstrap intervals; detec
 
 - Gender: the shipped fusion always returns MiVOLO's answer, so it adds nothing over MiVOLO.
 - Race: `fairface` and `deepface` race were trained on FairFace's training split, so these are
-  in-distribution; the fused answer trails `fairface` alone because `deepface`'s overconfident
+  in-distribution (MiVOLO's training data is not published, so overlap with FairFace cannot
+  be ruled out); the fused answer trails `fairface` alone because `deepface`'s overconfident
   probabilities dominate the blend.
 - Age: FairFace labels age in nine ranges (mostly decades), so this is bucket accuracy, not
   error in years.

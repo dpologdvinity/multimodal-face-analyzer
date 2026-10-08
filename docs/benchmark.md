@@ -22,7 +22,8 @@ half (1,997 of 2,000 overall):
 
 Main caveats: `fairface` and `deepface` race were both trained on FairFace's training split, so
 they are in-distribution here; ages are scored as FairFace's nine buckets, not years; emotion is
-not labelled in FairFace and is not evaluated. The combined race answer is worse than `fairface`
+not labelled in FairFace and is not evaluated; MiVOLO's training data is not published, so
+overlap with FairFace cannot be ruled out. The combined race answer is worse than `fairface`
 alone because `deepface`'s near one-hot probabilities dominate the blend; weights fitted on the
 fit half recover 6.8 points but still trail `fairface` alone. Full tables, mappings, the fitted
 weights and every caveat: [eval/heldout_fairface.md](eval/heldout_fairface.md); raw numbers:
@@ -75,8 +76,8 @@ been re-scored on this set.
 
 ### Limits
 
-- **In-sample, no held-out split.** The fusion weights below were chosen by looking at results on these
-  same 75 faces, so the combined figures are in-sample and optimistic.
+- **In-sample, no held-out split.** The fusion weights below were chosen by looking at results on
+  these same 75 faces, so the combined figures are in-sample and optimistic.
 - **Small corpus.** One or two faces is about 1.3 percentage points, which is noise at this size.
 - **Skewed labels.** Emotion is almost all `happy`; gender is two-thirds female.
 
@@ -111,8 +112,8 @@ set, so a weaker backend contributes less to the combined answer; race uses equa
 were chosen on the same set they are scored on, with no held-out split, which is why the
 75-face combined figures are in-sample. The held-out evaluation tests them against weights fitted
 on a separate half; see [eval/heldout_fairface.md](eval/heldout_fairface.md#fusion-weights) for
-that comparison and a recommendation (the shipped weights are unchanged). Re-run `tools/benchmark.py` after changing any model or
-its preprocessing, and revisit the weights if the ordering moves.
+that comparison and a recommendation (the shipped weights are unchanged). Re-run `tools/benchmark.py` after changing any model
+or its preprocessing, and revisit the weights if the ordering moves.
 
 ### Why age is not fused
 
