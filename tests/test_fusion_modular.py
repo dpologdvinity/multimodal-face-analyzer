@@ -21,8 +21,8 @@ from face_analyzer.fusion import (
     canonical_race_probabilities,
     fuse_emotion,
     fuse_gender,
-    fuse_race,
     select_age,
+    select_race,
     with_headline,
 )
 
@@ -71,25 +71,22 @@ class FuseGenderTests(unittest.TestCase):
         self.assertEqual(result, "Male")
 
 
-class FuseRaceTests(unittest.TestCase):
-    """fuse_race: weighted blend across canonical race distributions."""
+class SelectRaceTests(unittest.TestCase):
+    """select_race: picks the most reliable race model rather than blending."""
 
-    def test_blends_both_backends(self):
-        fused = fuse_race({
-            "fairface": {"white": 0.9, "black": 0.1},
-            "deepface": {"white": 0.7, "black": 0.3},
-        })
-        self.assertEqual(fused, "White")
-
-    def test_shows_close_runner_up(self):
-        fused = fuse_race({
-            "fairface": {"white": 0.52, "black": 0.48},
-            "deepface": {"white": 0.5, "black": 0.5},
-        })
-        self.assertEqual(fused, "White (51%)/Black (49%)")
+    def test_picks_fairface_when_both_models_present(self):
+        self.assertEqual(
+            select_race({"deepface": "black", "fairface": "White (46%)/East Asian (41%)"}),
+            ("White (46%)/East Asian (41%)", "fairface"),
+        )
 
     def test_needs_at_least_two_models(self):
-        self.assertIsNone(fuse_race({"fairface": {"white": 1.0}}))
+        self.assertIsNone(select_race({"fairface": "White"}))
+        self.assertIsNone(select_race({"fairface": "White", "deepface": ""}))
+        self.assertIsNone(select_race({}))
+
+    def test_unknown_model_ranks_last(self):
+        self.assertEqual(select_race({"newnet": "Indian", "deepface": "white"}), ("white", "deepface"))
 
 
 class FuseEmotionTests(unittest.TestCase):

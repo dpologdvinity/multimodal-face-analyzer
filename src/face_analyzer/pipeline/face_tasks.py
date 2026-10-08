@@ -33,7 +33,6 @@ from ..core.constants import (
     FAIRFACE_AGE_RANGES,
     GENDER_LIST,
     RACE_LABELS_DEEPFACE,
-    RACE_LABELS_FAIRFACE,
 )
 from ..core.image_utils import (
     apply_image_adjustments,
@@ -43,11 +42,10 @@ from ..core.types import (
     Models,
 )
 from ..fusion import (
-    canonical_race_probabilities,
     fuse_emotion,
     fuse_gender,
-    fuse_race,
     select_age,
+    select_race,
 )
 from ..gallery import (
     compute_face_embedding,
@@ -194,9 +192,9 @@ def _emotion_task(models: Models, config: AnalysisConfig, inputs: _FaceInputs) -
 
 
 def _race_task(models: Models, config: AnalysisConfig, inputs: _FaceInputs) -> tuple[list, Any]:
-    """Run every active race backend; return (per-model pairs, fused answer)."""
+    """Run every active race backend; return (per-model pairs, best-model answer)."""
     face, metrics = inputs.face, config.metrics
-    pairs, distributions = [], {}
+    pairs = []
     for key in config.active_race:
         net = models.race_nets.get(key)
         if net is None:
@@ -208,14 +206,12 @@ def _race_task(models: Models, config: AnalysisConfig, inputs: _FaceInputs) -> t
                 net, inputs.crop_frame, inputs.crop_box, "race_output", inputs.fairface_landmarks,
             )
             value = fairface_race_label(probs)
-            distributions[key] = canonical_race_probabilities(probs, RACE_LABELS_FAIRFACE)
         else:
             probs = _cached_face_predict("race_probs", key, face, deepface_probabilities, net, face)
             value = _format_race_label(probs, RACE_LABELS_DEEPFACE)
-            distributions[key] = canonical_race_probabilities(probs, RACE_LABELS_DEEPFACE)
         pairs.append((key, value))
         _record_model_latency(metrics, "race", key, started)
-    return pairs, fuse_race(distributions)
+    return pairs, select_race(dict(pairs))
 
 
 def _gaze_task(models: Models, config: AnalysisConfig, inputs: _FaceInputs) -> list:
