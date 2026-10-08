@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 
 from face_analyzer import inference
+from face_analyzer.attributes.race import _fairface_forward
 
 # dlib get_face_chip_details: outer/inner right eye, outer/inner left eye, nose.
 REFERENCE = (np.array([
@@ -56,14 +57,14 @@ class FairFaceAlignmentTests(unittest.TestCase):
         """Fall back to bounding box when landmarks are invalid (wrong shape, NaN, or degenerate)."""
         net = RecordingNet()
         box = (40, 40, 180, 200)
-        inference._fairface_forward(net, self.frame, box, "age_output")
+        _fairface_forward(net, self.frame, box, "age_output")
         expected = net.blob.copy()
         # Test multiple types of invalid landmarks: wrong count, NaN values, collinear points
         for bad in (np.zeros((4, 2)), np.zeros((5, 2)), np.full((5, 2), np.nan),
                     np.column_stack((np.arange(5), np.arange(5)))):
             with self.subTest(points=bad):
                 self.assertIsNone(inference.align_face_with_landmarks(self.frame, bad, 224))
-                inference._fairface_forward(net, self.frame, box, "age_output", bad)
+                _fairface_forward(net, self.frame, box, "age_output", bad)
                 np.testing.assert_array_equal(net.blob, expected)
 
     def test_analyze_frame_translates_crop_landmarks_before_inference(self):
@@ -81,7 +82,7 @@ class FairFaceAlignmentTests(unittest.TestCase):
         net = RecordingNet()
         # Compute expected input blob as if we had manually translated landmarks
         landmarks = REFERENCE / 224 * (x2-x1, y2-y1) + (x1, y1)
-        inference._fairface_forward(net, frame, box, "age_output", landmarks)
+        _fairface_forward(net, frame, box, "age_output", landmarks)
         expected = net.blob.copy()
         models = inference.Models(face_net=None, age_nets={"fairface": net},
                                   face_landmarks_nets={"mediapipe": object()})
