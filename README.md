@@ -69,20 +69,30 @@ tests use. The Streamlit entry point `app.py` only wires these together: the the
 
 ## Results
 
-Measured with `tools/benchmark.py` on 75 hand-labelled faces (detection recall 100%):
+Held-out, on 1,002 test faces from the public [FairFace](https://github.com/joojs/fairface)
+validation split (race-stratified sample, seed 0; 95% bootstrap intervals; detection recall 100%):
 
-| Feature | Combined | Best single model | Weakest model |
-| ------- | -------- | ----------------- | ------------- |
-| Gender  | **100%** | `mivolo` 100% | `caffe` / `deepface` 86.7% |
-| Emotion | **100%** | `dan` / `hsemotion` / `ferplus` 100% | `mini_xception` 95.2% |
-| Race    | **96.0%** | `deepface` 94.7% | `fairface` 93.3% |
-| Age     | **93.3%** (= `mivolo`) | `mivolo` 93.3% | `caffe` 62.7% |
+| Feature | App (shipped) | Best single model |
+| ------- | ------------- | ----------------- |
+| Gender  | **96.7%** (95.5-97.7) | `mivolo` 96.7% |
+| Race, 6 classes | **63.3%** (60.5-66.3) | `fairface` 76.5% (74.0-79.2) |
+| Age, 9 buckets | **62.3%** (59.2-65.1) | `mivolo` 62.3% (97.0% within one bucket) |
 
-These are small, in-sample numbers. The fusion weights are hand-set and were chosen on the same
-75 faces they are scored on, with no held-out split; emotion labels are mostly `happy`, and age
-ranges are hand estimates. The numbers were recorded before two later FairFace/DEX
-preprocessing changes. A public held-out evaluation is planned. Method, full caveats, and
-the fusion weights: [docs/benchmark.md](docs/benchmark.md).
+- Gender and age: the headline numbers are MiVOLO's, and the shipped gender fusion always returns
+  MiVOLO's answer. MiVOLO's training data is not published, so overlap with FairFace cannot be
+  ruled out.
+- Race: `fairface` and `deepface` race were trained on FairFace's training split, so these are
+  in-distribution; the fused answer trails `fairface` alone because `deepface`'s overconfident
+  probabilities dominate the blend.
+- Age: FairFace labels age in nine ranges (mostly decades), so this is bucket accuracy, not
+  error in years.
+- Emotion is not evaluated (FairFace has no emotion labels).
+
+Fusion weights fitted on the other half of the sample beat the shipped race weights by 6.8 points
+and match the gender ones; the shipped weights are unchanged. Full tables, label mappings and
+caveats: [docs/eval/heldout_fairface.md](docs/eval/heldout_fairface.md). The earlier 75-face,
+in-sample benchmark (the set the weights were hand-set on) is kept in
+[docs/benchmark.md](docs/benchmark.md).
 
 ## Quick start
 

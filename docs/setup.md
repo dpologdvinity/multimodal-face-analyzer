@@ -74,6 +74,38 @@ Tests that need a real weight file skip when it is missing or still an LFS point
 runs on a clone without `git lfs pull`. CI runs ruff and the test suite on Python 3.11 and 3.12
 against exactly such a clone.
 
+### Held-out evaluation
+
+The FairFace evaluation ([eval/heldout_fairface.md](eval/heldout_fairface.md)) needs every
+optional backend, so it uses its own Python 3.11 environment, `.venv-eval` (gitignored), with the
+Dockerfile's pins:
+
+```bash
+uv venv --python 3.11 .venv-eval
+uv pip install --python .venv-eval/bin/python -r requirements-dev.txt
+uv pip install --python .venv-eval/bin/python --extra-index-url https://download.pytorch.org/whl/cpu \
+    --index-strategy unsafe-best-match torch==2.14.1+cpu torchvision==0.29.1+cpu
+uv pip install --python .venv-eval/bin/python onnxruntime==1.30.0 tensorflow-cpu==2.21.0 tf-keras==2.21.0
+uv pip install --python .venv-eval/bin/python ultralytics==8.1.0 timm==0.8.13.dev0 safetensors==0.8.0 huggingface_hub==2.1.1
+uv pip install --python .venv-eval/bin/python mediapipe==1.1.0
+# ultralytics and mediapipe pull in OpenCV 5 builds without Caffe support; keep only the pin
+uv pip uninstall --python .venv-eval/bin/python opencv-python opencv-contrib-python opencv-python-headless
+uv pip install --python .venv-eval/bin/python opencv-python-headless==4.14.0.94
+```
+
+Then the two commands (the second takes about 2.5 hours at N=2,000 on two CPU cores, resumes
+from its cache if interrupted, and rewrites `docs/eval/heldout_fairface.json`):
+
+```bash
+.venv-eval/bin/python tools/fetch_fairface.py
+FACE_ANALYZER_MODEL_DIR=$PWD/models .venv-eval/bin/python tools/eval_heldout.py --n 2000
+```
+
+`--score-only` re-scores the cached outputs in `data/eval_cache/` without loading any model. It
+still rewrites the tracked `docs/eval/heldout_fairface.json`, and `scored_on` and
+`scoring_git_commit` change on every run. For checks that should leave the JSON alone, add
+`--output <path>`.
+
 ## Guided run scripts
 
 Both run scripts use the same grouped prompts: FACE DETECTION, AGE, GENDER, RACE, EMOTION,
@@ -253,9 +285,11 @@ multimodal-face-analyzer/
 │   ├── liveness.py, model_selection.py
 │   └── nets/                      # vendored third-party model architectures
 ├── tests/                         # pytest suite
-├── tools/                         # benchmark.py, dump_predictions.py, score_fusion.py, ground_truth.json
+├── tools/                         # benchmark.py, dump_predictions.py, score_fusion.py, ground_truth.json,
+│                                  #   fetch_fairface.py + eval_heldout.py (held-out FairFace eval)
 └── docs/                          # this documentation
 ```
 
 Runtime data is gitignored: `gallery/` (enrolled faces), `db/`, `faces/`, `eigen/` (saved faces),
-and `known_people/` (identity-search reference photos).
+and `known_people/` (identity-search reference photos). The held-out evaluation's dataset and
+output cache live in `data/`, and its environment in `.venv-eval/`; both are gitignored too.
