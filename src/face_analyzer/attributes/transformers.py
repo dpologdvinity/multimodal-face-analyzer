@@ -217,8 +217,8 @@ def run_3d_reconstruction(models: Any, face_bgr: np.ndarray) -> tuple[np.ndarray
     if bundle is None or landmarker is None:
         return None
 
-    # Deferred: inference imports this module, so a top-level import would be circular.
-    from ..inference import predict_face_landmarks_mediapipe
+    # Deferred: pipeline.landmarks imports this package, so a top-level import would be circular.
+    from ..pipeline.landmarks import predict_face_landmarks_mediapipe
 
     recon_net, bfm_model, lm3d_template = bundle
     points = predict_face_landmarks_mediapipe(landmarker, face_bgr)

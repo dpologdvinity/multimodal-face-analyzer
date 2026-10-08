@@ -221,6 +221,7 @@ try:
     )
 except ImportError:
     def mesh_to_obj_str(*args: Any, **kwargs: Any) -> str:
+        """Return an empty OBJ string when the deep3d module is unavailable."""
         return ""
 
     landmarks_5pt_from_mediapipe = None

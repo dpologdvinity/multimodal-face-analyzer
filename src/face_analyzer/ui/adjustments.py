@@ -30,4 +30,3 @@ def adjustment_sliders(caption: str, key_prefix: str, column_count: int = 2) -> 
                 adj_key.replace("_", " ").title(), adj_min, adj_max, adj_default, key=f"{key_prefix}_{adj_key}"
             )
     return values
-

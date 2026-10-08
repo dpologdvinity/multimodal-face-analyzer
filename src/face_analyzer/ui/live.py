@@ -120,7 +120,7 @@ def new_live_session() -> dict[str, Any]:
 
 @st.cache_resource
 def _get_face_tracker() -> FaceTracker:
-    """#2: one FaceTracker instance for the live webcam stream, cached (not session_state) so
+    """One FaceTracker instance for the live webcam stream, cached (not session_state) so
     it's the same object across Streamlit reruns and reachable from streamlit-webrtc's own
     callback thread -- same reasoning as app.py's load_models(), see FaceTracker's docstring."""
     return FaceTracker()
@@ -134,7 +134,7 @@ def _get_liveness_tracker() -> LivenessTracker:
 
 @st.cache_resource
 def _get_voice_fusion() -> VoiceFaceFusion:
-    """#10: same caching reasoning as _get_face_tracker() above -- the audio callback and the
+    """Same caching reasoning as _get_face_tracker() above -- the audio callback and the
     video callback are different threads and need to share the SAME buffer instance."""
     return VoiceFaceFusion()
 

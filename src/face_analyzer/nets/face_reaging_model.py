@@ -17,8 +17,8 @@
 #      through NVIDIA's non-commercial-research-licensed SAM, even though upstream's own
 #      code/weights carry no explicit restriction.
 #
-# Net effect: this whole feature (src/nets/face_reaging_model.py, the age_progression_nets
-# backend in src/inference.py, and the AGE PROGRESSION button in src/app.py) is
+# Net effect: this whole feature (face_analyzer/nets/face_reaging_model.py, the age_progression_nets
+# backend in pipeline/loader.py, and the AGE PROGRESSION button in ui/results.py) is
 # non-commercial/research use only. See README.
 from __future__ import annotations
 

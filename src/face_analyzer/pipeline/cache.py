@@ -10,11 +10,12 @@ from typing import Any
 
 import numpy as np
 
+from ..core.constants import PREDICTION_CACHE_MAX_SIZE
+
 _INFERENCE_EXECUTOR = ThreadPoolExecutor(
     max_workers=max(4, (os.cpu_count() or 4)), thread_name_prefix="inference"
 )
 
-PREDICTION_CACHE_MAX_SIZE = 2048
 _PREDICTION_CACHE: OrderedDict[tuple, object] = OrderedDict()
 
 
