@@ -11,13 +11,13 @@ class RemoteAccessBoundaryTests(unittest.TestCase):
         """Ensure Dockerfile enables XSRF and default docker run binds only to 127.0.0.1."""
         dockerfile = (ROOT / "Dockerfile").read_text()
         run_script = (ROOT / "build-and-run.sh").read_text()
-        readme = (ROOT / "README.md").read_text()
+        setup_doc = (ROOT / "docs" / "setup.md").read_text()
 
         self.assertIn("--server.enableXsrfProtection=true", dockerfile)
         self.assertNotIn('docker run -d -p "${PORT}:8501"', run_script)
         self.assertIn('127.0.0.1:${PORT}:8501', run_script)
-        self.assertIn("no user authentication or authorization", readme)
-        self.assertIn("authenticating, TLS-terminating reverse proxy", readme)
+        self.assertIn("no user authentication or authorization", setup_doc)
+        self.assertIn("authenticating, TLS-terminating reverse proxy", setup_doc)
 
 
 if __name__ == "__main__":
