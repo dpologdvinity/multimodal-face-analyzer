@@ -130,3 +130,12 @@ def test_callbacks_with_separate_state_never_share_it():
     assert second["live_state"]["error"] == "RuntimeError: boom"
     assert len(second["live_metrics"]) == 0
     assert not any(name.startswith("LIVE_") for name in vars(live))
+
+
+def test_new_live_session_returns_fresh_state_matching_callback_kwargs():
+    """Each script run gets its own live state and locks, never shared objects."""
+    first, second = live.new_live_session(), live.new_live_session()
+    assert first.keys() == _session_state().keys()
+    for key in first:
+        assert first[key] is not second[key]
+    live.make_video_frame_callback(_models, AnalysisConfig, **first)
