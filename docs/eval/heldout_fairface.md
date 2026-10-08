@@ -98,7 +98,8 @@ partly helps, because a weight scales a near one-hot distribution without making
    OpenCV's SSD detector then returns boxes that lie mostly or wholly outside the image (normalized
    coordinates above 1). In a one-off check on 200 random 0.25 crops (not part of the eval tool),
    it returned at least one box for all 200, but only 102 had a box inside the frame; on the same
-   200 images at 1.25 padding, all 200 did. The 0.25 crops would therefore measure that detector failure rather than the attribute models.
+   200 images at 1.25 padding, all 200 did. The 0.25 crops would
+   therefore measure that detector failure rather than the attribute models.
    This is a real limitation of the app on very tight close-ups (it does not reject out-of-frame
    SSD boxes), noted here rather than fixed in this change.
 3. **Sample.** 2,000 images drawn with seed 0, stratified by race with proportional allocation,
@@ -199,9 +200,9 @@ is the paired per-face difference:
   `fairface` alone (76.5%) beats both. Because `deepface`'s probabilities are saturated, the blend
   only defers to `fairface` once `deepface`'s weight is close to zero, which amounts to using
   `fairface` alone. The options are to lead the race headline with `fairface` alone, or to
-  calibrate `deepface` (for example temperature scaling fitted on the fit half) before blending. Both FairFace-trained backends are in-distribution here, so this
-  ranking may not carry over to other photos; the 75-face set (in-sample) ranked `deepface`
-  first.
+  calibrate `deepface` (for example temperature scaling fitted on the fit half) before
+  blending. Both FairFace-trained backends are in-distribution here, so this ranking may not
+  carry over to other photos; the 75-face set (in-sample) ranked `deepface` first.
 
 ## Reproduce
 
