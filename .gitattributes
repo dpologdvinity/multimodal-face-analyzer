@@ -1,0 +1,2 @@
+# Model files are hashed in models/manifest.json; keep them byte-exact on every platform.
+models/** -text
