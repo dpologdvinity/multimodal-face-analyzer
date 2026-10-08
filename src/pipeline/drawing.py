@@ -4,15 +4,16 @@ from __future__ import annotations
 import contextlib
 import os
 import sys
+
 import cv2
 import numpy as np
 
 try:
-    from src.core.constants import HAND_CONNECTIONS
     from src.attributes import _lock_for
+    from src.core.constants import HAND_CONNECTIONS
 except ImportError:
-    from core.constants import HAND_CONNECTIONS
     from attributes import _lock_for
+    from core.constants import HAND_CONNECTIONS
 
 @contextlib.contextmanager
 def _silence_native_logs():

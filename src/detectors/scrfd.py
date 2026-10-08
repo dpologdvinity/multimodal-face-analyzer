@@ -2,22 +2,23 @@
 from __future__ import annotations
 
 from typing import Any
+
 import cv2
 import numpy as np
 
 try:
     from src.core.constants import (
         SCRFD_FACE_INPUT_SIZE,
-        SCRFD_FACE_STRIDES,
-        SCRFD_FACE_NUM_ANCHORS,
         SCRFD_FACE_NMS_THRESHOLD,
+        SCRFD_FACE_NUM_ANCHORS,
+        SCRFD_FACE_STRIDES,
     )
 except ImportError:
     from core.constants import (
         SCRFD_FACE_INPUT_SIZE,
-        SCRFD_FACE_STRIDES,
-        SCRFD_FACE_NUM_ANCHORS,
         SCRFD_FACE_NMS_THRESHOLD,
+        SCRFD_FACE_NUM_ANCHORS,
+        SCRFD_FACE_STRIDES,
     )
 
 

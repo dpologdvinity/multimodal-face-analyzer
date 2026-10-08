@@ -498,7 +498,7 @@ if csv_has "$RECOGNITION_MODEL" lbph; then
 fi
 echo "Installing ${OPENCV_PACKAGE} (selected OpenCV runtime)" >&2
 "${PIP[@]}" uninstall -y opencv-python opencv-python-headless opencv-contrib-python opencv-contrib-python-headless >/dev/null 2>&1 || true
-"${PIP[@]}" install "${OPENCV_PACKAGE}>=4.8.0,<5.0.0"
+"${PIP[@]}" install "${OPENCV_PACKAGE}==4.14.0.94"
 
 echo "" >&2
 echo "Running at http://localhost:${PORT}" >&2

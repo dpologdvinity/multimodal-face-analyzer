@@ -5,82 +5,82 @@ import cv2
 import numpy as np
 
 try:
-    from src.core.types import Models
     from src.core.constants import (
-        MODEL_DIR,
-        FACE_PROTO,
-        FACE_MODEL,
-        AGE_PROTO,
         AGE_MODEL,
-        DEX_PROTO,
-        DEX_MODEL,
-        GENDER_PROTO,
-        GENDER_MODEL,
+        AGE_PROTO,
+        BFM_DIR,
+        BFM_LM3D_PATH,
+        BFM_MODEL_PATH,
+        COLORIZATION_MODEL,
+        COLORIZATION_PROTO,
+        COLORIZATION_PTS,
+        DEEP3D_RECON_MODEL,
         DEEPFACE_GENDER_MODEL,
-        DEEPFACE_RECOGNITION_MODEL,
         DEEPFACE_RACE_MODEL,
-        MIVOLO_MODEL,
+        DEEPFACE_RECOGNITION_MODEL,
+        DEX_MODEL,
+        DEX_PROTO,
         EMOTION_MODEL,
-        MINI_XCEPTION_MODEL,
-        FERPLUS_MODEL,
-        HSEMOTION_MODEL,
-        FAIRFACE_MODEL,
         EYE_CASCADE_FILE,
         FACE_LANDMARKER_MODEL,
-        GLASSES_MODEL,
-        MASK_MODEL,
-        COLORIZATION_PROTO,
-        COLORIZATION_MODEL,
-        COLORIZATION_PTS,
-        HAND_LANDMARKER_MODEL,
-        DEEP3D_RECON_MODEL,
-        BFM_MODEL_PATH,
-        BFM_LM3D_PATH,
-        BFM_DIR,
-        YOLO_FACE_MODEL,
-        SCRFD_FACE_MODEL,
-        RETINAFACE_MODEL,
+        FACE_MODEL,
+        FACE_PROTO,
         FACE_REAGING_MODEL,
+        FAIRFACE_MODEL,
+        FERPLUS_MODEL,
+        GENDER_MODEL,
+        GENDER_PROTO,
+        GLASSES_MODEL,
+        HAND_LANDMARKER_MODEL,
+        HSEMOTION_MODEL,
+        MASK_MODEL,
+        MINI_XCEPTION_MODEL,
+        MIVOLO_MODEL,
+        MODEL_DIR,
+        RETINAFACE_MODEL,
+        SCRFD_FACE_MODEL,
+        YOLO_FACE_MODEL,
     )
+    from src.core.types import Models
     from src.pipeline.drawing import _silence_native_logs
 except ImportError:
-    from core.types import Models
     from core.constants import (
-        MODEL_DIR,
-        FACE_PROTO,
-        FACE_MODEL,
-        AGE_PROTO,
         AGE_MODEL,
-        DEX_PROTO,
-        DEX_MODEL,
-        GENDER_PROTO,
-        GENDER_MODEL,
+        AGE_PROTO,
+        BFM_DIR,
+        BFM_LM3D_PATH,
+        BFM_MODEL_PATH,
+        COLORIZATION_MODEL,
+        COLORIZATION_PROTO,
+        COLORIZATION_PTS,
+        DEEP3D_RECON_MODEL,
         DEEPFACE_GENDER_MODEL,
-        DEEPFACE_RECOGNITION_MODEL,
         DEEPFACE_RACE_MODEL,
-        MIVOLO_MODEL,
+        DEEPFACE_RECOGNITION_MODEL,
+        DEX_MODEL,
+        DEX_PROTO,
         EMOTION_MODEL,
-        MINI_XCEPTION_MODEL,
-        FERPLUS_MODEL,
-        HSEMOTION_MODEL,
-        FAIRFACE_MODEL,
         EYE_CASCADE_FILE,
         FACE_LANDMARKER_MODEL,
-        GLASSES_MODEL,
-        MASK_MODEL,
-        COLORIZATION_PROTO,
-        COLORIZATION_MODEL,
-        COLORIZATION_PTS,
-        HAND_LANDMARKER_MODEL,
-        DEEP3D_RECON_MODEL,
-        BFM_MODEL_PATH,
-        BFM_LM3D_PATH,
-        BFM_DIR,
-        YOLO_FACE_MODEL,
-        SCRFD_FACE_MODEL,
-        RETINAFACE_MODEL,
+        FACE_MODEL,
+        FACE_PROTO,
         FACE_REAGING_MODEL,
+        FAIRFACE_MODEL,
+        FERPLUS_MODEL,
+        GENDER_MODEL,
+        GENDER_PROTO,
+        GLASSES_MODEL,
+        HAND_LANDMARKER_MODEL,
+        HSEMOTION_MODEL,
+        MASK_MODEL,
+        MINI_XCEPTION_MODEL,
+        MIVOLO_MODEL,
+        MODEL_DIR,
+        RETINAFACE_MODEL,
+        SCRFD_FACE_MODEL,
+        YOLO_FACE_MODEL,
     )
+    from core.types import Models
     from pipeline.drawing import _silence_native_logs
 
 try:
@@ -106,17 +106,17 @@ except ImportError:
 try:
     with _silence_native_logs():
         try:
-            from src.nets.deepface_race import build_race_model
             from src.nets.deepface_gender import build_gender_model
+            from src.nets.deepface_race import build_race_model
             from src.nets.deepface_recognition import build_recognition_model
-            from src.nets.mini_xception_model import build_mini_xception
             from src.nets.mask_model import build_mask_model
+            from src.nets.mini_xception_model import build_mini_xception
         except ImportError:
-            from nets.deepface_race import build_race_model
             from nets.deepface_gender import build_gender_model
+            from nets.deepface_race import build_race_model
             from nets.deepface_recognition import build_recognition_model
-            from nets.mini_xception_model import build_mini_xception
             from nets.mask_model import build_mask_model
+            from nets.mini_xception_model import build_mini_xception
     TF_SUPPORTED = True
 except ImportError:
     TF_SUPPORTED = False
@@ -148,14 +148,14 @@ try:
     with _silence_native_logs():
         try:
             from src.nets.deep3d_recon import (
-                build_deep3d_recon_model,
                 ParametricFaceModel,
+                build_deep3d_recon_model,
                 load_lm3d_template,
             )
         except ImportError:
             from nets.deep3d_recon import (
-                build_deep3d_recon_model,
                 ParametricFaceModel,
+                build_deep3d_recon_model,
                 load_lm3d_template,
             )
     TORCHVISION_SUPPORTED = True

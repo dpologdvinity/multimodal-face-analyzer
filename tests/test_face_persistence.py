@@ -4,7 +4,6 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import cv2
 import numpy as np
 
 from src import inference

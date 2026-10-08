@@ -1,40 +1,18 @@
 """Pipeline analyzer orchestrating multi-face detection, attribute prediction, fusion, and drawing."""
 from __future__ import annotations
 
-from collections import OrderedDict
-from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import os
 import sys
 import time
+from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import cv2
 import numpy as np
 
 try:
-    from src.core.constants import (
-        AGE_LIST,
-        AGE_LIST_RANGES,
-        BEST_MODEL_KEY,
-        FAIRFACE_AGE_RANGES,
-        GENDER_LIST,
-        MODEL_MEAN_VALUES,
-        RACE_LABELS_DEEPFACE,
-        RACE_LABELS_FAIRFACE,
-    )
-    from src.core.image_utils import (
-        apply_image_adjustments,
-        crop_region,
-        face_crop_bounds,
-    )
-    from src.core.types import Models
-    from src.detectors import (
-        detect_faces,
-        detect_faces_retinaface,
-        detect_faces_scrfd,
-        detect_faces_yolo,
-    )
     from src.attributes import (
         _estimate_roll_angle,
         _format_race_label,
@@ -62,6 +40,28 @@ try:
         predict_mask_mobilenetv2,
         predict_texture_artifact_score,
     )
+    from src.core.constants import (
+        AGE_LIST,
+        AGE_LIST_RANGES,
+        BEST_MODEL_KEY,
+        FAIRFACE_AGE_RANGES,
+        GENDER_LIST,
+        MODEL_MEAN_VALUES,
+        RACE_LABELS_DEEPFACE,
+        RACE_LABELS_FAIRFACE,
+    )
+    from src.core.image_utils import (
+        apply_image_adjustments,
+        crop_region,
+        face_crop_bounds,
+    )
+    from src.core.types import Models
+    from src.detectors import (
+        detect_faces,
+        detect_faces_retinaface,
+        detect_faces_scrfd,
+        detect_faces_yolo,
+    )
     from src.fusion import (
         _format_results,
         _gather_face_results,
@@ -84,36 +84,14 @@ try:
     )
     from src.pipeline.config import AnalysisConfig
     from src.pipeline.drawing import (
+        MEDIAPIPE_SUPPORTED,
         _silence_native_logs,
         detect_hand_landmarks_mediapipe,
         draw_face_landmarks,
         draw_hand_landmarks,
         draw_outlined_text,
-        MEDIAPIPE_SUPPORTED,
     )
 except ImportError:
-    from core.constants import (
-        AGE_LIST,
-        AGE_LIST_RANGES,
-        BEST_MODEL_KEY,
-        FAIRFACE_AGE_RANGES,
-        GENDER_LIST,
-        MODEL_MEAN_VALUES,
-        RACE_LABELS_DEEPFACE,
-        RACE_LABELS_FAIRFACE,
-    )
-    from core.image_utils import (
-        apply_image_adjustments,
-        crop_region,
-        face_crop_bounds,
-    )
-    from core.types import Models
-    from detectors import (
-        detect_faces,
-        detect_faces_retinaface,
-        detect_faces_scrfd,
-        detect_faces_yolo,
-    )
     from attributes import (
         _estimate_roll_angle,
         _format_race_label,
@@ -141,6 +119,28 @@ except ImportError:
         predict_mask_mobilenetv2,
         predict_texture_artifact_score,
     )
+    from core.constants import (
+        AGE_LIST,
+        AGE_LIST_RANGES,
+        BEST_MODEL_KEY,
+        FAIRFACE_AGE_RANGES,
+        GENDER_LIST,
+        MODEL_MEAN_VALUES,
+        RACE_LABELS_DEEPFACE,
+        RACE_LABELS_FAIRFACE,
+    )
+    from core.image_utils import (
+        apply_image_adjustments,
+        crop_region,
+        face_crop_bounds,
+    )
+    from core.types import Models
+    from detectors import (
+        detect_faces,
+        detect_faces_retinaface,
+        detect_faces_scrfd,
+        detect_faces_yolo,
+    )
     from fusion import (
         _format_results,
         _gather_face_results,
@@ -163,12 +163,12 @@ except ImportError:
     )
     from pipeline.config import AnalysisConfig
     from pipeline.drawing import (
+        MEDIAPIPE_SUPPORTED,
         _silence_native_logs,
         detect_hand_landmarks_mediapipe,
         draw_face_landmarks,
         draw_hand_landmarks,
         draw_outlined_text,
-        MEDIAPIPE_SUPPORTED,
     )
 
 if MEDIAPIPE_SUPPORTED:
@@ -390,7 +390,7 @@ def analyze_frame(
     hsemotion_fn = _dispatch("predict_emotion_hsemotion", predict_emotion_hsemotion)
     fairface_landmarks_fn = _dispatch("fairface_landmarks_from_mediapipe", fairface_landmarks_from_mediapipe)
 
-    for idx, ((x1, y1, x2, y2), track_id) in enumerate(zip(face_boxes, track_ids), 1):
+    for idx, ((x1, y1, x2, y2), track_id) in enumerate(zip(face_boxes, track_ids, strict=False), 1):
         crop_frame, (cx1, cy1, cx2, cy2) = frame, (x1, y1, x2, y2)
         if eye_cascade is not None:
             probe = frame[max(0, y1 - 20):min(y2 + 20, frame.shape[0]), max(0, x1 - 20):min(x2 + 20, frame.shape[1])]
@@ -458,7 +458,7 @@ def analyze_frame(
                     "mivolo", "face", face, mivolo_estimate, mivolo_net, face,
                 )
 
-        def _age_task():
+        def _age_task(blob227=blob227, crop_frame=crop_frame, cx1=cx1, cx2=cx2, cy1=cy1, cy2=cy2, face=face, fairface_landmarks=fairface_landmarks, mivolo_age_result=mivolo_age_result, mivolo_result=mivolo_result, x1=x1, x2=x2, y1=y1, y2=y2):
             pairs, estimates = [], {}
             for key in active_age:
                 net = models.age_nets.get(key)
@@ -495,7 +495,7 @@ def analyze_frame(
                 _record_model_latency(metrics, "age", key, started)
             return pairs, select_age(estimates)
 
-        def _gender_task():
+        def _gender_task(blob227=blob227, crop_frame=crop_frame, cx1=cx1, cx2=cx2, cy1=cy1, cy2=cy2, face=face, fairface_landmarks=fairface_landmarks, mivolo_result=mivolo_result):
             pairs, male_probabilities = [], {}
             for key in active_gender:
                 net = models.gender_nets.get(key)
@@ -526,7 +526,7 @@ def analyze_frame(
                 _record_model_latency(metrics, "gender", key, started)
             return pairs, fuse_gender(male_probabilities)
 
-        def _emotion_task():
+        def _emotion_task(face=face, x1=x1, x2=x2, y1=y1, y2=y2):
             pairs = []
             for key in active_emotion:
                 net = models.emotion_nets.get(key)
@@ -550,7 +550,7 @@ def analyze_frame(
                 _record_model_latency(metrics, "emotion", key, started)
             return pairs, fuse_emotion(dict(pairs))
 
-        def _race_task():
+        def _race_task(crop_frame=crop_frame, cx1=cx1, cx2=cx2, cy1=cy1, cy2=cy2, face=face, fairface_landmarks=fairface_landmarks):
             pairs, distributions = [], {}
             for key in active_race:
                 net = models.race_nets.get(key)
@@ -572,7 +572,7 @@ def analyze_frame(
                 _record_model_latency(metrics, "race", key, started)
             return pairs, fuse_race(distributions)
 
-        def _gaze_task():
+        def _gaze_task(face=face, landmarker_result=landmarker_result):
             pairs = []
             for key in active_gaze:
                 net = models.gaze_nets.get(key)
@@ -584,7 +584,7 @@ def analyze_frame(
                 _record_model_latency(metrics, "gaze", key, started)
             return pairs
 
-        def _head_pose_task():
+        def _head_pose_task(face=face, landmarker_result=landmarker_result):
             pairs = []
             for key in active_gaze:
                 net = models.gaze_nets.get(key)
@@ -592,7 +592,7 @@ def analyze_frame(
                     pairs.append((key, predict_head_pose_mediapipe(net, face, landmarker_result)))
             return pairs
 
-        def _recognition_task():
+        def _recognition_task(face=face):
             pairs = []
             embedding = None
             for key in active_recognition:
@@ -615,7 +615,7 @@ def analyze_frame(
                 _record_model_latency(metrics, "recognition", key, started)
             return pairs, embedding
 
-        def _glasses_task():
+        def _glasses_task(face=face):
             pairs = []
             for key in active_glasses:
                 net = models.glasses_nets.get(key)
@@ -627,7 +627,7 @@ def analyze_frame(
                 _record_model_latency(metrics, "glasses", key, started)
             return pairs
 
-        def _mask_task():
+        def _mask_task(face=face):
             pairs = []
             for key in active_mask:
                 net = models.mask_nets.get(key)
@@ -639,7 +639,7 @@ def analyze_frame(
                 _record_model_latency(metrics, "mask", key, started)
             return pairs
 
-        def _hair_color_task():
+        def _hair_color_task(crop_frame=crop_frame, cx1=cx1, cx2=cx2, cy1=cy1, cy2=cy2):
             pairs = []
             for key in active_hair_color:
                 if key not in models.hair_color_nets:
@@ -650,7 +650,7 @@ def analyze_frame(
                 _record_model_latency(metrics, "hair_color", key, started)
             return pairs
 
-        def _eye_color_task():
+        def _eye_color_task(face=face, points=points):
             pairs = []
             for key in active_eye_color:
                 net = models.eye_color_nets.get(key)
@@ -665,7 +665,7 @@ def analyze_frame(
                 _record_model_latency(metrics, "eye_color", key, started)
             return pairs
 
-        def _liveness_task():
+        def _liveness_task(blink_score=blink_score, run_liveness=run_liveness, texture_score=texture_score, track_id=track_id):
             if not run_liveness:
                 return [], None
             started = time.perf_counter()

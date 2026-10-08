@@ -4,7 +4,6 @@ from __future__ import annotations
 import random
 import sqlite3
 import sys
-from pathlib import Path
 
 import cv2
 import numpy as np

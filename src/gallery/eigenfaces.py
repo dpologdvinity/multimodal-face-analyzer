@@ -1,15 +1,23 @@
 """Eigenfaces PCA training and projection for face matching."""
 from __future__ import annotations
 
-from pathlib import Path
-
 import cv2
 import numpy as np
 
 try:
-    from src.core.constants import EIGEN_DIR, EIGEN_FACE_SIZE, EIGENFACE_DISTANCE_THRESHOLD, IMAGE_FILE_EXTENSIONS
+    from src.core.constants import (
+        EIGEN_DIR,
+        EIGEN_FACE_SIZE,
+        EIGENFACE_DISTANCE_THRESHOLD,
+        IMAGE_FILE_EXTENSIONS,
+    )
 except ImportError:
-    from core.constants import EIGEN_DIR, EIGEN_FACE_SIZE, EIGENFACE_DISTANCE_THRESHOLD, IMAGE_FILE_EXTENSIONS
+    from core.constants import (
+        EIGEN_DIR,
+        EIGEN_FACE_SIZE,
+        EIGENFACE_DISTANCE_THRESHOLD,
+        IMAGE_FILE_EXTENSIONS,
+    )
 
 
 def _crop_and_resize_for_eigenfaces(face_bgr: np.ndarray) -> np.ndarray:

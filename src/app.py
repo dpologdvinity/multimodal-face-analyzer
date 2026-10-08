@@ -1,10 +1,10 @@
 import base64
-import threading
-import time
-from collections import deque
 import csv
 import io
 import json
+import threading
+import time
+from collections import deque
 from html import escape
 
 import av
@@ -1115,14 +1115,14 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
         faces_bgr = [cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR) for face in cropped_faces]
         matches = inference.match_faces_eigenfaces_batch(faces_bgr)
         scan_frame = frame.copy()
-        inference.draw_recognition_scan(scan_frame, [(face["box"], match is not None) for face, match in zip(cropped_faces, matches)])
+        inference.draw_recognition_scan(scan_frame, [(face["box"], match is not None) for face, match in zip(cropped_faces, matches, strict=False)])
         _render_bounded_image(
             cv2.cvtColor(scan_frame, cv2.COLOR_BGR2RGB), "Recognition scan", f"scan_{identifier}"
         )
 
         recognized_count = sum(match is not None for match in matches)
         st.caption(f"Recognition scan complete: {recognized_count}/{len(matches)} faces matched in saved faces.")
-        for face, match in zip(cropped_faces, matches):
+        for face, match in zip(cropped_faces, matches, strict=False):
             if match:
                 st.text(f"#{face['idx']}: Recognized -- saved face ID {match[0]} (distance {match[1]:.0f})")
             else:

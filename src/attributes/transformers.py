@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from typing import Any
+
 import cv2
 import numpy as np
 
@@ -9,17 +10,15 @@ from ._lock import _lock_for
 
 try:
     from src.core import (
-        Models,
-        is_grayscale_frame,
         FAIRFACE_LANDMARK_INDICES,
         FAIRFACE_REFERENCE_LANDMARKS,
+        is_grayscale_frame,
     )
 except ImportError:
     from core import (
-        Models,
-        is_grayscale_frame,
         FAIRFACE_LANDMARK_INDICES,
         FAIRFACE_REFERENCE_LANDMARKS,
+        is_grayscale_frame,
     )
 
 try:
@@ -146,9 +145,9 @@ def apply_enhance(face_bgr: np.ndarray, brightness: float = 10.0, contrast: floa
     """Enhance image with brightness/contrast adjustment and CLAHE/equalization."""
     adjusted = cv2.addWeighted(face_bgr, contrast, np.zeros_like(face_bgr), 0, brightness)
     lab = cv2.cvtColor(adjusted, cv2.COLOR_BGR2LAB)
-    l, a, b = cv2.split(lab)
-    l = cv2.equalizeHist(l)
-    return cv2.cvtColor(cv2.merge((l, a, b)), cv2.COLOR_LAB2BGR)
+    lum, a, b = cv2.split(lab)
+    lum = cv2.equalizeHist(lum)
+    return cv2.cvtColor(cv2.merge((lum, a, b)), cv2.COLOR_LAB2BGR)
 
 
 def apply_sharpen(face_bgr: np.ndarray, method: str = "laplacian") -> np.ndarray:
@@ -163,10 +162,10 @@ def apply_sharpen(face_bgr: np.ndarray, method: str = "laplacian") -> np.ndarray
 def apply_color_correct(face_bgr: np.ndarray) -> np.ndarray:
     """Apply color correction using CLAHE on LAB luminance channel."""
     lab = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2LAB)
-    l, a, b = cv2.split(lab)
+    lum, a, b = cv2.split(lab)
     clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-    l = clahe.apply(l)
-    return cv2.cvtColor(cv2.merge((l, a, b)), cv2.COLOR_LAB2BGR)
+    lum = clahe.apply(lum)
+    return cv2.cvtColor(cv2.merge((lum, a, b)), cv2.COLOR_LAB2BGR)
 
 
 def apply_denoise(face_bgr: np.ndarray, method: str = "nlm") -> np.ndarray:

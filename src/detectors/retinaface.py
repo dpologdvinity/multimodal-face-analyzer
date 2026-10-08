@@ -1,10 +1,11 @@
 """RetinaFace detection backend using ONNX Runtime."""
 from __future__ import annotations
 
-from math import ceil
-from typing import Any
 import functools
 import itertools
+from math import ceil
+from typing import Any
+
 import cv2
 import numpy as np
 
@@ -12,21 +13,21 @@ try:
     from src.core.constants import (
         RETINAFACE_INPUT_HEIGHT,
         RETINAFACE_INPUT_WIDTH,
-        RETINAFACE_STEPS,
-        RETINAFACE_MIN_SIZES,
-        RETINAFACE_VARIANCE,
         RETINAFACE_MEAN,
+        RETINAFACE_MIN_SIZES,
         RETINAFACE_NMS_THRESHOLD,
+        RETINAFACE_STEPS,
+        RETINAFACE_VARIANCE,
     )
 except ImportError:
     from core.constants import (
         RETINAFACE_INPUT_HEIGHT,
         RETINAFACE_INPUT_WIDTH,
-        RETINAFACE_STEPS,
-        RETINAFACE_MIN_SIZES,
-        RETINAFACE_VARIANCE,
         RETINAFACE_MEAN,
+        RETINAFACE_MIN_SIZES,
         RETINAFACE_NMS_THRESHOLD,
+        RETINAFACE_STEPS,
+        RETINAFACE_VARIANCE,
     )
 
 

@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 from typing import Any
+
 import numpy as np
 
 from .age import caffe_probabilities, mivolo_estimate
-from .race import fairface_probabilities, fairface_gender_label, deepface_probabilities
+from .race import deepface_probabilities, fairface_gender_label, fairface_probabilities
 
 try:
     from src.core import GENDER_LIST

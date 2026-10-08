@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from typing import Any
+
 import numpy as np
 
 try:
@@ -9,10 +10,10 @@ try:
 except ImportError:
     from core.types import Models
 
+from .retinaface import detect_faces_retinaface
+from .scrfd import detect_faces_scrfd
 from .ssd import detect_faces_ssd
 from .yolo import detect_faces_yolo
-from .scrfd import detect_faces_scrfd
-from .retinaface import detect_faces_retinaface
 
 
 def _is_models_container(obj: Any) -> bool:

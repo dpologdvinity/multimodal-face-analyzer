@@ -98,20 +98,20 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     case "$recon3d_csv" in *,deep3d,*) need_torch=true ;; esac; \
     case "$AGE_PROGRESSION_MODEL" in *franunet*) need_torch=true ;; esac; \
     if [ "$need_torch" = "true" ]; then \
-        pip install --extra-index-url https://download.pytorch.org/whl/cpu torch torchvision; \
+        pip install --extra-index-url https://download.pytorch.org/whl/cpu torch==2.14.1+cpu torchvision==0.29.1+cpu; \
     fi
 
 # scipy is only needed for RECONSTRUCTION_3D_MODEL=deep3d (loading .mat files)
 RUN --mount=type=cache,target=/root/.cache/pip \
     recon3d_csv=",$RECONSTRUCTION_3D_MODEL,"; \
-    case "$recon3d_csv" in *,deep3d,*) pip install scipy ;; esac
+    case "$recon3d_csv" in *,deep3d,*) pip install scipy==1.17.1 ;; esac
 
 # YOLO's ONNX export cannot load in cv2.dnn; the glasses export loads but fails
 # during inference there; SCRFD's and RetinaFace's multi-output anchor formats use
 # onnxruntime too for consistency with the other non-cv2.dnn detector. All four use onnxruntime.
 RUN --mount=type=cache,target=/root/.cache/pip \
     yolo_face_csv=",$YOLO_FACE_MODEL,"; glasses_csv=",$GLASSES_MODEL,"; scrfd_face_csv=",$SCRFD_FACE_MODEL,"; retinaface_csv=",$RETINAFACE_MODEL,"; \
-    case "$yolo_face_csv:$glasses_csv:$scrfd_face_csv:$retinaface_csv" in *yolo*|*mobilenet*|*scrfd*|*retinaface*) pip install onnxruntime ;; esac
+    case "$yolo_face_csv:$glasses_csv:$scrfd_face_csv:$retinaface_csv" in *yolo*|*mobilenet*|*scrfd*|*retinaface*) pip install onnxruntime==1.30.0 ;; esac
 
 # tensorflow/tf-keras are only needed for the deepface race, deepface gender,
 # and/or mini_xception emotion models
@@ -123,7 +123,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     case "$emotion_csv" in *,mini_xception,*) need_tf=true ;; esac; \
     case "$recognition_csv" in *,vggface,*) need_tf=true ;; esac; \
     case "$mask_csv" in *,mobilenetv2,*) need_tf=true ;; esac; \
-    if [ "$need_tf" = "true" ]; then pip install tensorflow-cpu tf-keras; fi
+    if [ "$need_tf" = "true" ]; then pip install tensorflow-cpu==2.21.0 tf-keras==2.21.0; fi
 
 # MiVOLO dependencies (ultralytics, timm) are only needed for the mivolo age and/or gender models
 RUN --mount=type=cache,target=/root/.cache/pip \
@@ -131,7 +131,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     case "$age_csv" in *,mivolo,*) need_mivolo=true ;; esac; \
     case "$gender_csv" in *,mivolo,*) need_mivolo=true ;; esac; \
     if [ "$need_mivolo" = "true" ]; then \
-        pip install ultralytics==8.1.0 timm==0.8.13.dev0 safetensors huggingface_hub; \
+        pip install ultralytics==8.1.0 timm==0.8.13.dev0 safetensors==0.8.0 huggingface_hub==2.1.1; \
     fi
 
 # mediapipe is needed for face landmarks, liveness, or hand landmarks
@@ -141,7 +141,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     case "$liveness_csv" in *,mediapipe,*) need_mediapipe=true ;; esac; \
     case "$hand_csv" in *,mediapipe,*) need_mediapipe=true ;; esac; \
     if [ "$need_mediapipe" = "true" ]; then \
-        pip install mediapipe; \
+        pip install mediapipe==1.1.0; \
     fi
 
 # ultralytics (mivolo) pulls in opencv-python, and mediapipe pulls in a DIFFERENT
@@ -158,7 +158,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     recognition_csv=",$RECOGNITION_MODEL,"; opencv_pkg="opencv-python-headless"; \
     case "$recognition_csv" in *,lbph,*) opencv_pkg="opencv-contrib-python-headless" ;; esac; \
     pip uninstall -y opencv-python opencv-python-headless opencv-contrib-python opencv-contrib-python-headless 2>/dev/null; \
-    pip install "${opencv_pkg}>=4.8.0,<5.0.0"
+    pip install "${opencv_pkg}==4.14.0.94"
 
 # Application code and always-required model files (face detector)
 COPY src/ src/

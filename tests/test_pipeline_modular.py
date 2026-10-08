@@ -1,22 +1,23 @@
 """Unit tests for the modular pipeline subpackage (src/pipeline)."""
 import unittest
 from unittest.mock import MagicMock, patch
+
 import numpy as np
 
+from src.core.types import Models
+from src.pipeline.analyzer import (
+    aggregate_demographics,
+    analyze_frame,
+    analyze_frame_with_config,
+)
 from src.pipeline.config import AnalysisConfig
-from src.pipeline.tracker import FaceTracker, _box_iou
 from src.pipeline.drawing import (
     draw_face_landmarks,
     draw_hand_landmarks,
     draw_outlined_text,
     draw_recognition_scan,
 )
-from src.pipeline.analyzer import (
-    aggregate_demographics,
-    analyze_frame,
-    analyze_frame_with_config,
-)
-from src.core.types import Models
+from src.pipeline.tracker import FaceTracker, _box_iou
 
 
 class TestAnalysisConfig(unittest.TestCase):

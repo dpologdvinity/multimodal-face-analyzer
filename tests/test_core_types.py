@@ -1,24 +1,24 @@
 import numpy as np
-import pytest
-from src.core.types import BoundingBox, Detection, FaceResult, Models
+
+import src.inference as inference
 from src.core.constants import (
     AGE_LIST,
-    GENDER_LIST,
     EMOTION_LABELS_DAN,
     EMOTION_LABELS_FERPLUS,
     EMOTION_LABELS_HSEMOTION,
     EMOTION_LABELS_MINI_XCEPTION,
-    RACE_CANONICAL_LABELS,
-    HAIR_COLOR_LABELS,
     EYE_COLOR_LABELS,
+    GENDER_LIST,
+    HAIR_COLOR_LABELS,
+    RACE_CANONICAL_LABELS,
 )
 from src.core.image_utils import (
-    apply_image_adjustments,
     _is_skin_hsv,
-    face_crop_bounds,
+    apply_image_adjustments,
     crop_region,
+    face_crop_bounds,
 )
-import src.inference as inference
+from src.core.types import BoundingBox, Detection, FaceResult, Models
 
 
 def test_bounding_box_init_and_properties():

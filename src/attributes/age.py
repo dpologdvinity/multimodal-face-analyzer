@@ -2,16 +2,17 @@
 from __future__ import annotations
 
 from typing import Any
+
 import cv2
 import numpy as np
 
 from ._lock import _lock_for
-from .race import fairface_probabilities, fairface_age_label
+from .race import fairface_age_label, fairface_probabilities
 
 try:
-    from src.core import AGE_LIST, DEX_MEAN_VALUES, DEX_MAX_AGE_SD
+    from src.core import AGE_LIST, DEX_MAX_AGE_SD, DEX_MEAN_VALUES
 except ImportError:
-    from core import AGE_LIST, DEX_MEAN_VALUES, DEX_MAX_AGE_SD
+    from core import AGE_LIST, DEX_MAX_AGE_SD, DEX_MEAN_VALUES
 
 try:
     from src.nets.mivolo.inference_wrapper import MiVOLOInference
