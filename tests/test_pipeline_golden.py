@@ -7,8 +7,8 @@ import cv2
 import numpy as np
 import pytest
 
-from src.core import constants as C
-from src.inference import AnalysisConfig, analyze_frame, load_models
+from face_analyzer.core import constants as C
+from face_analyzer.inference import AnalysisConfig, analyze_frame, load_models
 from tests._models import require_model
 
 FIXTURE = Path(__file__).parent / "fixtures" / "crew_portrait.jpg"

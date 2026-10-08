@@ -1,16 +1,12 @@
 """Verify calibrated colorimetric hair color prediction accuracy on benchmark images."""
 from __future__ import annotations
 
-import sys
 import unittest
 from pathlib import Path
 
 import cv2
 
 from tests._models import require_local_data
-
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "src"))
 
 
 class TestHairColorAccuracy(unittest.TestCase):
@@ -34,7 +30,7 @@ class TestHairColorAccuracy(unittest.TestCase):
 
     def test_hair_color_biden_white(self):
         """Verify white hair detection on Joe Biden."""
-        import inference
+        from face_analyzer import inference
 
         img = self._read_asset("joe-biden.jpg")
         self.assertIsNotNone(img)
@@ -43,7 +39,7 @@ class TestHairColorAccuracy(unittest.TestCase):
 
     def test_hair_color_asian_child_black(self):
         """Verify black hair detection on Asian child."""
-        import inference
+        from face_analyzer import inference
 
         img = self._read_asset("5yr-asian-girl-happy.jpg")
         self.assertIsNotNone(img)
@@ -52,7 +48,7 @@ class TestHairColorAccuracy(unittest.TestCase):
 
     def test_hair_color_white_child_blonde(self):
         """Verify blonde hair detection on White child."""
-        import inference
+        from face_analyzer import inference
 
         img = self._read_asset("3yr-white-girl-sad.jpg")
         self.assertIsNotNone(img)
@@ -61,12 +57,8 @@ class TestHairColorAccuracy(unittest.TestCase):
 
     def test_attribute_reexport_parity(self):
         """Verify attributes subpackage re-exports all attribute functions."""
-        try:
-            import src.attributes as attributes
-        except ImportError:
-            import attributes
-
-        import inference
+        import face_analyzer.attributes as attributes
+        from face_analyzer import inference
 
         for fn_name in [
             "predict_hair_color_colorimetric",

@@ -1,20 +1,20 @@
-"""Unit tests for the modular pipeline subpackage (src/pipeline)."""
+"""Unit tests for the modular pipeline subpackage (src/face_analyzer/pipeline)."""
 import inspect
 import unittest
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 
-from src.core.types import Models
-from src.pipeline.analyzer import aggregate_demographics, analyze_frame
-from src.pipeline.config import AnalysisConfig
-from src.pipeline.drawing import (
+from face_analyzer.core.types import Models
+from face_analyzer.pipeline.analyzer import aggregate_demographics, analyze_frame
+from face_analyzer.pipeline.config import AnalysisConfig
+from face_analyzer.pipeline.drawing import (
     draw_face_landmarks,
     draw_hand_landmarks,
     draw_outlined_text,
     draw_recognition_scan,
 )
-from src.pipeline.tracker import FaceTracker, _box_iou
+from face_analyzer.pipeline.tracker import FaceTracker, _box_iou
 
 
 class TestAnalysisConfig(unittest.TestCase):
@@ -175,7 +175,7 @@ class TestAnalyzeFrameModular(unittest.TestCase):
         """Verify analyze_frame returns empty face list when no faces detected."""
         frame = np.zeros((100, 100, 3), dtype=np.uint8)
         models = Models(face_net=MagicMock())
-        with patch("src.pipeline.stages.detect_faces", return_value=[]):
+        with patch("face_analyzer.pipeline.stages.detect_faces", return_value=[]):
             annotated, faces, has_faces, hands = analyze_frame(models, frame, AnalysisConfig())
             self.assertEqual(len(faces), 0)
             self.assertFalse(has_faces)
@@ -187,7 +187,7 @@ class TestAnalyzeFrameModular(unittest.TestCase):
         frame = np.zeros((100, 100, 3), dtype=np.uint8)
         models = Models(face_net=MagicMock())
         config = AnalysisConfig(conf_threshold=0.6, face_detector="ssd")
-        with patch("src.pipeline.stages.detect_faces", return_value=[]) as detect:
+        with patch("face_analyzer.pipeline.stages.detect_faces", return_value=[]) as detect:
             analyze_frame(models, frame, config)
         self.assertEqual(detect.call_args.args[-1], 0.6)
 

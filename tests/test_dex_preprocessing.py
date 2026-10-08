@@ -4,7 +4,7 @@ from unittest.mock import patch
 import cv2
 import numpy as np
 
-from src import inference
+from face_analyzer import inference
 
 
 class RecordingNet:
@@ -57,8 +57,8 @@ class DexPreprocessingTests(unittest.TestCase):
         models = inference.Models(face_net=None, age_nets={"dex": net},
                                   eye_color_nets={"colorimetric": object()})
         config = inference.AnalysisConfig(active_age={"dex"}, face_adjustments={"brightness": 10})
-        with patch("src.pipeline.stages.detect_faces", return_value=[box]) as detect, \
-             patch("src.pipeline.stages._estimate_roll_angle", return_value=20) as roll:
+        with patch("face_analyzer.pipeline.stages.detect_faces", return_value=[box]) as detect, \
+             patch("face_analyzer.pipeline.stages._estimate_roll_angle", return_value=20) as roll:
             for context_pixel in (20, 200):
                 frame[40:55, 40:130] = context_pixel
                 output = inference.analyze_frame(models, frame, config)

@@ -29,8 +29,13 @@ The base install covers the required SSD face detector and every OpenCV-only bac
 conda create -n vision_env python=3.11 -y
 conda activate vision_env
 pip install -r requirements.txt
-streamlit run src/app.py
+pip install --no-deps -e .
+streamlit run src/face_analyzer/app.py
 ```
+
+The source is the installable `face_analyzer` package (`src/` layout); the editable install makes
+it importable while keeping `models/` and the runtime data directories resolved from the
+repository root.
 
 Optional backends need heavier packages (PyTorch, TensorFlow, MediaPipe, onnxruntime). The
 easiest way to get them is the [guided installer](#native-install-and-run), which installs only
@@ -59,7 +64,7 @@ Without an optional package installed, the models that need it are skipped, not 
 ### Tests and lint
 
 ```bash
-pip install -r requirements-dev.txt
+pip install -r requirements-dev.txt   # also installs face_analyzer in editable mode
 python -m pytest -q
 ruff check .
 ```
@@ -233,7 +238,7 @@ multimodal-face-analyzer/
 ├── install-and-run.sh             # guided native install
 ├── requirements*.txt, pyproject.toml
 ├── models/                        # weights and configs (git-lfs)
-├── src/
+├── src/face_analyzer/             # the installable face_analyzer package
 │   ├── app.py                     # Streamlit entry point: page setup, model load, sidebar -> tabs wiring
 │   ├── inference.py               # facade re-exporting the modules below
 │   ├── core/                      # constants (paths, fusion weights), types (Models), image utils

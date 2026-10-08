@@ -2,7 +2,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from src.ui import sidebar as sidebar_ui
+from face_analyzer.ui import sidebar as sidebar_ui
 
 
 class LandmarkControlTests(unittest.TestCase):

@@ -70,7 +70,7 @@ instead names its best available model.
 | Emotion | `fused` | Weighted vote over canonical emotion names (`happy` and `happiness` are one vote, not two) |
 | Age     | `best (<model>)` | The most reliable backend present: `mivolo` > `fairface` > `dex` > `caffe` |
 
-The weights live in `src/core/constants.py`:
+The weights live in `src/face_analyzer/core/constants.py`:
 
 | Feature | Weights |
 | ------- | ------- |
@@ -104,7 +104,7 @@ accuracy either.
 
 - **Threaded per-face inference.** Within each face, age, gender, emotion, race, gaze, head
   pose, recognition, glasses, mask, hair color, eye color, and liveness run concurrently on a
-  shared thread pool (`src/pipeline/analyzer.py`).
+  shared thread pool (`src/face_analyzer/pipeline/analyzer.py`).
 - **Prediction cache.** Most per-face classifier calls, plus face detection, roll estimation,
   and hand landmarks, are memoized on a hash of the exact input bytes fed to that model. Identical
   input bytes always produce identical deterministic output, so the cache carries no accuracy

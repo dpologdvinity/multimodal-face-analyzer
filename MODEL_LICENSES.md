@@ -1,9 +1,9 @@
 # Model licenses
 
 The code in this repository is MIT-licensed (see [LICENSE](LICENSE)), except the vendored model
-architectures in `src/nets/`, which keep their upstream licenses (listed per model below; note
-the CC BY-NC-SA 4.0 BlurPool code in `src/nets/face_reaging_model.py`). The model weights in
-`models/` are third-party files under their own terms. They are included for research and
+architectures in `src/face_analyzer/nets/`, which keep their upstream licenses (listed per model
+below; note the CC BY-NC-SA 4.0 BlurPool code in `src/face_analyzer/nets/face_reaging_model.py`).
+The model weights in `models/` are third-party files under their own terms. They are included for research and
 demonstration use; that inclusion is not a grant of any right the upstream authors did not
 give. Several are non-commercial or have no stated license. Moving the restricted weights out
 of the repository and downloading them at build time instead is planned.
@@ -24,7 +24,7 @@ not mean the file is unrestricted.
 | Gender | `caffe` | `gender_net.caffemodel`, `gender_deploy.prototxt` | [GilLevi/AgeGenderDeepLearning](https://github.com/GilLevi/AgeGenderDeepLearning) | Not stated upstream | Unclear |
 | Age, gender, race | `fairface` | `fairface_7class.onnx` | [dchen236/FairFace](https://github.com/dchen236/FairFace) | Upstream README: "License: CC BY 4.0". The ONNX conversion's source is not recorded in this repo, so its own terms are unverified | Attribution required (CC BY 4.0) |
 | Age | `dex` | `dex_age.caffemodel`, `dex_age.prototxt` | [IMDB-WIKI / DEX (ETH Zurich)](https://data.vision.ee.ethz.ch/cvl/rrothe/imdb-wiki/) | Dataset: "academic research purpose only". Pretrained models: not stated upstream | Treat as research use only |
-| Age, gender | `mivolo` | `mivolo_v2.safetensors`, `mivolo_v2_config.json` | [WildChlamydia/MiVOLO](https://github.com/WildChlamydia/MiVOLO), [iitolstykh/mivolo_v2](https://huggingface.co/iitolstykh/mivolo_v2) | Apache-2.0 (repo and model card; vendored code license in `src/nets/mivolo/LICENSE_MIVOLO`) | Permitted with notice |
+| Age, gender | `mivolo` | `mivolo_v2.safetensors`, `mivolo_v2_config.json` | [WildChlamydia/MiVOLO](https://github.com/WildChlamydia/MiVOLO), [iitolstykh/mivolo_v2](https://huggingface.co/iitolstykh/mivolo_v2) | Apache-2.0 (repo and model card; vendored code license in `src/face_analyzer/nets/mivolo/LICENSE_MIVOLO`) | Permitted with notice |
 | Gender | `deepface` | `deepface_gender.h5` | [serengil/deepface_models](https://github.com/serengil/deepface_models) (`gender_model_weights.h5`) | Repo MIT. Fine-tuned from VGG-Face, whose authors allow [non-commercial research use only](https://www.robots.ox.ac.uk/~vgg/software/vgg_face/) (CC BY-NC 4.0) | Non-commercial (VGG-Face base) |
 | Race | `deepface` | `deepface_race.h5` | [serengil/deepface_models](https://github.com/serengil/deepface_models) (`race_model_single_batch.h5`) | Same as deepface gender | Non-commercial (VGG-Face base) |
 | Recognition, identity search | `vggface` | `deepface_vgg.h5` | [serengil/deepface_models](https://github.com/serengil/deepface_models) (`vgg_face_weights.h5`) | Repo MIT. Original VGG-Face weights: [non-commercial research use](https://www.robots.ox.ac.uk/~vgg/software/vgg_face/) (CC BY-NC 4.0) | Non-commercial (VGG-Face) |

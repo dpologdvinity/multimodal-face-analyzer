@@ -1,11 +1,11 @@
-"""Unit tests for modular face detector subpackage (src/detectors/)."""
+"""Unit tests for modular face detector subpackage (src/face_analyzer/detectors/)."""
 import unittest
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 
-from src.core.types import Models
-from src.detectors import (
+from face_analyzer.core.types import Models
+from face_analyzer.detectors import (
     detect_faces,
     detect_faces_retinaface,
     detect_faces_scrfd,
@@ -50,7 +50,7 @@ class TestDetectorsModular(unittest.TestCase):
         models = Models(face_net=self.mock_ssd, yolo_face_nets={"yolo": self.mock_yolo})
         expected_boxes = [[10, 20, 100, 120]]
 
-        with patch("src.detectors.factory.detect_faces_yolo", return_value=expected_boxes) as mock_dispatch:
+        with patch("face_analyzer.detectors.factory.detect_faces_yolo", return_value=expected_boxes) as mock_dispatch:
             boxes = detect_faces(models, self.frame, conf_threshold=0.6, face_detector="yolo")
             self.assertEqual(boxes, expected_boxes)
             mock_dispatch.assert_called_once_with(self.mock_yolo, self.frame, conf_threshold=0.6)
@@ -60,7 +60,7 @@ class TestDetectorsModular(unittest.TestCase):
         models = Models(face_net=self.mock_ssd, scrfd_face_nets={"scrfd": self.mock_scrfd})
         expected_boxes = [[15, 25, 105, 125]]
 
-        with patch("src.detectors.factory.detect_faces_scrfd", return_value=expected_boxes) as mock_dispatch:
+        with patch("face_analyzer.detectors.factory.detect_faces_scrfd", return_value=expected_boxes) as mock_dispatch:
             boxes = detect_faces(models, self.frame, conf_threshold=0.55, face_detector="scrfd")
             self.assertEqual(boxes, expected_boxes)
             mock_dispatch.assert_called_once_with(self.mock_scrfd, self.frame, conf_threshold=0.55)
@@ -70,7 +70,7 @@ class TestDetectorsModular(unittest.TestCase):
         models = Models(face_net=self.mock_ssd, retinaface_nets={"retinaface": self.mock_retinaface})
         expected_boxes = [[5, 10, 95, 110]]
 
-        with patch("src.detectors.factory.detect_faces_retinaface", return_value=expected_boxes) as mock_dispatch:
+        with patch("face_analyzer.detectors.factory.detect_faces_retinaface", return_value=expected_boxes) as mock_dispatch:
             boxes = detect_faces(models, self.frame, conf_threshold=0.45, face_detector="retinaface")
             self.assertEqual(boxes, expected_boxes)
             mock_dispatch.assert_called_once_with(self.mock_retinaface, self.frame, conf_threshold=0.45)
@@ -80,7 +80,7 @@ class TestDetectorsModular(unittest.TestCase):
         models = Models(face_net=self.mock_ssd)
         expected_boxes = [[30, 40, 130, 140]]
 
-        with patch("src.detectors.factory.detect_faces_ssd", return_value=expected_boxes) as mock_dispatch:
+        with patch("face_analyzer.detectors.factory.detect_faces_ssd", return_value=expected_boxes) as mock_dispatch:
             boxes = detect_faces(models, self.frame, conf_threshold=0.7, face_detector="ssd")
             self.assertEqual(boxes, expected_boxes)
             mock_dispatch.assert_called_once_with(self.mock_ssd, self.frame, conf_threshold=0.7)
@@ -91,7 +91,7 @@ class TestDetectorsModular(unittest.TestCase):
         expected_boxes = [[20, 20, 80, 80]]
 
         for requested_backend in ("yolo", "scrfd", "retinaface"):
-            with patch("src.detectors.factory.detect_faces_ssd", return_value=expected_boxes) as mock_dispatch:
+            with patch("face_analyzer.detectors.factory.detect_faces_ssd", return_value=expected_boxes) as mock_dispatch:
                 boxes = detect_faces(models, self.frame, conf_threshold=0.5, face_detector=requested_backend)
                 self.assertEqual(boxes, expected_boxes, f"Failed fallback for {requested_backend}")
                 mock_dispatch.assert_called_once_with(self.mock_ssd, self.frame, conf_threshold=0.5)
@@ -105,14 +105,14 @@ class TestDetectorsModular(unittest.TestCase):
     def test_factory_bare_net_dispatch(self):
         """Verify detect_faces supports legacy callers passing a bare net."""
         expected_boxes = [[10, 10, 50, 50]]
-        with patch("src.detectors.factory.detect_faces_ssd", return_value=expected_boxes) as mock_dispatch:
+        with patch("face_analyzer.detectors.factory.detect_faces_ssd", return_value=expected_boxes) as mock_dispatch:
             boxes = detect_faces(self.mock_ssd, self.frame, conf_threshold=0.7)
             self.assertEqual(boxes, expected_boxes)
             mock_dispatch.assert_called_once_with(self.mock_ssd, self.frame, conf_threshold=0.7)
 
     def test_inference_reexports_detectors(self):
-        """Verify src.inference re-exports all detector public interfaces."""
-        from src import inference
+        """Verify face_analyzer.inference re-exports all detector public interfaces."""
+        from face_analyzer import inference
         self.assertTrue(callable(getattr(inference, "detect_faces_ssd", None)))
         self.assertTrue(callable(getattr(inference, "detect_faces_yolo", None)))
         self.assertTrue(callable(getattr(inference, "detect_faces_scrfd", None)))

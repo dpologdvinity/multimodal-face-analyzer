@@ -5,7 +5,7 @@ from unittest.mock import patch
 import cv2
 import numpy as np
 
-from src import inference
+from face_analyzer import inference
 
 # dlib get_face_chip_details: outer/inner right eye, outer/inner left eye, nose.
 REFERENCE = (np.array([
@@ -86,8 +86,8 @@ class FairFaceAlignmentTests(unittest.TestCase):
         models = inference.Models(face_net=None, age_nets={"fairface": net},
                                   face_landmarks_nets={"mediapipe": object()})
         # Mock face detection and landmark detection; analyze_frame should produce same blob
-        with patch("src.pipeline.stages.detect_faces", return_value=[box]) as detect, \
-             patch("src.pipeline.stages._detect_face_landmarker", return_value=result) as landmarker:
+        with patch("face_analyzer.pipeline.stages.detect_faces", return_value=[box]) as detect, \
+             patch("face_analyzer.pipeline.stages._detect_face_landmarker", return_value=result) as landmarker:
             output = inference.analyze_frame(
                 models, frame, inference.AnalysisConfig(active_age={"fairface"}),
             )

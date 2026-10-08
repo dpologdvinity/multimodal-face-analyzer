@@ -2,7 +2,11 @@ import unittest
 
 import numpy as np
 
-from src.inference import mivolo_estimate, predict_age_mivolo, predict_gender_mivolo
+from face_analyzer.inference import (
+    mivolo_estimate,
+    predict_age_mivolo,
+    predict_gender_mivolo,
+)
 
 
 class FakeMiVOLO:

@@ -5,15 +5,13 @@ assets/ground_truth.json uses to bind a label to a face independently of detecto
 """
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import cv2
 
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "src"))
+from face_analyzer import inference
 
-import inference  # noqa: E402
+ROOT = Path(__file__).resolve().parent.parent
 
 
 def main() -> None:

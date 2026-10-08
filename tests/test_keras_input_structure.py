@@ -1,7 +1,7 @@
 import unittest
 from pathlib import Path
 
-NETS_DIR = Path(__file__).parents[1] / "src" / "nets"
+NETS_DIR = Path(__file__).parents[1] / "src" / "face_analyzer" / "nets"
 
 
 class KerasInputStructureTests(unittest.TestCase):

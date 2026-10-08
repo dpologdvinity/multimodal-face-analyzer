@@ -1,6 +1,6 @@
 import unittest
 
-from src.inference import face_crop_bounds
+from face_analyzer.inference import face_crop_bounds
 
 
 class AgePreprocessingTests(unittest.TestCase):

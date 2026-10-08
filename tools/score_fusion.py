@@ -6,15 +6,14 @@ rule the app actually runs. Re-run tools/dump_predictions.py first if a model ch
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 import numpy as np
 
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "src"))
+from face_analyzer import inference as inf
 
-import inference as inf  # noqa: E402
+ROOT = Path(__file__).resolve().parent.parent
+
 
 RACE_TRUTH_TO_LABEL = {key: label for key, label in inf.RACE_CANONICAL_LABELS.items()}
 

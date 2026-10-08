@@ -6,9 +6,9 @@ from unittest.mock import MagicMock, patch
 import av
 import numpy as np
 
-from src.core.types import Models
-from src.pipeline.config import AnalysisConfig
-from src.ui import live
+from face_analyzer.core.types import Models
+from face_analyzer.pipeline.config import AnalysisConfig
+from face_analyzer.ui import live
 
 
 def _frame() -> av.VideoFrame:
@@ -17,7 +17,7 @@ def _frame() -> av.VideoFrame:
 
 
 def _session_state() -> dict:
-    """Build one session's live state, as src/app.py does on every script run."""
+    """Build one session's live state, as src/face_analyzer/app.py does on every script run."""
     return {
         "live_state": {"faces": [], "error": None, "updated": 0.0},
         "live_state_lock": threading.Lock(),
@@ -36,7 +36,7 @@ def test_normal_frame_returns_same_size_frame_and_records_metrics():
     config = AnalysisConfig(face_detector="ssd")
     state = _session_state()
     callback = live.make_video_frame_callback(_models, lambda: config, **state)
-    with patch("src.pipeline.stages.detect_faces", return_value=[]):
+    with patch("face_analyzer.pipeline.stages.detect_faces", return_value=[]):
         out = callback(_frame())
     assert isinstance(out, av.VideoFrame)
     assert (out.width, out.height) == (320, 240)
@@ -60,7 +60,7 @@ def test_frame_skip_runs_classifiers_only_every_nth_frame():
         return img, [], False, False
 
     callback = live.make_video_frame_callback(_models, lambda: config, frame_skip=2, **_session_state())
-    with patch("src.ui.live.analyze_frame", side_effect=spy):
+    with patch("face_analyzer.ui.live.analyze_frame", side_effect=spy):
         outputs = [callback(_frame()), callback(_frame())]
     assert all(isinstance(out, av.VideoFrame) for out in outputs)
     assert all((out.width, out.height) == (320, 240) for out in outputs)
@@ -85,7 +85,7 @@ def test_frame_skip_path_survives_the_real_pipeline():
     config = AnalysisConfig(face_detector="ssd", active_age={"caffe"})
     state = _session_state()
     callback = live.make_video_frame_callback(_models, lambda: config, frame_skip=2, **state)
-    with patch("src.pipeline.stages.detect_faces", return_value=[]):
+    with patch("face_analyzer.pipeline.stages.detect_faces", return_value=[]):
         skipped = callback(_frame())
         ran = callback(_frame())
     assert (skipped.width, skipped.height) == (ran.width, ran.height) == (320, 240)
@@ -97,7 +97,7 @@ def test_inference_failure_returns_raw_frame_and_records_error():
     state = _session_state()
     callback = live.make_video_frame_callback(_models, AnalysisConfig, **state)
     frame = _frame()
-    with patch("src.ui.live.analyze_frame", side_effect=RuntimeError("boom")):
+    with patch("face_analyzer.ui.live.analyze_frame", side_effect=RuntimeError("boom")):
         out = callback(frame)
     assert out is frame
     assert state["live_state"]["error"] == "RuntimeError: boom"
@@ -119,7 +119,7 @@ def test_callbacks_with_separate_state_never_share_it():
     second_callback = live.make_video_frame_callback(
         _models, lambda: AnalysisConfig(face_detector="fail"), **second,
     )
-    with patch("src.ui.live.analyze_frame", side_effect=fake_analyze):
+    with patch("face_analyzer.ui.live.analyze_frame", side_effect=fake_analyze):
         first_callback(_frame())
         second_callback(_frame())
 

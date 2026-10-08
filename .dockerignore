@@ -9,3 +9,5 @@ output/
 .venv/
 venv/
 ideas/
+build/
+**/*.egg-info/

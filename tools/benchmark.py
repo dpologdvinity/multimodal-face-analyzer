@@ -16,16 +16,15 @@ import argparse
 import hashlib
 import json
 import re
-import sys
 from collections import defaultdict
 from pathlib import Path
 
 import cv2
 
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "src"))
+from face_analyzer import inference
 
-import inference  # noqa: E402
+ROOT = Path(__file__).resolve().parent.parent
+
 
 # A detection counts as "the labelled face" only within this normalized centre distance.
 CENTER_MATCH_TOLERANCE = 0.05

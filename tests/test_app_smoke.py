@@ -4,10 +4,10 @@ from pathlib import Path
 import pytest
 from streamlit.testing.v1 import AppTest
 
-from src.core.constants import MODEL_DIR
+from face_analyzer.core.constants import MODEL_DIR
 from tests._models import require_all_models
 
-APP = str(Path(__file__).resolve().parents[1] / "src" / "app.py")
+APP = str(Path(__file__).resolve().parents[1] / "src" / "face_analyzer" / "app.py")
 
 
 @pytest.fixture(autouse=True)

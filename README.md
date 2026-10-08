@@ -18,7 +18,7 @@ their answers.
 ## Highlights
 
 - **Interchangeable face detectors.** SSD, YOLOv8-Face, SCRFD, and RetinaFace share a common call
-  shape in `src/detectors/`, selected per frame by a factory with SSD as the fallback.
+  shape in `src/face_analyzer/detectors/`, selected per frame by a factory with SSD as the fallback.
 - **Fusion across label taxonomies.** Gender, race, and emotion backends are combined by
   weighted mean, blend, or vote. Race and emotion labels are first mapped onto shared canonical
   classes (FairFace's East and Southeast Asian become one `Asian` class; `happy` and `happiness`
@@ -48,14 +48,15 @@ flowchart LR
     H --> J
 ```
 
-Colorization runs in the UI layer before `analyze_frame()`: in `src/ui/results.py` for uploads
-and snapshots, and in `src/ui/live.py` for live webcam frames. `src/pipeline/analyzer.py`
-orchestrates the remaining stages, which live in `src/pipeline/stages.py` (per-feature face tasks
-in `src/pipeline/face_tasks.py`, the prediction cache and thread pool in `src/pipeline/cache.py`).
-Model loading is in `src/pipeline/loader.py`, fusion in `src/fusion/`, and vendored third-party
-architectures in `src/nets/`. The Streamlit entry point `src/app.py` only wires these together:
-the theme (`src/ui/theme.py` plus `theme.css`), the sidebar (`src/ui/sidebar.py`), the per-image
-results view (`src/ui/results.py`), and the Live webcam tab (`src/ui/live.py`).
+The source is the installable `face_analyzer` package; paths below are relative to
+`src/face_analyzer/`. Colorization runs in the UI layer before `analyze_frame()`: in
+`ui/results.py` for uploads and snapshots, and in `ui/live.py` for live webcam frames.
+`pipeline/analyzer.py` orchestrates the remaining stages, which live in `pipeline/stages.py`
+(per-feature face tasks in `pipeline/face_tasks.py`, the prediction cache and thread pool in
+`pipeline/cache.py`). Model loading is in `pipeline/loader.py`, fusion in `fusion/`, and vendored
+third-party architectures in `nets/`. The Streamlit entry point `app.py` only wires these
+together: the theme (`ui/theme.py` plus `theme.css`), the sidebar (`ui/sidebar.py`), the
+per-image results view (`ui/results.py`), and the Live webcam tab (`ui/live.py`).
 
 ## Results
 
@@ -98,8 +99,10 @@ docker build -t face-analyzer .          # or ./build-and-run.sh for guided mode
 docker run -d -p 127.0.0.1:8501:8501 --name face_analyzer_container face-analyzer
 ```
 
-The image runs `streamlit run src/app.py`. Build arguments, manual setup, and the remote-access
-notes (the app has no authentication) are in [docs/setup.md](docs/setup.md).
+The image runs `streamlit run src/face_analyzer/app.py`. For a manual install, add
+`pip install -e .` after the requirements so the `face_analyzer` package is importable. Build
+arguments, manual setup, and the remote-access notes (the app has no authentication) are in
+[docs/setup.md](docs/setup.md).
 
 ## Features
 
@@ -124,7 +127,7 @@ notes (the app has no authentication) are in [docs/setup.md](docs/setup.md).
 | 3D reconstruction | `deep3d` | **No working default weights**: needs the registration-gated Basel Face Model |
 
 The 16 rows after face detection are the analysis features in the `Models` container
-(`src/core/types.py`). Fifteen work with the weights in this repository; 3D reconstruction is
+(`src/face_analyzer/core/types.py`). Fifteen work with the weights in this repository; 3D reconstruction is
 wired but stays unavailable until you supply the Basel Face Model file yourself.
 
 The app also has tools that need no extra model: identity search against your own reference
@@ -147,6 +150,6 @@ LIVE mode. Per-model details: [docs/models.md](docs/models.md).
 
 ## Licensing
 
-The code is MIT-licensed; see [LICENSE](LICENSE). Vendored architectures in `src/nets/` keep
+The code is MIT-licensed; see [LICENSE](LICENSE). Vendored architectures in `src/face_analyzer/nets/` keep
 their upstream licenses. The model weights are third-party files under their own terms, several
 of them non-commercial or with no stated license; see [MODEL_LICENSES.md](MODEL_LICENSES.md).

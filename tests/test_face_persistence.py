@@ -8,7 +8,7 @@ from unittest import mock
 import cv2
 import numpy as np
 
-from src import inference
+from face_analyzer import inference
 
 
 class FacePersistenceTests(unittest.TestCase):
