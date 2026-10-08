@@ -16,7 +16,6 @@ build/
 models/*
 !models/manifest.json
 !models/opencv_face_detector.pbtxt
-!models/opencv_face_detector_uint8.pb
 !models/haarcascade_eye.xml
 !models/colorization_deploy_v2.prototxt
 !models/pts_in_hull.npy

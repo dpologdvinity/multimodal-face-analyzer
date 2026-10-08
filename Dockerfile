@@ -171,8 +171,8 @@ COPY src/ src/
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-deps -e .
 
-# Only the files tracked in git reach the build context (see .dockerignore): the manifest, the
-# small permissively licensed configs, and the required SSD face detector. The selected weights
+# Only the files tracked in git reach the build context (see .dockerignore): the manifest and
+# the small permissively licensed configs. The required SSD detector and the selected weights
 # are downloaded here from the sources in models/manifest.json and checked against its sha256s,
 # so no local weights are needed to build. Bring-your-own models (dan, deep3d) only print where
 # to get the file; the app then lists their features as unavailable, and you can mount the file

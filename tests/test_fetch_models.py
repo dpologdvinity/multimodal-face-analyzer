@@ -91,11 +91,11 @@ def test_every_model_path_load_models_uses_has_a_manifest_entry():
     assert expected <= {entry["path"] for entry in _real_manifest()}
 
 
-def test_files_kept_in_git_are_permissive_text_or_the_required_detector():
-    """Only the always-required SSD detector may stay in git without being re-hostable."""
+def test_only_permissive_files_stay_in_git():
+    """A file may stay in git only if its license lets it be re-hosted (source hf)."""
     for entry in _real_manifest():
-        if entry["in_git"] and entry["source"] != "hf":
-            assert entry["required"], entry["path"]
+        if entry["in_git"]:
+            assert entry["source"] == "hf", entry["path"]
 
 
 @pytest.mark.parametrize(

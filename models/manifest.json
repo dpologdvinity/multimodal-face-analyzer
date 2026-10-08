@@ -31,7 +31,7 @@
       "source": "upstream",
       "url": "https://raw.githubusercontent.com/opencv/opencv_3rdparty/7b425df276ba2161b8edaab0f0756f4a735d61b9/opencv_face_detector_uint8.pb",
       "upstream": "https://github.com/opencv/opencv_3rdparty/tree/dnn_samples_face_detector_20180220_uint8",
-      "in_git": true
+      "in_git": false
     },
     {
       "path": "yolov8n_face.onnx",

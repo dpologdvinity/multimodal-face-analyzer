@@ -3,9 +3,8 @@
 The code in this repository is MIT-licensed (see [LICENSE](LICENSE)), except the vendored model
 architectures in `src/face_analyzer/nets/`, which keep their upstream licenses (listed per model
 below; note the CC BY-NC-SA 4.0 BlurPool code in `src/face_analyzer/nets/face_reaging_model.py`).
-The model weights are third-party files under their own terms. Apart from the required SSD
-detector, none of them are stored in this repository's git tree any more (older commits kept them
-in git-lfs). `tools/fetch_models.py`
+The model weights are third-party files under their own terms. None of them are stored in this
+repository's git tree any more (older commits kept them in git-lfs). `tools/fetch_models.py`
 downloads them on demand, as recorded in [models/manifest.json](models/manifest.json), which
 carries the same license and source for every file. "Obtained from" below says where each file now
 comes from:
@@ -16,9 +15,7 @@ comes from:
 - **Upstream:** the license is restrictive or not stated, so the file is not re-hosted. The fetch
   script downloads it from the original project's own release, file, or site.
 - **Bring your own:** no direct download exists, so the script prints where to get the file.
-- **In git:** a few small, permissively licensed configs stay in git so a fresh clone starts
-  without downloads. The required SSD detector weights also stay in git, although no license is
-  stated for them, because the app cannot start without a face detector.
+- **In git:** a few small, permissively licensed configs stay in git as well.
 
 Downloading a file from any of these sources is not a grant of any right the upstream authors did
 not give. Several are non-commercial or have no stated license.
@@ -31,7 +28,7 @@ not mean the file is unrestricted.
 
 | Feature | Model key | File(s) | Upstream source (URL) | License | Redistribution | Obtained from |
 | ------- | --------- | ------- | --------------------- | ------- | -------------- | ------------- |
-| Face detection | `ssd` | `opencv_face_detector_uint8.pb`, `opencv_face_detector.pbtxt` | [opencv/opencv samples/dnn/face_detector](https://github.com/opencv/opencv/tree/4.x/samples/dnn/face_detector), weights from [opencv_3rdparty](https://github.com/opencv/opencv_3rdparty/tree/dnn_samples_face_detector_20180220_uint8) | OpenCV repo: Apache-2.0. Weight file: not stated upstream | Unclear for the weights | In git (required detector; see note below). Upstream copy: GitHub raw, opencv_3rdparty |
+| Face detection | `ssd` | `opencv_face_detector_uint8.pb`, `opencv_face_detector.pbtxt` | [opencv/opencv samples/dnn/face_detector](https://github.com/opencv/opencv/tree/4.x/samples/dnn/face_detector), weights from [opencv_3rdparty](https://github.com/opencv/opencv_3rdparty/tree/dnn_samples_face_detector_20180220_uint8) | OpenCV repo: Apache-2.0. Weight file: not stated upstream | Unclear for the weights | `.pb`: upstream, GitHub raw, opencv_3rdparty (always fetched, required). `.pbtxt`: in git and on the HF mirror |
 | Face detection | `yolo` | `yolov8n_face.onnx` | [yakhyo/yolov8-face-onnx-inference](https://github.com/yakhyo/yolov8-face-onnx-inference) | Not stated upstream (README license badge points at a LICENSE file that does not exist). Credits [derronqi/yolov8-face](https://github.com/derronqi/yolov8-face) (GPL-3.0) and [Ultralytics](https://github.com/ultralytics/ultralytics) (AGPL-3.0) | Unclear; upstream lineage is copyleft | Upstream: GitHub release, yakhyo/yolov8-face-onnx-inference |
 | Face detection | `scrfd` | `scrfd_2.5g_bnkps.onnx` | [deepinsight/insightface](https://github.com/deepinsight/insightface#license) | Code MIT; pretrained models "available for non-commercial research purposes only" | Non-commercial research only | Upstream: GitHub release, insightface `buffalo_m.zip` (`det_2.5g.onnx`) |
 | Face detection | `retinaface` | `retinaface_mobilenet0.25.onnx` | [biubug6/Pytorch_Retinaface](https://github.com/biubug6/Pytorch_Retinaface), ONNX re-export [amd/retinaface](https://huggingface.co/amd/retinaface) | MIT (repo); Apache-2.0 (model card) | Permitted with notice | HF mirror |

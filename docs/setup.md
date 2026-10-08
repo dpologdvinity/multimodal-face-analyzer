@@ -42,12 +42,13 @@ Each manifest entry has one of three sources, decided by its license
   `BFM/BFM_model_front.mat` (`deep3d` 3D reconstruction). A self-supplied file whose hash differs
   from the one this repo was tested with only triggers a warning.
 
-A few small, permissively licensed files stay in git so a fresh clone starts without any
-download: `opencv_face_detector.pbtxt`, `haarcascade_eye.xml`, `colorization_deploy_v2.prototxt`,
-`pts_in_hull.npy`, `mivolo_v2_config.json`, and `BFM/similarity_Lm3D_all.mat`. The required SSD
-weights (`opencv_face_detector_uint8.pb`, 2.7 MB) also stay in git, although their license is
-not stated upstream, because the app cannot start without a face detector. Every other file in
-`models/` is gitignored, and these are the manifest's `"in_git": true` entries.
+A few small, permissively licensed files stay in git: `opencv_face_detector.pbtxt`,
+`haarcascade_eye.xml`, `colorization_deploy_v2.prototxt`, `pts_in_hull.npy`,
+`mivolo_v2_config.json`, and `BFM/similarity_Lm3D_all.mat` (the manifest's `"in_git": true`
+entries). Every other file in `models/` is gitignored, including the required SSD weights
+(`opencv_face_detector_uint8.pb`, 2.7 MB, no license stated upstream). The app cannot start
+without them, so run `python tools/fetch_models.py --keys` (with no keys it fetches only the
+required files) before the first start; the guided scripts and the Docker build do this for you.
 
 Older checkouts stored the weights in git-lfs. The loader still treats an unpulled LFS pointer
 file like a missing model.
@@ -61,6 +62,7 @@ conda create -n vision_env python=3.11 -y
 conda activate vision_env
 pip install -r requirements.txt
 pip install --no-deps -e .
+python tools/fetch_models.py --keys    # the required SSD detector; add ARG=key pairs for more
 streamlit run src/face_analyzer/app.py
 ```
 
@@ -101,8 +103,9 @@ ruff check .
 ```
 
 Tests that need a real weight file skip when it is missing (or an old LFS pointer), so the suite
-runs on a fresh clone without fetching any weights. CI runs ruff and the test suite on Python 3.11
-and 3.12 against exactly such a clone. `tests/test_fetch_models.py` checks the manifest and the
+runs on a fresh clone. CI runs ruff and the test suite on Python 3.11 and 3.12 against such a
+clone after fetching only the required files (`python tools/fetch_models.py --keys`), so the app
+smoke tests still run. `tests/test_fetch_models.py` checks the manifest and the
 fetch tool offline, including that every model path in `core/constants.py` has a manifest entry.
 
 ### Held-out evaluation
