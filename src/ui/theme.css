@@ -1,0 +1,584 @@
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:wght@400;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+    :root {
+        --base: #14181b;
+        --surface: #1b2124;
+        --surface-raised: #232a2e;
+        --line: #38434798;
+        --text: #eef2f0;
+        --muted: #8ea3a2;
+        --accent: #4fb8ac;
+        --alert: #e8a33d;
+    }
+
+    body:has(.light-theme) {
+        --base: #f3f8f6;
+        --surface: #ffffff;
+        --surface-raised: #e4f0eb;
+        --line: #a9c5ba;
+        --text: #16312a;
+        --muted: #4f6d63;
+        --accent: #087a52;
+        --alert: #b42318;
+    }
+
+    body:has(.amber-theme) {
+        --base: #120d05;
+        --surface: #1d1409;
+        --surface-raised: #2b1e0c;
+        --line: #5a3f16;
+        --text: #ffcf7a;
+        --muted: #b8873f;
+        --accent: #ffb02e;
+        --alert: #ff5f4d;
+    }
+
+    body:has(.synthwave-theme) {
+        --base: #170826;
+        --surface: #23103a;
+        --surface-raised: #2e1650;
+        --line: #6b2e8f;
+        --text: #f4e3ff;
+        --muted: #c68fe6;
+        --accent: #ff2fb8;
+        --alert: #ffe45e;
+    }
+    body:has(.synthwave-theme) .stApp {
+        background:
+            linear-gradient(180deg, rgba(255, 47, 184, 0.08) 0%, transparent 40%),
+            repeating-linear-gradient(0deg, rgba(198, 143, 230, 0.06) 0 1px, transparent 1px 32px),
+            repeating-linear-gradient(90deg, rgba(198, 143, 230, 0.06) 0 1px, transparent 1px 32px),
+            var(--base);
+    }
+    body:has(.synthwave-theme) .app-hero {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        border-left: none;
+        border-bottom: 2px solid var(--accent);
+        padding: 0 0 1.5rem;
+        margin: 0 auto 2.5rem;
+    }
+    body:has(.synthwave-theme) .app-hero-readout { text-align: center; }
+    body:has(.synthwave-theme) .app-hero h1 {
+        font-family: 'IBM Plex Mono', monospace;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        text-shadow: 0 0 12px var(--accent), 0 0 28px rgba(255, 47, 184, 0.6);
+    }
+    body:has(.synthwave-theme) div[data-testid="stTabs"] [data-baseweb="tab-list"] {
+        justify-content: center;
+        border-bottom: 2px solid var(--line);
+    }
+    body:has(.synthwave-theme) button[role="tab"][aria-selected="true"] {
+        text-shadow: 0 0 8px var(--accent);
+    }
+    body:has(.synthwave-theme) .stButton button,
+    body:has(.synthwave-theme) .stDownloadButton button {
+        border-radius: 999px !important;
+        border: 1px solid var(--accent) !important;
+        box-shadow: 0 0 10px rgba(255, 47, 184, 0.45);
+    }
+
+    body:has(.phosphor-theme) {
+        --base: #010401;
+        --surface: #061006;
+        --surface-raised: #0a1a0a;
+        --line: #1f6b1f;
+        --text: #33ff66;
+        --muted: #1f9c3f;
+        --accent: #6bffa0;
+        --alert: #ffcf33;
+    }
+    body:has(.phosphor-theme) .stApp,
+    body:has(.phosphor-theme) .stApp * {
+        font-family: 'IBM Plex Mono', monospace !important;
+        letter-spacing: 0.01em;
+    }
+    body:has(.phosphor-theme) .stApp {
+        background:
+            repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.35) 0 1px, transparent 1px 3px),
+            var(--base);
+    }
+    body:has(.phosphor-theme) *,
+    body:has(.phosphor-theme) .stButton button,
+    body:has(.phosphor-theme) .stDownloadButton button,
+    body:has(.phosphor-theme) input,
+    body:has(.phosphor-theme) [data-baseweb] {
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        text-shadow: none;
+    }
+    body:has(.phosphor-theme) .app-hero {
+        border-left: none;
+        border: 1px solid var(--line);
+        padding: 0.9rem 1.2rem;
+        margin: 0 0 1.5rem;
+    }
+    body:has(.phosphor-theme) .app-hero h1 {
+        font-size: 1.6rem;
+        text-transform: uppercase;
+    }
+    body:has(.phosphor-theme) .app-hero h1::before { content: "> "; }
+    body:has(.phosphor-theme) .app-hero p::before { content: "# "; }
+    body:has(.phosphor-theme) .block-container {
+        padding-top: 1.2rem;
+    }
+
+    body:has(.brutalist-theme) {
+        --base: #f5f3ee;
+        --surface: #ffffff;
+        --surface-raised: #ffffff;
+        --line: #0a0a0a;
+        --text: #0a0a0a;
+        --muted: #3a3a3a;
+        --accent: #ffe500;
+        --alert: #ff3b30;
+    }
+    body:has(.brutalist-theme) .stApp {
+        background: var(--base);
+        font-family: 'IBM Plex Mono', monospace !important;
+    }
+    body:has(.brutalist-theme) .app-hero {
+        border: 4px solid var(--line);
+        border-left: 4px solid var(--line);
+        background: var(--accent);
+        box-shadow: 8px 8px 0 var(--line);
+        padding: 1.2rem 1.5rem;
+        margin: 0 0 2.5rem;
+    }
+    body:has(.brutalist-theme) .app-hero h1 {
+        text-transform: uppercase;
+        font-weight: 700;
+        letter-spacing: 0;
+        color: var(--line);
+    }
+body:has(.brutalist-theme) .app-hero p { color: var(--line); }
+body:has(.brutalist-theme) .app-hero-readout strong,
+body:has(.brutalist-theme) div[data-testid="stFileUploader"] button,
+body:has(.brutalist-theme) div[data-testid="stFileUploader"] button * {
+    color: var(--line) !important;
+}
+body:has(.brutalist-theme) *,
+    body:has(.brutalist-theme) .stButton button,
+    body:has(.brutalist-theme) .stDownloadButton button,
+    body:has(.brutalist-theme) [data-baseweb] {
+        border-radius: 0 !important;
+    }
+    body:has(.brutalist-theme) .stButton button,
+    body:has(.brutalist-theme) .stDownloadButton button {
+        border: 3px solid var(--line) !important;
+        box-shadow: 4px 4px 0 var(--line) !important;
+        font-weight: 700;
+        text-transform: uppercase;
+    }
+    body:has(.brutalist-theme) section[data-testid="stSidebar"] {
+        background: var(--base) !important;
+        border-right: 4px solid var(--line) !important;
+    }
+    body:has(.brutalist-theme) div[data-testid="stTabs"] [data-baseweb="tab-list"] {
+        border-bottom: 4px solid var(--line);
+        gap: 0;
+    }
+    body:has(.brutalist-theme) button[role="tab"] {
+        border: 3px solid var(--line) !important;
+        border-bottom: none !important;
+        text-transform: uppercase;
+        font-weight: 700;
+    }
+
+    body:has(.corporate-theme) {
+        --base: #f4f6f9;
+        --surface: #ffffff;
+        --surface-raised: #eef1f6;
+        --line: #d7dce4;
+        --text: #1c2733;
+        --muted: #5b6b7c;
+        --accent: #2f5aa8;
+        --alert: #c0392b;
+    }
+    body:has(.corporate-theme) .stApp {
+        background: var(--base);
+    }
+    body:has(.corporate-theme) .app-hero {
+        border-left: none;
+        border-bottom: 1px solid var(--line);
+        padding: 0 0 1.4rem;
+        margin: 0 0 2rem;
+    }
+    body:has(.corporate-theme) .app-hero h1 {
+        font-family: 'Source Serif 4', serif;
+        font-weight: 600;
+        letter-spacing: 0;
+        color: var(--text);
+    }
+    body:has(.corporate-theme) .stApp h2,
+    body:has(.corporate-theme) .stApp h3 {
+        font-family: 'Source Serif 4', serif;
+        font-weight: 600;
+    }
+    body:has(.corporate-theme) section[data-testid="stSidebar"] {
+        background: var(--surface) !important;
+        border-right: 1px solid var(--line) !important;
+    }
+    body:has(.corporate-theme) section[data-testid="stSidebar"] h3 {
+        color: var(--muted);
+        font-family: 'DM Sans', sans-serif;
+        text-transform: none;
+        letter-spacing: 0.02em;
+        font-weight: 600;
+    }
+    body:has(.corporate-theme) .stButton button,
+    body:has(.corporate-theme) .stDownloadButton button {
+        border-radius: 6px !important;
+        border: 1px solid var(--line) !important;
+        box-shadow: 0 1px 2px rgba(28, 39, 51, 0.08) !important;
+    }
+    body:has(.corporate-theme) [data-testid="stExpander"] {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        box-shadow: 0 1px 3px rgba(28, 39, 51, 0.06);
+    }
+    body:has(.corporate-theme) div[data-testid="stTabs"] [data-baseweb="tab-list"] {
+        border-bottom: 1px solid var(--line);
+    }
+    body:has(.corporate-theme) button[role="tab"][aria-selected="true"] {
+        color: var(--accent);
+        border-bottom: 2px solid var(--accent);
+    }
+
+    body:has(.midnight-theme) {
+        --base: #0d1117;
+        --surface: #161b22;
+        --surface-raised: #1c2229;
+        --line: #2d333b;
+        --text: #e6edf3;
+        --muted: #8b949e;
+        --accent: #4f8ff0;
+        --alert: #f85149;
+    }
+    body:has(.midnight-theme) .stApp {
+        background: var(--base);
+        font-family: 'DM Sans', sans-serif;
+    }
+    body:has(.midnight-theme) .app-hero {
+        border-left: none;
+        border-bottom: 1px solid var(--line);
+        padding: 0 0 1.4rem;
+        margin: 0 0 2rem;
+    }
+    body:has(.midnight-theme) .app-hero h1 {
+        font-weight: 600;
+        letter-spacing: 0;
+    }
+    body:has(.midnight-theme) section[data-testid="stSidebar"] {
+        background: var(--surface) !important;
+        border-right: 1px solid var(--line) !important;
+    }
+    body:has(.midnight-theme) section[data-testid="stSidebar"] h3 {
+        color: var(--muted);
+        text-transform: none;
+        font-family: 'DM Sans', sans-serif;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+    }
+    body:has(.midnight-theme) .stButton button,
+    body:has(.midnight-theme) .stDownloadButton button {
+        border-radius: 6px !important;
+        border: 1px solid var(--line) !important;
+        background: var(--surface-raised) !important;
+    }
+    body:has(.midnight-theme) [data-testid="stExpander"] {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface);
+    }
+    body:has(.midnight-theme) div[data-testid="stTabs"] [data-baseweb="tab-list"] {
+        border-bottom: 1px solid var(--line);
+    }
+    body:has(.midnight-theme) button[role="tab"][aria-selected="true"] {
+        color: var(--accent);
+        border-bottom: 2px solid var(--accent);
+    }
+
+    .stApp {
+        background: radial-gradient(circle at 85% 0%, color-mix(in srgb, var(--accent) 18%, transparent) 0, var(--base) 34rem);
+        color: var(--text);
+        font-family: 'DM Sans', sans-serif;
+    }
+    .block-container {
+        max-width: 1440px;
+        padding-top: 2.5rem;
+        padding-bottom: 5rem;
+    }
+    .stApp h1, .stApp h2, .stApp h3, .stApp h4 {
+        color: var(--text);
+        font-family: 'Space Grotesk', sans-serif;
+        letter-spacing: -0.01em;
+    }
+    .stApp,
+    .stApp [data-testid="stMarkdownContainer"] p,
+    .stApp [data-testid="stWidgetLabel"] p,
+    .stApp [data-testid="stFileUploader"] label {
+        color: var(--text);
+    }
+    .stApp [data-testid="stCaptionContainer"] p { color: var(--muted); }
+    header[data-testid="stHeader"],
+    header[data-testid="stHeader"] [data-testid="stToolbar"] {
+        background: var(--surface) !important;
+    }
+    header[data-testid="stHeader"] [data-testid="stToolbar"] button,
+    header[data-testid="stHeader"] [data-testid="stToolbar"] button span {
+        color: var(--text) !important;
+    }
+    .app-hero {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        gap: 2rem;
+        border-left: none;
+        border-bottom: 1px solid var(--line);
+        padding: 0 0 1.1rem;
+        margin: 0 0 2.2rem;
+    }
+    .app-hero-heading h1 {
+        font-size: clamp(1.6rem, 2.4vw, 2.2rem);
+        line-height: 1.15;
+        margin: 0 0 0.35rem;
+        font-weight: 600;
+    }
+    .app-hero-heading p { color: var(--muted); margin: 0; font-size: 0.95rem; max-width: 52ch; }
+    .app-hero-readout {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.78rem;
+        color: var(--muted);
+        text-align: right;
+        white-space: nowrap;
+        padding-bottom: 0.2rem;
+    }
+    .app-hero-readout strong { color: var(--accent); font-weight: 600; }
+    section[data-testid="stSidebar"] {
+        background: var(--surface);
+        border-right: 1px solid var(--line);
+    }
+    section[data-testid="stSidebar"] h3 {
+        color: var(--accent);
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.8rem;
+        letter-spacing: 0.08em;
+        margin-top: 1.7rem;
+    }
+    section[data-testid="stSidebar"] label,
+    section[data-testid="stSidebar"] p { line-height: 1.4; }
+    div[data-testid="stTabs"] [data-baseweb="tab-list"] {
+        gap: 0.75rem;
+        border-bottom: 1px solid var(--line);
+    }
+    div[data-testid="stTabs"] button[role="tab"] {
+        color: var(--muted);
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.85rem;
+        padding: 0.8rem 1rem;
+    }
+    div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
+        color: var(--accent);
+    }
+    div[data-testid="stFileUploader"] {
+        border: 1px dashed var(--line);
+        border-radius: 12px;
+        background: var(--surface);
+        padding: 1rem;
+    }
+    div[data-testid="stFileUploader"] [data-testid="stFileUploaderDropzone"] {
+        background: var(--surface-raised);
+        border-color: var(--line);
+    }
+    div[data-testid="stFileUploader"] [data-testid="stFileUploaderDropzoneInstructions"],
+    div[data-testid="stFileUploader"] [data-testid="stFileUploaderDropzoneInstructions"] * {
+        color: var(--muted) !important;
+    }
+    div[data-testid="stFileUploader"] button {
+        background: var(--accent) !important;
+        border-color: var(--accent) !important;
+        color: var(--base) !important;
+    }
+    div[data-testid="stFileUploader"] button * { color: var(--base) !important; }
+    div[data-testid="stExpander"] {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--surface);
+    }
+    div[data-testid="stExpander"] summary,
+    div[data-testid="stExpander"] summary p,
+    div[data-testid="stExpander"] summary svg {
+        background: var(--surface) !important;
+        color: var(--text) !important;
+        fill: var(--text) !important;
+    }
+    [data-testid="stCameraInputWebcamComponent"] > div:first-child {
+        background: var(--surface-raised) !important;
+    }
+    [data-testid="stCameraInputWebcamComponent"] p {
+        color: var(--text) !important;
+    }
+    [data-testid="stCameraInputWebcamComponent"] a {
+        color: var(--accent) !important;
+    }
+    [data-testid="stCameraInputButton"] {
+        background: var(--surface) !important;
+        border-top: 1px solid var(--line) !important;
+        color: var(--text) !important;
+    }
+    div[data-testid="stButton"] > button,
+    div[data-testid="stDownloadButton"] > button {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface-raised);
+        color: var(--text);
+        font-weight: 600;
+        transition: background 120ms ease, border-color 120ms ease;
+    }
+    div[data-testid="stButton"] > button:hover,
+    div[data-testid="stDownloadButton"] > button:hover {
+        background: var(--surface);
+        border-color: var(--accent);
+        color: var(--accent);
+    }
+    div[data-testid="stButton"] > button:focus-visible,
+    div[data-testid="stDownloadButton"] > button:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+    }
+    div[data-testid="stImage"] img {
+        border-radius: 10px;
+        border: 1px solid var(--line);
+    }
+    .target-card {
+        position: relative;
+        border: 1px solid var(--line);
+        border-radius: 2px;
+        background: var(--surface);
+        padding: 1.1rem 1.25rem;
+        margin: 0.9rem 0 1.35rem;
+    }
+    .target-card::before,
+    .target-card::after {
+        content: "";
+        position: absolute;
+        width: 14px;
+        height: 14px;
+        pointer-events: none;
+    }
+    .target-card::before {
+        top: -1px;
+        left: -1px;
+        border-top: 2px solid var(--accent);
+        border-left: 2px solid var(--accent);
+    }
+    .target-card::after {
+        bottom: -1px;
+        right: -1px;
+        border-bottom: 2px solid var(--accent);
+        border-right: 2px solid var(--accent);
+    }
+    .target-card-id {
+        color: var(--accent);
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.78rem;
+        letter-spacing: 0.04em;
+        margin-bottom: 0.7rem;
+    }
+    .target-card-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 0.4rem 0;
+        border-bottom: 1px solid var(--line);
+        font-size: 0.88rem;
+    }
+    .target-card-row:last-child { border-bottom: none; }
+    .target-card-row .k { color: var(--muted); }
+    .target-card-row .v { color: var(--text); text-align: right; overflow-wrap: anywhere; }
+    .face-hover-image {
+        position: relative;
+        width: min(100%, 900px);
+        margin-bottom: 1rem;
+    }
+    .face-hover-image > img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+    }
+    .face-hover-target {
+        position: absolute;
+        z-index: 1;
+        cursor: help;
+        border-radius: 4px;
+    }
+    .face-hover-target:hover,
+    .face-hover-target:focus-visible {
+        z-index: 3;
+        outline: 2px solid var(--accent);
+        background: color-mix(in srgb, var(--accent) 12%, transparent);
+    }
+    .face-hover-info {
+        display: none;
+        position: absolute;
+        top: calc(100% + 0.5rem);
+        left: 0;
+        width: min(18rem, 75vw);
+        z-index: 4;
+    }
+    .face-hover-target.place-right .face-hover-info { left: auto; right: 0; }
+    .face-hover-target.place-up .face-hover-info { top: auto; bottom: calc(100% + 0.5rem); }
+    .face-hover-target:hover .face-hover-info,
+    .face-hover-target:focus .face-hover-info { display: block; }
+    .face-hover-info .target-card {
+        margin: 0;
+        padding: 0.8rem;
+        max-height: min(70vh, 22rem);
+        overflow: auto;
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+    }
+    .face-hover-label {
+        position: absolute;
+        top: 0;
+        left: 0;
+        transform: translateY(-100%);
+        background: rgba(0, 0, 0, 0.72);
+        color: var(--accent);
+        font-size: 0.65rem;
+        padding: 2px 6px;
+        border-radius: 4px 4px 0 0;
+        white-space: nowrap;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        pointer-events: none;
+        z-index: 2;
+    }
+    @media (max-width: 640px) {
+        .block-container { padding: 1.25rem 1rem 3rem; }
+        .app-hero { flex-direction: column; align-items: flex-start; gap: 0.6rem; margin-bottom: 1.5rem; }
+        .app-hero-readout { text-align: left; }
+        .target-card-row { display: block; }
+        .target-card-row .v { display: block; text-align: left; margin-top: 0.15rem; }
+    }
+    @media (max-width: 760px) {
+        section[data-testid="stSidebar"],
+        section[data-testid="stSidebar"] > div:first-child {
+            width: min(86vw, 300px) !important;
+            min-width: 0 !important;
+        }
+        div[data-testid="stTabs"] [data-baseweb="tab-list"] { gap: 0.2rem; }
+        div[data-testid="stTabs"] button[role="tab"] { flex: 1; padding: 0.7rem 0.5rem; }
+        div[data-testid="stFileUploader"] [data-testid="stFileUploaderDropzone"] {
+            min-height: 9rem;
+        }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        div[data-testid="stButton"] > button,
+        div[data-testid="stDownloadButton"] > button { transition: none; }
+    }
