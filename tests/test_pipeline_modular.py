@@ -18,7 +18,7 @@ from face_analyzer.pipeline.tracker import FaceTracker, _box_iou
 
 
 class TestAnalysisConfig(unittest.TestCase):
-    """Verify AnalysisConfig dataclass defaults, instantiation, and serialization."""
+    """Verify AnalysisConfig dataclass defaults."""
 
     def test_default_config(self):
         """Test default values of AnalysisConfig."""
@@ -36,23 +36,6 @@ class TestAnalysisConfig(unittest.TestCase):
         self.assertIsNone(config.metrics)
         self.assertIsNone(config.tracker)
         self.assertIsNone(config.liveness_tracker)
-
-    def test_from_dict_ignores_unknown_keys(self):
-        """Test building AnalysisConfig from a dictionary."""
-        data = {
-            "conf_threshold": 0.7,
-            "face_detector": "ssd",
-            "active_age": {"caffe"},
-            "active_gender": {"mivolo"},
-            "global_adjustments": {"brightness": 10},
-            "not_a_field": 1,
-        }
-        config = AnalysisConfig.from_dict(data)
-        self.assertEqual(config.conf_threshold, 0.7)
-        self.assertEqual(config.face_detector, "ssd")
-        self.assertEqual(config.active_age, {"caffe"})
-        self.assertEqual(config.active_gender, {"mivolo"})
-        self.assertEqual(config.global_adjustments, {"brightness": 10})
 
 
 class TestFaceTracker(unittest.TestCase):

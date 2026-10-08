@@ -50,12 +50,9 @@ from .image_utils import (
     face_crop_bounds,
     is_grayscale_frame,
 )
-from .types import BoundingBox, Detection, FaceResult, Models
+from .types import Models
 
 __all__ = [
-    "BoundingBox",
-    "Detection",
-    "FaceResult",
     "Models",
     "is_grayscale_frame",
     "face_crop_bounds",
