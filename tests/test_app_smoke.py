@@ -40,7 +40,6 @@ def test_sidebar_toggling_a_model_checkbox_keeps_app_alive():
     assert not at.exception
 
 
-
 def test_sidebar_renders_model_checkboxes():
     assert len(_run().sidebar.checkbox) >= 1
 

@@ -15,7 +15,8 @@ from PIL import Image
 from streamlit_cropper import st_cropper
 
 from .. import inference
-from .sidebar import SidebarState, _adjustment_sliders
+from .adjustments import adjustment_sliders
+from .sidebar import SidebarState
 from .theme import THEME_ACCENTS
 
 IMAGE_DISPLAY_WIDTH = 900
@@ -26,7 +27,7 @@ def _model_result_order(row: dict) -> tuple:
     return (row["Feature"], row["Model"] not in inference.HEADLINE_MODEL_KEYS, row["Model"])
 
 
-def _target_card_html(face: dict) -> str:
+def target_card_html(face: dict) -> str:
     """Render one face's results as a HUD-style dossier card (native markup, not pixel text --
     keeps results legible no matter how many faces are packed into one image)."""
     rows = ""
@@ -69,7 +70,7 @@ def _hoverable_face_image(frame_bgr: np.ndarray, faces: list[dict]) -> str:
             f'<div class="face-hover-target{placement}" style="{style}" tabindex="0" '
             f'aria-label="Face {face["idx"]}: hover or focus for details">'
             f'<div class="face-hover-label">{escape(_one_line_summary(face))}</div>'
-            f'<div class="face-hover-info">{_target_card_html(face)}</div></div>'
+            f'<div class="face-hover-info">{target_card_html(face)}</div></div>'
         )
     return (
         f'<div class="face-hover-image" style="aspect-ratio:{width}/{height}">'
@@ -108,7 +109,7 @@ def _render_photo_editor(
         editing = st.session_state.get(editing_key, False)
         if editing:
             st.caption("Drag the crop rectangle, then adjust the preview before analysis.")
-            adjustments = _adjustment_sliders(
+            adjustments = adjustment_sliders(
                 "Adjust the image before detection.", adjustment_key, column_count=1,
             )
         else:
@@ -274,7 +275,7 @@ def process_and_display(
                     st.session_state[face_editor_open_key] = not st.session_state[face_editor_open_key]
                     st.rerun()
                 if st.session_state[face_editor_open_key]:
-                    individual_adjustments = _adjustment_sliders(
+                    individual_adjustments = adjustment_sliders(
                         "Edit this crop only. Analysis labels use the detected crop.",
                         f"individual_adj_{identifier}_{face['idx']}",
                         column_count=1,
@@ -321,7 +322,7 @@ def process_and_display(
                     st.download_button("Download face PNG", cv2.imencode(".png", result)[1].tobytes(),
                                        file_name=f"face_{face['idx']}_processed.png", mime="image/png",
                                        key=f"image_op_dl_{identifier}_{face['idx']}")
-            st.markdown(_target_card_html(face), unsafe_allow_html=True)
+            st.markdown(target_card_html(face), unsafe_allow_html=True)
 
             col_search, col_save = st.columns(2)
             if col_search.button("Search", key=f"search_btn_{identifier}_{face['idx']}"):

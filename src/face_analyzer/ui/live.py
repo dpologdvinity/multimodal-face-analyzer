@@ -24,7 +24,7 @@ from ..inference import (
     maybe_colorize,
 )
 from ..pipeline.config import AnalysisConfig
-from .results import _target_card_html
+from .results import target_card_html
 from .sidebar import SidebarState
 
 # Slow per-face classifiers that frame skipping throttles; detection, the landmark and hand
@@ -169,8 +169,8 @@ def render_live_tab(
     enable_voice_fusion = voice_col.checkbox(
         "Enable microphone-assisted fusion (experimental)", value=False, key="enable_voice_fusion",
         help="Heuristic only: cross-checks mic loudness against the largest face's emotion "
-             "label. Not a trained speech-emotion model -- see src/inference.py's "
-             "VoiceFaceFusion docstring for why.",
+             "label. Not a trained speech-emotion model -- see the VoiceFaceFusion "
+             "docstring in face_analyzer/attributes/emotion.py for why.",
     )
     voice_fusion = _get_voice_fusion() if enable_voice_fusion else None
     if voice_fusion is not None and voice_col.button("Reset voice buffer", key="reset_voice_buffer"):
@@ -226,7 +226,7 @@ def render_live_tab(
             with live_info.container():
                 st.markdown("#### Live face details")
                 for face in live_snapshot["faces"]:
-                    st.markdown(_target_card_html(face), unsafe_allow_html=True)
+                    st.markdown(target_card_html(face), unsafe_allow_html=True)
         else:
             live_info.caption("Waiting for a detected face…")
         with metrics_lock:

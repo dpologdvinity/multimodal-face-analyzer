@@ -1,6 +1,7 @@
 """Theme picker, per-theme accents, and the app stylesheet."""
 from __future__ import annotations
 
+import functools
 from pathlib import Path
 
 import streamlit as st
@@ -38,6 +39,7 @@ def select_theme() -> str:
     return st.sidebar.selectbox("Theme", THEME_NAMES, key="theme")
 
 
+@functools.cache
 def theme_css() -> str:
     """Return the stylesheet wrapped in the <style> block passed to st.markdown."""
     # The surrounding whitespace reproduces the former inline triple-quoted literal exactly.
