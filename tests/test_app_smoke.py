@@ -46,3 +46,15 @@ def test_sidebar_toggling_a_model_checkbox_keeps_app_alive():
     at = box.set_value(not box.value).run()
     assert not at.exception
 
+
+
+def test_sidebar_renders_model_checkboxes():
+    assert len(_run().sidebar.checkbox) >= 1
+
+
+def test_changing_confidence_threshold_reruns_without_exception():
+    at = _run()
+    slider = at.slider[0]
+    assert slider.label == "Confidence threshold"
+    at = slider.set_value(0.5).run()
+    assert not at.exception
