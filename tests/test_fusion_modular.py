@@ -18,7 +18,6 @@ from face_analyzer.fusion import (
     _format_results,
     _gather_face_results,
     _sanitize_column_name,
-    _weighted_median,
     canonical_race_probabilities,
     fuse_emotion,
     fuse_gender,
@@ -26,16 +25,6 @@ from face_analyzer.fusion import (
     select_age,
     with_headline,
 )
-
-
-class WeightedMedianTests(unittest.TestCase):
-    """_weighted_median: value where cumulative weight first reaches half."""
-
-    def test_picks_value_where_cumulative_weight_reaches_half(self):
-        self.assertEqual(_weighted_median([10.0, 20.0, 30.0], [1.0, 5.0, 1.0]), 20.0)
-
-    def test_heavier_model_outranks_two_lighter_ones(self):
-        self.assertEqual(_weighted_median([10.0, 50.0, 12.0], [1.0, 9.0, 1.0]), 50.0)
 
 
 class SelectAgeTests(unittest.TestCase):

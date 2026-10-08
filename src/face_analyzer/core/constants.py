@@ -63,8 +63,6 @@ RACE_LABELS_FAIRFACE = ['White', 'Black', 'Latino_Hispanic', 'East Asian', 'Sout
 RACE_LABELS_DEEPFACE = ['asian', 'indian', 'black', 'white', 'middle eastern', 'latino hispanic']
 FAIRFACE_AGE_LABELS = ["0-2", "3-9", "10-19", "20-29", "30-39", "40-49", "50-59", "60-69", "70+"]
 MASK_LABELS = ["with_mask", "without_mask"]
-HAIR_COLOR_LABELS = ["black", "brown", "blonde", "red", "grey", "white"]
-EYE_COLOR_LABELS = ["brown", "blue", "green", "hazel", "grey", "amber"]
 
 # Thresholds & margins
 RACE_CLOSE_MARGIN = 0.10
@@ -85,22 +83,8 @@ EIGEN_DIR = BASE_DIR / "eigen"
 EIGEN_FACE_SIZE = (100, 100)
 EIGENFACE_DISTANCE_THRESHOLD = 3000.0
 
-# Model options
-AGE_MODEL_OPTIONS = ["fairface", "caffe", "dex", "mivolo"]
-GENDER_MODEL_OPTIONS = ["fairface", "caffe", "deepface", "mivolo"]
-EMOTION_MODEL_OPTIONS = ["hsemotion", "ferplus", "mini_xception", "dan"]
-RACE_MODEL_OPTIONS = ["fairface", "deepface"]
-LIVENESS_MODEL_OPTIONS = ["mediapipe"]
-RECOGNITION_MODEL_OPTIONS = ["vggface", "lbph"]
+# Face detector options
 FACE_DETECTOR_OPTIONS = ["ssd", "yolo", "scrfd", "retinaface"]
-GLASSES_MODEL_OPTIONS = ["mobilenet"]
-MASK_MODEL_OPTIONS = ["mobilenetv2"]
-HAIR_COLOR_MODEL_OPTIONS = ["colorimetric"]
-EYE_COLOR_MODEL_OPTIONS = ["colorimetric"]
-COLORIZATION_MODEL_OPTIONS = ["eccv16"]
-FACE_LANDMARKS_MODEL_OPTIONS = ["mediapipe"]
-HAND_MODEL_OPTIONS = ["mediapipe"]
-RECONSTRUCTION_3D_MODEL_OPTIONS = ["deep3d"]
 
 # Tracking & detection hyperparameters
 IOU_TRACKING_THRESHOLD = 0.3
@@ -154,8 +138,7 @@ EMOTION_HIGH_AROUSAL_LABELS = {
 }
 EMOTION_LOW_AROUSAL_LABELS = {"neutral", "sad", "sadness"}
 
-# Image editing & transformation options
-GEOMETRIC_TRANSFORM_OPTIONS = ["translate", "reflect", "rotate", "scale", "shear"]
+# Image editing options
 IMAGE_OP_OPTIONS = ["intensity", "enhance", "sharpen", "color_correct", "denoise", "bilateral_filter", "wavelet_denoise"]
 INTENSITY_METHODS = ["negative", "log", "gamma", "contrast_stretch"]
 SHARPEN_METHODS = ["laplacian", "high_boost"]

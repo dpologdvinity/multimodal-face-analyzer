@@ -12,6 +12,8 @@ import cv2
 import numpy as np
 
 from face_analyzer import inference as inf
+from face_analyzer.attributes.race import _fairface_forward, _softmax
+from face_analyzer.attributes.transformers import _margin_align
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -61,7 +63,7 @@ def age_predictions(models, frame, box, landmarks, mivolo) -> dict:
     if "dex" in models.age_nets:
         net = models.age_nets["dex"]
         for name, crop in (("dex", inf.crop_face_dex(frame, box)),
-                           ("dex_align", inf._margin_align(frame, box, 224, 1.3))):
+                           ("dex_align", _margin_align(frame, box, 224, 1.3))):
             blob = cv2.dnn.blobFromImage(crop, 1.0, (224, 224), inf.DEX_MEAN_VALUES,
                                          swapRB=False, crop=False)
             net.setInput(blob)
@@ -70,8 +72,8 @@ def age_predictions(models, frame, box, landmarks, mivolo) -> dict:
             out[name] = float(probs @ np.arange(101))
             out[f"{name}_sd"] = float(np.sqrt(probs @ ((np.arange(101) - out[name]) ** 2)))
     if "fairface" in models.age_nets:
-        logits = inf._fairface_forward(models.age_nets["fairface"], frame, box, "age_output", landmarks)
-        out["fairface_probs"] = inf._softmax(logits).tolist()
+        logits = _fairface_forward(models.age_nets["fairface"], frame, box, "age_output", landmarks)
+        out["fairface_probs"] = _softmax(logits).tolist()
     if "mivolo" in models.age_nets and mivolo is not None:
         out["mivolo"] = mivolo[0]
     return out
@@ -92,8 +94,8 @@ def gender_predictions(models, frame, box, landmarks, mivolo) -> dict:
         probs = models.gender_nets["deepface"](resized[np.newaxis, ...], training=False).numpy().flatten()
         out["deepface"] = float(probs[1] / probs.sum())
     if "fairface" in models.gender_nets:
-        logits = inf._fairface_forward(models.gender_nets["fairface"], frame, box, "gender_output", landmarks)
-        out["fairface"] = float(inf._softmax(logits)[0])
+        logits = _fairface_forward(models.gender_nets["fairface"], frame, box, "gender_output", landmarks)
+        out["fairface"] = float(_softmax(logits)[0])
     if "mivolo" in models.gender_nets and mivolo is not None:
         out["mivolo"] = 1.0 if mivolo[1] == "Male" else 0.0
     return out
@@ -104,8 +106,8 @@ def race_predictions(models, frame, box, landmarks) -> dict:
     face = _face_crop(frame, box)
     out: dict = {}
     if "fairface" in models.race_nets:
-        logits = inf._fairface_forward(models.race_nets["fairface"], frame, box, "race_output", landmarks)
-        out["fairface"] = inf._softmax(logits).tolist()
+        logits = _fairface_forward(models.race_nets["fairface"], frame, box, "race_output", landmarks)
+        out["fairface"] = _softmax(logits).tolist()
     if "deepface" in models.race_nets:
         resized = cv2.resize(face, (224, 224)).astype(np.float32)
         out["deepface"] = models.race_nets["deepface"](

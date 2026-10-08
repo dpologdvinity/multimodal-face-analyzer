@@ -63,10 +63,8 @@ class TestHairColorAccuracy(unittest.TestCase):
         for fn_name in [
             "predict_hair_color_colorimetric",
             "predict_eye_color_colorimetric",
-            "predict_glasses_mobilenet",
-            "predict_mask_mobilenetv2",
-            "predict_age_caffe",
-            "predict_gender_caffe",
+            "dex_age_estimate",
+            "mivolo_estimate",
             "predict_emotion_ferplus",
         ]:
             self.assertTrue(hasattr(attributes, fn_name), f"Missing {fn_name} in attributes")

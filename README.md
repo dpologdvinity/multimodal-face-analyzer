@@ -61,10 +61,11 @@ The source is the installable `face_analyzer` package; paths below are relative 
 (`pipeline/config.py`); the stages live in `pipeline/stages.py` (per-feature face tasks in
 `pipeline/face_tasks.py`, the prediction cache and thread pool in `pipeline/cache.py`). Model
 loading is in `pipeline/loader.py`, fusion in `fusion/`, and vendored third-party architectures
-in `nets/`; `inference.py` is a facade that re-exports them for the UI. The Streamlit entry
-point `app.py` only wires these together: the theme (`ui/theme.py` plus `theme.css`), the
-sidebar (`ui/sidebar.py`), the image adjustment sliders (`ui/adjustments.py`), the per-image
-results view (`ui/results.py`), and the Live webcam tab (`ui/live.py`).
+in `nets/`; `inference.py` is a facade that re-exports the public names the UI, tools and
+tests use. The Streamlit entry point `app.py` only wires these together: the theme
+(`ui/theme.py` plus `theme.css`), the sidebar (`ui/sidebar.py`), the image adjustment sliders
+(`ui/adjustments.py`), the per-image results view (`ui/results.py`), and the Live webcam tab
+(`ui/live.py`).
 
 ## Results
 
@@ -140,8 +141,8 @@ wired but stays unavailable until you supply the Basel Face Model file yourself.
 
 The app also has tools that need no extra model: identity search against your own reference
 photos, SAVE to a local SQLite database with eigenfaces matching, a scan that labels every face
-recognized or unrecognized, an opt-in crowd count, image adjustment sliders, region
-crop and transform, per-face image operations, and an opt-in voice and face arousal check in
+recognized or unrecognized, an opt-in crowd count, image adjustment sliders, a mouse
+crop, per-face image operations, and an opt-in voice and face arousal check in
 LIVE mode. Per-model details: [docs/models.md](docs/models.md).
 
 ## Responsible use

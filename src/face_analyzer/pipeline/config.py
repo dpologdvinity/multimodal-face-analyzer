@@ -31,12 +31,5 @@ class AnalysisConfig:
     liveness_tracker: Any | None = None
     active_liveness: set[str] | None = None
 
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> AnalysisConfig:
-        """Construct AnalysisConfig from a dictionary."""
-        valid_fields = cls.__dataclass_fields__.keys()
-        filtered = {k: v for k, v in data.items() if k in valid_fields}
-        return cls(**filtered)
-
 
 __all__ = ["AnalysisConfig"]

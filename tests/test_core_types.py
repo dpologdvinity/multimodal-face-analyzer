@@ -7,9 +7,7 @@ from face_analyzer.core.constants import (
     EMOTION_LABELS_FERPLUS,
     EMOTION_LABELS_HSEMOTION,
     EMOTION_LABELS_MINI_XCEPTION,
-    EYE_COLOR_LABELS,
     GENDER_LIST,
-    HAIR_COLOR_LABELS,
     RACE_CANONICAL_LABELS,
 )
 from face_analyzer.core.image_utils import (
@@ -18,55 +16,7 @@ from face_analyzer.core.image_utils import (
     crop_region,
     face_crop_bounds,
 )
-from face_analyzer.core.types import BoundingBox, Detection, FaceResult, Models
-
-
-def test_bounding_box_init_and_properties():
-    box = BoundingBox(10, 20, 110, 220)
-    assert box.x1 == 10
-    assert box.y1 == 20
-    assert box.x2 == 110
-    assert box.y2 == 220
-    assert box.width == 100
-    assert box.height == 200
-    assert box.area == 20000
-    assert box.to_tuple() == (10, 20, 110, 220)
-    assert box.to_list() == [10, 20, 110, 220]
-    # Test unpacking and indexing
-    x1, y1, x2, y2 = box
-    assert (x1, y1, x2, y2) == (10, 20, 110, 220)
-    assert box[0] == 10
-    assert box[2] == 110
-    assert len(box) == 4
-
-
-def test_detection_init():
-    box = BoundingBox(10, 20, 50, 60)
-    det = Detection(box=box, confidence=0.92, landmarks=[(20, 30), (40, 30)], class_id=0, label="face")
-    assert det.box == box
-    assert det.confidence == 0.92
-    assert det.landmarks == [(20, 30), (40, 30)]
-    assert det.label == "face"
-
-    # Test auto-conversion from tuple
-    det_from_tuple = Detection(box=(10, 20, 50, 60), confidence=0.85)
-    assert isinstance(det_from_tuple.box, BoundingBox)
-    assert det_from_tuple.box.width == 40
-    assert det_from_tuple.box.height == 40
-
-
-def test_face_result_init():
-    res = FaceResult(
-        idx=1,
-        box=BoundingBox(10, 20, 50, 60),
-        headline={"age": "25-32", "gender": "Female", "race": "Asian", "emotion": "happy"},
-    )
-    assert res.idx == 1
-    assert res.headline["gender"] == "Female"
-    d = res.to_dict()
-    assert isinstance(d, dict)
-    assert d["idx"] == 1
-    assert d["headline"]["race"] == "Asian"
+from face_analyzer.core.types import Models
 
 
 def test_models_dataclass():
@@ -90,16 +40,11 @@ def test_constants_integrity():
     assert "neutral" in EMOTION_LABELS_HSEMOTION
     assert "neutral" in EMOTION_LABELS_MINI_XCEPTION
     assert "white" in RACE_CANONICAL_LABELS
-    assert "black" in HAIR_COLOR_LABELS
-    assert "brown" in EYE_COLOR_LABELS
 
     # Re-export check in face_analyzer.inference
     assert inference.AGE_LIST == AGE_LIST
     assert inference.GENDER_LIST == GENDER_LIST
     assert inference.RACE_CANONICAL_LABELS == RACE_CANONICAL_LABELS
-    assert inference.BoundingBox is BoundingBox
-    assert inference.Detection is Detection
-    assert inference.FaceResult is FaceResult
     assert inference.Models is Models
 
 

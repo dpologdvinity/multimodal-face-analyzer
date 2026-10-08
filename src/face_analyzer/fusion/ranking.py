@@ -6,14 +6,6 @@ import numpy as np
 from ..core.constants import AGE_MODEL_RELIABILITY, FUSED_MODEL_KEY
 
 
-def _weighted_median(values: list[float], weights: list[float]) -> float:
-    """Return the value where cumulative weight first reaches half the total."""
-    order = np.argsort(values)
-    sorted_values = np.asarray(values, dtype=float)[order]
-    cumulative = np.cumsum(np.asarray(weights, dtype=float)[order])
-    return float(sorted_values[int(np.searchsorted(cumulative, cumulative[-1] / 2.0))])
-
-
 def select_age(estimates: dict[str, float]) -> tuple[str, str] | None:
     """Pick the headline age as the most reliable model present, returning (label, model_key)."""
     usable = {key: value for key, value in estimates.items()
