@@ -166,7 +166,11 @@ class ScoreTests(unittest.TestCase):
                 "race_probs/deepface": [0, 0, 0.6, 0.4, 0, 0],
                 "age_probs/fairface": [0, 0, 0, 1.0, 0, 0, 0, 0, 0],
                 "mivolo/face": [34.0, "Male"]}
-        records = [_record(row, white, 0, 3, good) for row in range(4)]
+        # The fit rows give different outputs from the test rows, so weights fitted on the test
+        # rows would differ from the ones asserted below.
+        fit_good = {**good, "gender_probs/caffe": [0.9, 0.1],
+                    "race_probs/deepface": [0, 0, 0.4, 0.6, 0, 0]}
+        records = [_record(row, white, 0, 3, fit_good if row < 2 else good) for row in range(4)]
         records.append(_record(4, black, 1, 4, {}, box=None))
         report = eval_heldout.score(records, fit_rows=[0, 1], test_rows=[2, 3, 4], seed=0,
                                     n_resamples=200)
@@ -176,8 +180,9 @@ class ScoreTests(unittest.TestCase):
         self.assertEqual(report["race"]["backends"]["deepface"]["value"], 0.0)
         self.assertEqual(report["age"]["backends"]["mivolo"]["mean_bucket_offset"]["value"], 1.0)
         self.assertEqual(report["age"]["best_shipped"]["chosen_backend"]["mivolo"], 2)
-        self.assertEqual(report["fusion"]["gender"]["fitted_weights"]["caffe"], 0.0)
-        self.assertEqual(report["fusion"]["race"]["fit_half_accuracy"], {"fairface": 1.0, "deepface": 0.0})
+        self.assertGreater(report["fusion"]["gender"]["fitted_weights"]["caffe"], 0.0)
+        self.assertEqual(report["fusion"]["gender"]["fit_half_accuracy"]["caffe"], 1.0)
+        self.assertEqual(report["fusion"]["race"]["fit_half_accuracy"], {"fairface": 1.0, "deepface": 1.0})
 
 
 if __name__ == "__main__":
