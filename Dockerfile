@@ -43,7 +43,8 @@ FROM python:3.11-slim
 # BFM landmark template) but ships NO working weights -- Deep3DFaceRecon_pytorch's checkpoint
 # and the Basel Face Model data it needs are both gated (Google Drive / university license
 # registration respectively); this ARG alone will never produce a working reconstruction.
-# See README's Known Issues for what the user must supply themselves.
+# EMOTION_MODEL=dan is likewise bring-your-own (its checkpoint is only on Google Drive).
+# tools/fetch_models.py prints where to get each such file; see docs/setup.md.
 # AGE_PROGRESSION_MODEL (franunet, timroelofs123/face_reaging) needs torch. Its BlurPool
 # component is vendored directly into src/face_analyzer/nets/face_reaging_model.py from Adobe's
 # antialiased-cnns, which is CC BY-NC-SA 4.0 (non-commercial) -- a required inference-time
@@ -161,7 +162,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     pip uninstall -y opencv-python opencv-python-headless opencv-contrib-python opencv-contrib-python-headless 2>/dev/null; \
     pip install "${opencv_pkg}==4.14.0.94"
 
-# Application code and always-required model files (face detector)
+# Application code
 COPY pyproject.toml ./
 COPY src/ src/
 # Editable so face_analyzer resolves to /app/src (BASE_DIR, and therefore models/, is derived
@@ -169,44 +170,23 @@ COPY src/ src/
 # --no-deps: requirements.txt and the per-model extras are already installed above.
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-deps -e .
-COPY models/opencv_face_detector.pbtxt models/opencv_face_detector_uint8.pb models/
 
-# BuildKit resolves bind-mount sources at solve time, before conditional RUN logic executes,
-# so every file bound here must exist in the repo (even for builds that don't select it).
-# build-and-run.sh hard-links only selected model files into the build context to avoid
-# staging >3GB of unused weights. Unselected models skip the cp line but the bind succeeds.
-RUN --mount=type=bind,source=models,target=/tmp/models \
-    set -e; \
-    age_csv=",$AGE_MODEL,"; gender_csv=",$GENDER_MODEL,"; emotion_csv=",$EMOTION_MODEL,"; \
-    race_csv=",$RACE_MODEL,"; face_landmarks_csv=",$FACE_LANDMARKS_MODEL,"; liveness_csv=",$LIVENESS_MODEL,"; recognition_csv=",$RECOGNITION_MODEL,"; \
-    glasses_csv=",$GLASSES_MODEL,"; mask_csv=",$MASK_MODEL,"; colorization_csv=",$COLORIZATION_MODEL,"; hand_csv=",$HAND_MODEL,"; recon3d_csv=",$RECONSTRUCTION_3D_MODEL,"; yolo_face_csv=",$YOLO_FACE_MODEL,"; scrfd_face_csv=",$SCRFD_FACE_MODEL,"; retinaface_csv=",$RETINAFACE_MODEL,"; age_progression_csv=",$AGE_PROGRESSION_MODEL,"; \
-    case "$age_csv" in *,caffe,*) cp /tmp/models/age_deploy.prototxt /tmp/models/age_net.caffemodel models/ ;; esac; \
-    case "$gender_csv" in *,caffe,*) cp /tmp/models/gender_deploy.prototxt /tmp/models/gender_net.caffemodel models/ ;; esac; \
-    case "$age_csv" in *,fairface,*) cp /tmp/models/fairface_7class.onnx models/ ;; esac; \
-    case "$gender_csv" in *,fairface,*) cp /tmp/models/fairface_7class.onnx models/ ;; esac; \
-    case "$age_csv" in *,dex,*) cp /tmp/models/dex_age.prototxt /tmp/models/dex_age.caffemodel models/ ;; esac; \
-    case "$gender_csv" in *,deepface,*) cp /tmp/models/deepface_gender.h5 models/ ;; esac; \
-    case "$emotion_csv" in *,dan,*) cp /tmp/models/dan_affecnet7.pth models/ ;; esac; \
-    case "$emotion_csv" in *,ferplus,*) cp /tmp/models/emotion_ferplus.onnx models/ ;; esac; \
-    case "$emotion_csv" in *,hsemotion,*) cp /tmp/models/hsemotion_enet_b0_8_best_vgaf.onnx models/ ;; esac; \
-    case "$emotion_csv" in *,mini_xception,*) cp /tmp/models/mini_xception_fer.h5 models/ ;; esac; \
-    cp /tmp/models/haarcascade_eye.xml models/; \
-    case "$race_csv" in *,fairface,*) cp /tmp/models/fairface_7class.onnx models/ ;; esac; \
-    case "$race_csv" in *,deepface,*) cp /tmp/models/deepface_race.h5 models/ ;; esac; \
-    case "$age_csv" in *,mivolo,*) cp /tmp/models/mivolo_v2.safetensors /tmp/models/mivolo_v2_config.json models/ ;; esac; \
-    case "$gender_csv" in *,mivolo,*) cp /tmp/models/mivolo_v2.safetensors /tmp/models/mivolo_v2_config.json models/ ;; esac; \
-    case "$face_landmarks_csv" in *,mediapipe,*) cp /tmp/models/face_landmarker.task models/ ;; esac; \
-    case "$liveness_csv" in *,mediapipe,*) cp /tmp/models/face_landmarker.task models/ ;; esac; \
-    case "$recognition_csv" in *,vggface,*) cp /tmp/models/deepface_vgg.h5 models/ ;; esac; \
-    case "$glasses_csv" in *,mobilenet,*) cp /tmp/models/glasses_detector.onnx models/ ;; esac; \
-    case "$mask_csv" in *,mobilenetv2,*) cp /tmp/models/mask_detector.h5 models/ ;; esac; \
-    case "$colorization_csv" in *,eccv16,*) cp /tmp/models/colorization_deploy_v2.prototxt /tmp/models/colorization_release_v2.caffemodel /tmp/models/pts_in_hull.npy models/ ;; esac; \
-    case "$hand_csv" in *,mediapipe,*) cp /tmp/models/hand_landmarker.task models/ ;; esac; \
-    case "$recon3d_csv" in *,deep3d,*) mkdir -p models/BFM && cp /tmp/models/BFM/similarity_Lm3D_all.mat models/BFM/ && cp /tmp/models/deep3d_recon_resnet50.pth models/ ;; esac; \
-    case "$yolo_face_csv" in *,yolo,*) cp /tmp/models/yolov8n_face.onnx models/ ;; esac; \
-    case "$scrfd_face_csv" in *,scrfd,*) cp /tmp/models/scrfd_2.5g_bnkps.onnx models/ ;; esac; \
-    case "$retinaface_csv" in *,retinaface,*) cp /tmp/models/retinaface_mobilenet0.25.onnx models/ ;; esac; \
-    case "$age_progression_csv" in *,franunet,*) cp /tmp/models/face_reaging_unet.pth models/ ;; esac
+# Only the files tracked in git reach the build context (see .dockerignore): the manifest, the
+# small permissively licensed configs, and the required SSD face detector. The selected weights
+# are downloaded here from the sources in models/manifest.json and checked against its sha256s,
+# so no local weights are needed to build. Bring-your-own models (dan, deep3d) only print where
+# to get the file; the app then lists their features as unavailable, and you can mount the file
+# into /app/models/ at runtime instead.
+COPY models/ models/
+COPY tools/fetch_models.py tools/
+RUN python tools/fetch_models.py --keys \
+    "AGE_MODEL=$AGE_MODEL" "GENDER_MODEL=$GENDER_MODEL" "EMOTION_MODEL=$EMOTION_MODEL" \
+    "RACE_MODEL=$RACE_MODEL" "FACE_LANDMARKS_MODEL=$FACE_LANDMARKS_MODEL" \
+    "LIVENESS_MODEL=$LIVENESS_MODEL" "RECOGNITION_MODEL=$RECOGNITION_MODEL" \
+    "GLASSES_MODEL=$GLASSES_MODEL" "MASK_MODEL=$MASK_MODEL" "COLORIZATION_MODEL=$COLORIZATION_MODEL" \
+    "HAND_MODEL=$HAND_MODEL" "RECONSTRUCTION_3D_MODEL=$RECONSTRUCTION_3D_MODEL" \
+    "YOLO_FACE_MODEL=$YOLO_FACE_MODEL" "SCRFD_FACE_MODEL=$SCRFD_FACE_MODEL" \
+    "RETINAFACE_MODEL=$RETINAFACE_MODEL" "AGE_PROGRESSION_MODEL=$AGE_PROGRESSION_MODEL"
 
 # Expose default Streamlit port
 EXPOSE 8501

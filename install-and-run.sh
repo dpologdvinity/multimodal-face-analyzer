@@ -502,6 +502,18 @@ echo "Installing ${OPENCV_PACKAGE} (selected OpenCV runtime)" >&2
 "${PIP[@]}" uninstall -y opencv-python opencv-python-headless opencv-contrib-python opencv-contrib-python-headless >/dev/null 2>&1 || true
 "${PIP[@]}" install "${OPENCV_PACKAGE}==4.14.0.94"
 
+# Downloads only the selected weights (into $FACE_ANALYZER_MODEL_DIR if set), skips files that
+# are already present and verified, and prints where to get bring-your-own models.
+echo "Fetching the selected model weights" >&2
+"$VENV_PYTHON" tools/fetch_models.py --keys \
+    "AGE_MODEL=$AGE_MODEL" "GENDER_MODEL=$GENDER_MODEL" "EMOTION_MODEL=$EMOTION_MODEL" \
+    "RACE_MODEL=$RACE_MODEL" "FACE_LANDMARKS_MODEL=$FACE_LANDMARKS_MODEL" \
+    "LIVENESS_MODEL=$LIVENESS_MODEL" "RECOGNITION_MODEL=$RECOGNITION_MODEL" \
+    "GLASSES_MODEL=$GLASSES_MODEL" "MASK_MODEL=$MASK_MODEL" "COLORIZATION_MODEL=$COLORIZATION_MODEL" \
+    "HAND_MODEL=$HAND_MODEL" "RECONSTRUCTION_3D_MODEL=$RECONSTRUCTION_3D_MODEL" \
+    "YOLO_FACE_MODEL=$YOLO_FACE_MODEL" "SCRFD_FACE_MODEL=$SCRFD_FACE_MODEL" \
+    "RETINAFACE_MODEL=$RETINAFACE_MODEL" "AGE_PROGRESSION_MODEL=$AGE_PROGRESSION_MODEL"
+
 echo "" >&2
 echo "Running at http://localhost:${PORT}" >&2
 echo "Press Ctrl-C to stop Streamlit." >&2

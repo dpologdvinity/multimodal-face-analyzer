@@ -1,3 +1,4 @@
+import json
 import os
 import subprocess
 import tempfile
@@ -84,66 +85,24 @@ class BuildPromptFormattingTests(unittest.TestCase):
                 self.assertIn("SCRFD_FACE_MODEL=scrfd", output)
                 self.assertIn("RETINAFACE_MODEL=retinaface", output)
 
-    def test_build_context_contains_only_required_models(self):
-        """Verify default selection (all 0) stages only the three core model files."""
+    def test_build_uses_the_repository_as_context_and_forwards_every_model_arg(self):
+        """Weights are fetched inside the build, so the context is the repo and every ARG is passed."""
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
             fake_bin = temp_path / "bin"
             fake_bin.mkdir()
-            manifest = temp_path / "models.txt"
+            build_args = temp_path / "build-args.txt"
             docker = fake_bin / "docker"
-            # Mock docker to capture which models were passed to the build context
             docker.write_text(
                 "#!/bin/sh\n"
-                "if [ \"$1\" = build ]; then\n"
-                "  for arg do context=\"$arg\"; done\n"
-                "  find \"$context/models\" -type f -printf '%P\\n' | sort > \"$DOCKER_MODEL_MANIFEST\"\n"
-                "fi\n"
+                "if [ \"$1\" = build ]; then printf '%s\\n' \"$@\" > \"$DOCKER_BUILD_ARGS\"; fi\n"
                 "exit 0\n"
             )
             docker.chmod(0o755)
 
             env = os.environ.copy()
             env["PATH"] = f"{fake_bin}:{env['PATH']}"
-            env["DOCKER_MODEL_MANIFEST"] = str(manifest)
-            result = subprocess.run(
-                ["bash", str(SCRIPT)],
-                cwd=SCRIPT.parent,
-                input="\n".join(["0"] * 8 + ["n", "q"]) + "\n",
-                text=True,
-                capture_output=True,
-                env=env,
-                check=False,
-            )
-
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(
-                manifest.read_text().splitlines(),
-                ["haarcascade_eye.xml", "opencv_face_detector.pbtxt", "opencv_face_detector_uint8.pb"],
-            )
-
-    def test_shared_model_is_staged_once_for_multiple_features(self):
-        """Verify fairface_7class.onnx appears once when age and gender both select it."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
-            fake_bin = temp_path / "bin"
-            fake_bin.mkdir()
-            manifest = temp_path / "models.txt"
-            docker = fake_bin / "docker"
-            # Mock docker to capture which models were passed to the build context
-            docker.write_text(
-                "#!/bin/sh\n"
-                "if [ \"$1\" = build ]; then\n"
-                "  for arg do context=\"$arg\"; done\n"
-                "  find \"$context/models\" -type f -printf '%P\\n' | sort > \"$DOCKER_MODEL_MANIFEST\"\n"
-                "fi\n"
-                "exit 0\n"
-            )
-            docker.chmod(0o755)
-
-            env = os.environ.copy()
-            env["PATH"] = f"{fake_bin}:{env['PATH']}"
-            env["DOCKER_MODEL_MANIFEST"] = str(manifest)
+            env["DOCKER_BUILD_ARGS"] = str(build_args)
             result = subprocess.run(
                 ["bash", str(SCRIPT)],
                 cwd=SCRIPT.parent,
@@ -155,10 +114,30 @@ class BuildPromptFormattingTests(unittest.TestCase):
             )
 
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(
-                manifest.read_text().splitlines(),
-                ["fairface_7class.onnx", "haarcascade_eye.xml", "opencv_face_detector.pbtxt", "opencv_face_detector_uint8.pb"],
-            )
+            args = build_args.read_text().splitlines()
+            self.assertEqual(args[-1], str(SCRIPT.parent))
+            self.assertIn("AGE_MODEL=fairface", args)
+            self.assertIn("GENDER_MODEL=fairface", args)
+            self.assertIn("EMOTION_MODEL=", args)
+            dockerfile = (SCRIPT.parent / "Dockerfile").read_text()
+            declared = {line.split()[1].split("=")[0] for line in dockerfile.splitlines() if line.startswith("ARG ")}
+            forwarded = {arg.split("=")[0] for arg in args if "=" in arg}
+            self.assertEqual(declared, forwarded)
+
+
+class DockerIgnoreTests(unittest.TestCase):
+    def test_ignore_files_admit_exactly_the_tracked_model_files(self):
+        """.dockerignore and .gitignore must let through only the manifest's in-git files."""
+        root = SCRIPT.parent
+        manifest = json.loads((root / "models" / "manifest.json").read_text())
+        expected = {"manifest.json"} | {entry["path"] for entry in manifest["files"] if entry["in_git"]}
+        for name, prefix in ((".dockerignore", "!models/"), (".gitignore", "!/models/")):
+            with self.subTest(name=name):
+                lines = (root / name).read_text().splitlines()
+                admitted = {
+                    line[len(prefix):] for line in lines if line.startswith(prefix) and not line.endswith(("/", "BFM"))
+                }
+                self.assertEqual(admitted, expected)
 
 
 if __name__ == "__main__":
