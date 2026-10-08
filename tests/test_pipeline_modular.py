@@ -1,11 +1,13 @@
 """Unit tests for the modular pipeline subpackage (src/face_analyzer/pipeline)."""
 import inspect
 import unittest
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 
 from face_analyzer.core.types import Models
+from face_analyzer.pipeline import face_tasks
 from face_analyzer.pipeline.analyzer import aggregate_demographics, analyze_frame
 from face_analyzer.pipeline.config import AnalysisConfig
 from face_analyzer.pipeline.drawing import (
@@ -14,6 +16,7 @@ from face_analyzer.pipeline.drawing import (
     draw_outlined_text,
     draw_recognition_scan,
 )
+from face_analyzer.pipeline.stages import _face_record
 from face_analyzer.pipeline.tracker import FaceTracker, _box_iou
 
 
@@ -173,6 +176,32 @@ class TestAnalyzeFrameModular(unittest.TestCase):
         with patch("face_analyzer.pipeline.stages.detect_faces", return_value=[]) as detect:
             analyze_frame(models, frame, config)
         self.assertEqual(detect.call_args.args[-1], 0.6)
+
+
+class TestRaceHeadline(unittest.TestCase):
+    """Verify the race headline flows from _race_task through _face_record."""
+
+    def test_race_headline_names_fairface_with_both_backends(self):
+        """Name fairface as the race headline when both race backends answer."""
+        # The golden test runs only fairface for race, so it never produces a race headline.
+        probs = {"fairface": np.array([.8, .1, .02, .02, .02, .02, .02]),
+                 "deepface": np.array([0, 0, 1.0, 0, 0, 0])}
+        face = np.zeros((8, 8, 3), np.uint8)
+        inputs = SimpleNamespace(face=face, crop_frame=face, crop_box=(0, 0, 8, 8),
+                                 fairface_landmarks=None, box=(0, 0, 8, 8), track_id=None)
+        models = SimpleNamespace(race_nets={"deepface": object(), "fairface": object()})
+        with patch.object(face_tasks, "_cached_face_predict", side_effect=lambda f, key, *_: probs[key]):
+            race = face_tasks._race_task(models, AnalysisConfig(active_race={"deepface", "fairface"}), inputs)
+        self.assertEqual(race[1], ("White", "fairface"))
+        e = ([], None)
+        rec = _face_record(0, {"inputs": inputs, "age": e, "gender": e, "emotion": e, "race": race,
+                               "gaze": [], "head_pose": [], "recognition": e, "glasses": [], "mask": [],
+                               "hair_color": [], "eye_color": [], "liveness": e})
+        self.assertEqual(rec["headline"]["race"], "White")
+        self.assertEqual(rec["raw_columns"]["race_best"], "White (fairface)")
+        self.assertNotIn("race_fused", rec["raw_columns"])
+        self.assertEqual(rec["model_results"][0], {"Feature": "RACE", "Model": "best", "Output": "White (fairface)"})
+        self.assertEqual(aggregate_demographics([rec])["race"]["best"], {"White (fairface)": 1})
 
 
 if __name__ == "__main__":
