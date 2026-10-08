@@ -11,7 +11,8 @@ The older 75-face benchmark is in [../benchmark.md](../benchmark.md).
 
 2,000 FairFace validation images (seed 0), stratified by race and split into a 998-image fit
 half and a 1,002-image test half. Every figure is on the test half, with a 95% bootstrap interval
-in brackets. Run on 2026-10-08 against package commit `e99c6da`, SSD detector, two CPU cores
+in brackets. Run on 2026-10-08 against package commit `e99c6da` (re-scored from the cache, with
+no model re-run, after the race headline change below), SSD detector, two CPU cores
 (4.7 s per image with every age, gender, race and emotion backend active, 156 minutes in total;
 `mivolo` alone takes a median 2.7 s per face, and the two `deepface` models about 1.7 s each).
 
@@ -25,11 +26,11 @@ in brackets. Run on 2026-10-08 against package commit `e99c6da`, SSD detector, t
 | `caffe` | 73.5% (70.7-76.1) | - | 26.8% (23.8-29.5) | 1.43 (1.35-1.51) |
 | `deepface` | 77.5% (74.8-80.0) | 63.0% (60.1-66.0) | - | - |
 | `dex` | - | - | 39.1% (36.2-41.9) | 0.79 (0.75-0.84) |
-| **App (shipped)** | **96.7% (95.5-97.7)** | **63.3% (60.5-66.3)** | **62.3% (59.2-65.1)** | 0.42 (0.38-0.45) |
+| **App (shipped)** | **96.7% (95.5-97.7)** | **76.5% (74.0-79.2)** | **62.3% (59.2-65.1)** | 0.42 (0.38-0.45) |
 
-"App (shipped)" is what the app shows as its headline: the `fused` gender and race rows, and the
-`best` age row. `select_age` picked `mivolo` for 1,001 of the 1,002 test faces, so the app's age
-is MiVOLO's. The shipped gender fusion is MiVOLO's answer by construction: MiVOLO's P(Male) is a
+"App (shipped)" is what the app shows as its headline: the `fused` gender row and the `best` age
+and race rows. `select_age` picked `mivolo` for 1,001 of the 1,002 test faces, so the app's age
+is MiVOLO's; `select_race` picked `fairface` for all 1,002, so the app's race is FairFace's. The shipped gender fusion is MiVOLO's answer by construction: MiVOLO's P(Male) is a
 hard 0 or 1 carrying weight 3 of the 6 total, so the weighted mean is at least 0.5 whenever MiVOLO
 says Male and at most 0.5 whenever it says Female, and the other three backends can never
 overrule it (short of an exact 0.5 tie).
@@ -42,25 +43,40 @@ overrule it (short of an exact 0.5 tie).
 
 Recall per canonical class on the test half:
 
-| Canonical race | n | `fairface` | `deepface` | App (shipped) |
-| --- | --- | --- | --- | --- |
-| White | 191 | 74.9% | 68.6% | 68.6% |
-| Black | 142 | 89.4% | 81.7% | 81.7% |
-| Asian | 271 | 90.0% | 73.4% | 74.2% |
-| Indian | 139 | 69.8% | 68.3% | 68.3% |
-| Latino | 148 | 56.8% | 42.6% | 43.2% |
-| Middle Eastern | 111 | 64.9% | 24.3% | 24.3% |
+| Canonical race | n | `fairface` | `deepface` | App (shipped) | Previous fusion |
+| --- | --- | --- | --- | --- | --- |
+| White | 191 | 74.9% | 68.6% | 74.9% | 68.6% |
+| Black | 142 | 89.4% | 81.7% | 89.4% | 81.7% |
+| Asian | 271 | 90.0% | 73.4% | 90.0% | 74.2% |
+| Indian | 139 | 69.8% | 68.3% | 69.8% | 68.3% |
+| Latino | 148 | 56.8% | 42.6% | 56.8% | 43.2% |
+| Middle Eastern | 111 | 64.9% | 24.3% | 64.9% | 24.3% |
 
 Latino and Middle Eastern are the weakest classes for both backends, and `deepface` is far weaker
 than `fairface` on Middle Eastern.
 
-### Why the race fusion is worse than `fairface` alone
+### Why race is no longer fused
 
-`deepface`'s race probabilities are saturated: its top class has a mean probability of 0.999,
-and is above 0.9 on 99.6% of faces, against 0.75 and 35% for `fairface`. An equal-weight blend of
-the two distributions is therefore decided by `deepface` whenever they disagree, so the combined
-answer tracks the weaker backend (63.3%, against 76.5% for `fairface` alone). Re-weighting only
-partly helps, because a weight scales a near one-hot distribution without making it express doubt.
+The race headline used to be an equal-weight blend of the two backends' canonical
+distributions. `deepface`'s race probabilities are saturated: its top class has a mean
+probability of 0.999, and is above 0.9 on 99.6% of faces, against 0.75 and 35% for `fairface`.
+The blend was therefore decided by `deepface` whenever they disagreed, so the combined answer
+tracked the weaker backend. Re-weighting only partly helps, because a weight scales a near
+one-hot distribution without making it express doubt. Following this evaluation the race
+headline names its most reliable backend (`select_race`, ordered `fairface` > `deepface`), as
+age already did. The previous fusion is reproduced in `tools/eval_heldout.py` from the cached
+probabilities so the comparison stays scoreable; the last column is the paired per-face
+difference:
+
+| Race headline | Accuracy | Shipped best-model - this |
+| ------------- | -------- | ------------------------- |
+| Best model (shipped) | 76.5% (74.0-79.2) | - |
+| Previous fusion, equal weights | 63.3% (60.5-66.3) | +13.3 pp (+10.2 to +16.4) |
+| Fusion, fitted weights | 70.1% (67.4-72.8) | +6.5 pp (+3.8 to +9.3) |
+
+The ordering was chosen from this evaluation's own fit and test halves (both rank `fairface`
+first), and both race backends are in-distribution here, so this is evidence for FairFace-like
+photos rather than a general guarantee; the in-sample 75-face set ranked `deepface` first.
 
 ## What these numbers can and cannot show
 
@@ -116,11 +132,15 @@ partly helps, because a weight scales a near one-hot distribution without making
    each backend's raw output (probabilities where the backend exposes them). Those are cached in
    `data/eval_cache/<config>/predictions.jsonl`, so re-scoring never re-runs a model. As a check,
    the labels and combined answers rebuilt from the cache are compared with what `analyze_frame()`
-   displayed for every face; the JSON's `cache_vs_display_mismatches` are all zero.
+   displayed for every face; the JSON's `cache_vs_display_mismatches` are all zero. The cache was
+   recorded before the race headline change, so its race headline is the previous fusion, which
+   the reproduction matches (`previous_fused_race`); the new race headline is `select_race` over
+   the per-backend labels, which are themselves checked.
 5. **Scoring.** Accuracy is over test faces the detector found. A backend that gives no answer for
    a found face counts as wrong. A detection miss is reported through detection recall, not in the
    attribute accuracies. Every figure has a 95% percentile bootstrap interval (1,000 resamples,
-   seeded); the fitted-versus-shipped comparison is bootstrapped on the paired per-face difference.
+   seeded); the fusion and race-headline comparisons are bootstrapped on the paired per-face
+   difference.
 
 ## Label mappings
 
@@ -145,7 +165,8 @@ So DeepFace can never be right about East versus Southeast Asian, and the merged
 gives both backends an easier target than FairFace's own seven-class task. `fairface`'s native
 seven-class accuracy is reported separately. A backend's answer is its top-1 class, the first
 class the app displays; the close-runner-up form `White (52%)/Black (47%)` is scored on its first
-class only. The combined answer is the shipped `fuse_race` blend, scored the same way.
+class only. The app's race headline is the label of the backend `select_race` picks, scored the
+same way.
 
 **Age.** FairFace's buckets are 0-2, 3-9, 10-19, 20-29, 30-39, 40-49, 50-59, 60-69 and 70+.
 
@@ -165,17 +186,19 @@ backend answered.
 
 ## Fusion weights
 
-The shipped weights in `core/constants.py` were hand-set on the 75-face set. To test them, weights
-were fitted on the fit half and both sets were scored on the test half. The fitting rule is the
+The shipped gender weights in `core/constants.py`, and the equal race weights the app used
+before the race headline change, were hand-set on the 75-face set. To test them, weights were
+fitted on the fit half and both sets were scored on the test half. The fitting rule is the
 weighted-majority-vote optimum for independent voters with symmetric errors (Nitzan & Paroush,
 1982): each backend gets `log((K - 1) * acc / (1 - acc))`, where `acc` is its fit-half top-1
 accuracy and `K` the number of classes (2 for gender, 6 for race), clipped at 0. It uses one
 number per backend, so it has little room to overfit the fit half. The weights then go through
-the shipped `fuse_gender`/`fuse_race` unchanged.
+the shipped `fuse_gender` and the reproduced previous race fusion unchanged.
 
-Fit-half top-1 accuracy and the resulting weights, next to the shipped ones:
+Fit-half top-1 accuracy and the resulting weights, next to the shipped (gender) and previous
+(race) ones:
 
-| Backend | Fit-half accuracy | Shipped weight | Fitted weight |
+| Backend | Fit-half accuracy | Shipped / previous weight | Fitted weight |
 | ------- | ----------------- | -------------- | ------------- |
 | gender `mivolo` | 97.0% | 3.0 | 3.47 |
 | gender `fairface` | 93.6% | 2.0 | 2.68 |
@@ -184,25 +207,25 @@ Fit-half top-1 accuracy and the resulting weights, next to the shipped ones:
 | race `fairface` | 73.0% | 1.0 | 2.60 |
 | race `deepface` | 63.6% | 1.0 | 2.17 |
 
-Test-half accuracy of the shipped `fuse_gender`/`fuse_race` under each weight set; the last column
-is the paired per-face difference:
+Test-half accuracy of each fusion under each weight set; the last column is the paired per-face
+difference:
 
-| Fusion | Shipped weights | Fitted weights | Fitted - shipped |
-| ------ | --------------- | -------------- | ---------------- |
+| Fusion | Shipped (gender) / previous (race) weights | Fitted weights | Difference |
+| ------ | ------------------------------------------ | -------------- | ---------- |
 | gender | 96.7% (95.5-97.7) | 96.3% (95.1-97.4) | -0.4 pp (-0.9 to +0.0) |
 | race | 63.3% (60.5-66.3) | 70.1% (67.4-72.8) | +6.8 pp (+5.1 to +8.5) |
 
-**Recommendation (not applied; the shipped weights are unchanged).**
-
-- **Gender:** keep the shipped weights, or drop the fusion: the fitted ones are no better (-0.4
-  points, interval -0.9 to 0.0), and the shipped ones reproduce MiVOLO alone by construction.
-- **Race:** the fitted weights beat the shipped equal weights by 6.8 points (5.1 to 8.5), but
-  `fairface` alone (76.5%) beats both. Because `deepface`'s probabilities are saturated, the blend
-  only defers to `fairface` once `deepface`'s weight is close to zero, which amounts to using
-  `fairface` alone. The options are to lead the race headline with `fairface` alone, or to
-  calibrate `deepface` (for example temperature scaling fitted on the fit half) before
-  blending. Both FairFace-trained backends are in-distribution here, so this ranking may not
-  carry over to other photos; the 75-face set (in-sample) ranked `deepface` first.
+- **Gender (not applied; the shipped weights are unchanged):** keep the shipped weights, or drop
+  the fusion: the fitted ones are no better (-0.4 points, interval -0.9 to 0.0), and the shipped
+  ones reproduce MiVOLO alone by construction.
+- **Race (applied: the headline now names `fairface`):** the fitted weights beat the previous
+  equal weights by 6.8 points (5.1 to 8.5), but `fairface` alone (76.5%) beats both, by 6.5
+  points (3.8 to 9.3) over the fitted weights. Because `deepface`'s probabilities are saturated,
+  the blend only defers to `fairface` once `deepface`'s weight is close to zero, which amounts to
+  using `fairface` alone. Calibrating `deepface` (for example temperature scaling fitted on the
+  fit half) before blending is the untried alternative. Both FairFace-trained backends are
+  in-distribution here, so this ranking may not carry over to other photos; the 75-face set
+  (in-sample) ranked `deepface` first.
 
 ## Reproduce
 

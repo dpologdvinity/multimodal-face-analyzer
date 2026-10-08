@@ -30,7 +30,7 @@ Checkbox per built model in the sidebar. Docker build default: `fairface`.
 
 With two or more age backends active the UI leads with a `best (<model>)` row: the estimate
 from the most accurate backend present, ranked `mivolo` > `fairface` > `dex` > `caffe`.
-Age is the one feature that is **not** fused, because fusing it measured worse -- see
+Age is **not** fused (nor is race), because fusing it measured worse -- see
 [benchmark.md](benchmark.md#combined-answers).
 
 FairFace age, gender, and race use the existing MediaPipe landmarks when available, mapped
@@ -72,6 +72,12 @@ heuristic, not a confidence interval or proof that narrower predictions are corr
 | ---------- | ---------------- | --------------------------------------------------------------------------------------------- |
 | `fairface` | ONNX (cv2.dnn)   | 7 classes: White, Black, Latino_Hispanic, East Asian, Southeast Asian, Indian, Middle Eastern |
 | `deepface` | Keras/TensorFlow | 6 classes: asian, indian, black, white, middle eastern, latino hispanic                       |
+
+With both backends active the UI leads with a `best (<model>)` row: the label from the most
+accurate backend present, ranked `fairface` > `deepface` by held-out FairFace accuracy. Race is
+not fused: the previous equal-weight blend trailed `fairface` alone on held-out faces because
+`deepface`'s near one-hot probabilities dominated it -- see
+[benchmark.md](benchmark.md#why-race-is-not-fused).
 
 If the top-2 predicted classes are within 10 percentage points of each other, both are shown together (e.g. `White (52%)/Black (47%)`) instead of just the top class. `deepface` is one of the heaviest options in the repo: a 537MB weight file plus TensorFlow itself (~200-400MB) -- only pulled into the image if requested.
 
@@ -128,7 +134,7 @@ SEARCH also independently checks **eigenfaces** (see below) against every previo
 
 Every detected face's card also has SAVE and (now dual-purpose) SEARCH buttons:
 
-- **SAVE** writes one row to a small SQLite database (`db/faces.db`), the face's color crop to `faces/{id}.jpg`, and a grayscale, tighter-cropped ("zoomed in") version to `eigen/{id}.jpg`. `id` is a random integer 1-999999, retried on collision. The database schema is **sparse and lazy**: there's no fixed column list -- a column (e.g. `age_caffe`) is only created the first time some SAVEd face actually has a value for that (feature, model) pair. A model that was never run, or never active, never gets a column. Every SAVE call independently extends the schema as needed (`ALTER TABLE ... ADD COLUMN`).
+- **SAVE** writes one row to a small SQLite database (`db/faces.db`), the face's color crop to `faces/{id}.jpg`, and a grayscale, tighter-cropped ("zoomed in") version to `eigen/{id}.jpg`. `id` is a random integer 1-999999, retried on collision. The database schema is **sparse and lazy**: there's no fixed column list -- a column (e.g. `age_caffe`) is only created the first time some SAVEd face actually has a value for that (feature, model) pair. A model that was never run, or never active, never gets a column. Every SAVE call independently extends the schema as needed (`ALTER TABLE ... ADD COLUMN`). A combined answer is saved under its row's key: `gender_fused`, `emotion_fused`, `age_best` and `race_best` (e.g. `White (fairface)`). Race used to be fused, so databases written before that change keep a `race_fused` column, which newer saves leave empty and fill `race_best` instead.
 - **SEARCH**'s eigenfaces half runs Turk & Pentland's PCA algorithm fresh against every image in `eigen/` -- there's no persisted/trained model file, it retrains on the fly each time (cheap at the scale this is meant for: a personal collection of previously-saved faces, not a large dataset). Faces are normalized to a fixed 100x100 grayscale size; the query face goes through the exact same crop/resize pipeline as SAVE's `eigen/` output so the two are comparable. A match is reported by saved-face **ID** (there's no name at this layer -- look up `db/faces.db` by ID for whatever attributes were saved with it).
 
 **`EIGENFACE_DISTANCE_THRESHOLD` is an untuned heuristic.** Unlike `RECOGNITION_COSINE_THRESHOLD` (deepface's own published default), there's no established reference value for raw-pixel eigenspace L2 distance at this face size -- it was verified to behave correctly (an unmodified saved face matches itself with near-zero distance; unrelated random images produce much larger distances) but the cutoff itself will need real-world tuning against your own saved faces. Per the algorithm's own known limitations: sensitive to lighting, pose, and scale -- front-facing, consistently-lit photos work best.

@@ -17,15 +17,16 @@ half (1,997 of 2,000 overall):
 | Feature | App (shipped) | Best single model | Weakest model |
 | ------- | ------------- | ----------------- | ------------- |
 | Gender | **96.7%** (95.5-97.7) | `mivolo` 96.7% (95.5-97.7) | `caffe` 73.5% (70.7-76.1) |
-| Race (6 classes) | **63.3%** (60.5-66.3) | `fairface` 76.5% (74.0-79.2) | `deepface` 63.0% (60.1-66.0) |
+| Race (6 classes) | **76.5%** (74.0-79.2) | `fairface` 76.5% (74.0-79.2) | `deepface` 63.0% (60.1-66.0) |
 | Age bucket (9) | **62.3%** (59.2-65.1) | `mivolo` 62.3% (59.2-65.1) | `caffe` 26.8% (23.8-29.5) |
 
 Main caveats: `fairface` and `deepface` race were both trained on FairFace's training split, so
 they are in-distribution here; ages are scored as FairFace's nine buckets, not years; emotion is
 not labelled in FairFace and is not evaluated; MiVOLO's training data is not published, so
-overlap with FairFace cannot be ruled out. The combined race answer is worse than `fairface`
-alone because `deepface`'s near one-hot probabilities dominate the blend; weights fitted on the
-fit half recover 6.8 points but still trail `fairface` alone. Full tables, mappings, the fitted
+overlap with FairFace cannot be ruled out. The race headline used to be an equal-weight fusion,
+which scored 63.3% (60.5-66.3) here: `deepface`'s near one-hot probabilities dominated the blend,
+and weights fitted on the fit half only reached 70.1%. It now names its most reliable model
+(`fairface`), 13.3 points (10.2 to 16.4) above the previous fusion. Full tables, mappings, the fitted
 weights and every caveat: [eval/heldout_fairface.md](eval/heldout_fairface.md); raw numbers:
 [eval/heldout_fairface.json](eval/heldout_fairface.json).
 
@@ -61,7 +62,7 @@ Detection recall was 100% on all 75 faces.
 | ------- | -------- | ----------------- | -------------------- |
 | Gender  | **100%** | `mivolo` 100% | `caffe` / `deepface` 86.7% |
 | Emotion | **100%** | `dan` / `hsemotion` / `ferplus` 100% | `mini_xception` 95.2% |
-| Race    | **96.0%** | `deepface` 94.7% | `fairface` 93.3% |
+| Race    | **96.0%** (previous fusion) | `deepface` 94.7% | `fairface` 93.3% |
 | Age     | **93.3%** (= `mivolo`) | `mivolo` 93.3% | `caffe` 62.7% |
 
 Race is scored strictly: only the top class counts, even though the UI also shows a close
@@ -69,6 +70,11 @@ runner-up (`White (52%)/Black (47%)`) when two classes are within 10 percentage 
 Counting either shown class as correct would read 97.3% combined and 96.0% for `fairface`, but
 only 2 of the 75 combined answers show a runner-up at all, so the strict number is the one
 reported.
+
+The race "Combined" figure is the equal-weight fusion the app shipped at the time. The race
+headline now names `fairface` whenever both race backends answer, so on this set it equals
+`fairface`'s 93.3% by construction (not re-run). This is the one set where `deepface` ranked
+first; it is in-sample, and the held-out evaluation above ranks `fairface` first.
 
 These figures were recorded at commit `91aa12f`. Two preprocessing changes landed after it
 (FairFace five-point alignment in `fed152b` and the DEX crop geometry in `0622b46`) and have not
@@ -88,15 +94,15 @@ far lower there (for example `deepface` race, 94.7% here and 63.0% on FairFace).
 ## Combined answers
 
 With more than one model active for a feature, the per-face card leads with a single combined
-answer and lists every individual model underneath. Gender, race, and emotion are fused; age
-instead names its best available model.
+answer and lists every individual model underneath. Gender and emotion are fused; age and race
+instead name their best available model.
 
 | Feature | Combined row | How |
 | ------- | ------------ | --- |
 | Gender  | `fused` | Weighted mean of each model's P(Male) |
-| Race    | `fused` | Weighted blend of class probabilities, re-expressed over shared canonical classes (FairFace's East and Southeast Asian collapse into one `Asian` class, since the two backends' label sets differ) |
 | Emotion | `fused` | Weighted vote over canonical emotion names (`happy` and `happiness` are one vote, not two) |
 | Age     | `best (<model>)` | The most reliable backend present: `mivolo` > `fairface` > `dex` > `caffe` |
+| Race    | `best (<model>)` | The most reliable backend present: `fairface` > `deepface`, by held-out FairFace accuracy |
 
 The weights live in `src/face_analyzer/core/constants.py`:
 
@@ -104,15 +110,15 @@ The weights live in `src/face_analyzer/core/constants.py`:
 | ------- | ------- |
 | Gender  | `mivolo` 3.0, `fairface` 2.0, `caffe` 0.5, `deepface` 0.5 |
 | Emotion | `dan` 3.0, `hsemotion` 3.0, `ferplus` 2.0, `mini_xception` 1.0 |
-| Race    | `fairface` 1.0, `deepface` 1.0 |
 | Age order | `mivolo`, `fairface`, `dex`, `caffe` (`AGE_MODEL_RELIABILITY`) |
+| Race order | `fairface`, `deepface` (`RACE_MODEL_RELIABILITY`) |
 
 The weights are hand-set, not fitted. They are ordered by each model's accuracy on the 75-face
-set, so a weaker backend contributes less to the combined answer; race uses equal weights. They
+set, so a weaker backend contributes less to the combined answer. They
 were chosen on the same set they are scored on, with no held-out split, which is why the
 75-face combined figures are in-sample. The held-out evaluation tests them against weights fitted
 on a separate half; see [eval/heldout_fairface.md](eval/heldout_fairface.md#fusion-weights) for
-that comparison and a recommendation (the shipped weights are unchanged). Re-run `tools/benchmark.py` after changing any model
+that comparison (the shipped gender weights are unchanged). Re-run `tools/benchmark.py` after changing any model
 or its preprocessing, and revisit the weights if the ordering moves.
 
 ### Why age is not fused
@@ -122,6 +128,15 @@ mean across a range of weights, clipping MiVOLO into FairFace's predicted decade
 MiVOLO only when both other backends disagreed with it. The age backends fail on the same faces
 (elderly faces read young in all of them), so averaging moves the answer without correcting it.
 The headline therefore names the most reliable model present instead of blending.
+
+### Why race is not fused
+
+Race used to be an equal-weight blend of the two backends' canonical class probabilities. On the
+held-out FairFace test half it scored 63.3%, against 76.5% for `fairface` alone. `deepface`'s race
+probabilities are near one-hot (mean top probability 0.999), so the blend followed `deepface`
+whenever the two disagreed, and fitted weights only reached 70.1%. The race headline therefore
+names the most reliable model present, ordered by that held-out accuracy. Both race backends were
+trained on FairFace, so the ordering rests on in-distribution evidence.
 
 ## Confirmed-age development set
 
