@@ -1,19 +1,9 @@
 """Smoke tests that execute the Streamlit script headlessly via AppTest."""
 from pathlib import Path
 
-import pytest
 from streamlit.testing.v1 import AppTest
 
-from face_analyzer.core.constants import MODEL_DIR
-from tests._models import require_all_models
-
 APP = str(Path(__file__).resolve().parents[1] / "src" / "face_analyzer" / "app.py")
-
-
-@pytest.fixture(autouse=True)
-def _real_models_present():
-    """Skip when models are git-lfs pointers: load_models() would fail to parse them."""
-    require_all_models(MODEL_DIR)
 
 
 def _run() -> AppTest:
@@ -22,7 +12,10 @@ def _run() -> AppTest:
 
 
 def test_app_boots_without_exception():
-    assert not _run().exception
+    at = _run()
+    assert not at.exception
+    # app.py reports load_models() failures via st.error + st.stop rather than raising.
+    assert not at.error
 
 
 def test_app_renders_upload_and_webcam_tabs():
