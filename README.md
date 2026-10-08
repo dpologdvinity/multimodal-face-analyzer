@@ -50,8 +50,9 @@ flowchart LR
 
 Colorization runs in `src/app.py` (and in `src/ui/live.py` for live webcam frames) before
 `analyze_frame()`; `src/pipeline/analyzer.py` orchestrates the remaining stages, which live in
-`src/pipeline/stages.py`. Model loading is in `src/pipeline/loader.py`, fusion in `src/fusion/`,
-and vendored third-party architectures in `src/nets/`.
+`src/pipeline/stages.py` (per-feature face tasks in `src/pipeline/face_tasks.py`, the prediction
+cache and thread pool in `src/pipeline/cache.py`). Model loading is in `src/pipeline/loader.py`,
+fusion in `src/fusion/`, and vendored third-party architectures in `src/nets/`.
 
 ## Results
 

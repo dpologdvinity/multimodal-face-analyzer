@@ -2,6 +2,12 @@
 from __future__ import annotations
 
 from .analyzer import AGGREGATE_FEATURES, aggregate_demographics, analyze_frame
+from .cache import (
+    _INFERENCE_EXECUTOR,
+    _PREDICTION_CACHE,
+    _cached_face_predict,
+    _record_model_latency,
+)
 from .config import AnalysisConfig
 from .drawing import (
     _silence_native_logs,
@@ -18,12 +24,6 @@ from .landmarks import (
     predict_head_pose_mediapipe,
 )
 from .loader import load_models
-from .stages import (
-    _INFERENCE_EXECUTOR,
-    _PREDICTION_CACHE,
-    _cached_face_predict,
-    _record_model_latency,
-)
 from .tracker import FaceTracker, _box_iou
 
 __all__ = [
