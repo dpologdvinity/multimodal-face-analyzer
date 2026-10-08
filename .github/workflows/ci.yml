@@ -17,8 +17,8 @@ jobs:
       matrix:
         python-version: ["3.11", "3.12"]
     steps:
-      # No lfs: the model weights are multiple GB and must never be fetched in CI;
-      # tests that need them skip on the unpulled pointer files.
+      # No model downloads: tools/fetch_models.py fetches multiple GB of weights and must
+      # never run in CI; tests that need a weight file skip when it is missing.
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:

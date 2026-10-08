@@ -12,8 +12,8 @@ _POINTER = (
 )
 
 
-# Mirrors the weight suffixes tracked by .gitattributes; the other files (prototxt,
-# pbtxt, json, npy, xml, mat) are plain git blobs and stay real in a no-LFS clone.
+# The weight suffixes git-lfs tracked before the weights moved out of git; an old no-LFS
+# checkout has pointer files at these paths, while prototxt/pbtxt/json/npy/xml/mat stayed real.
 _LFS_SUFFIXES = {".h5", ".pth", ".pt", ".caffemodel", ".safetensors", ".onnx", ".task"}
 
 
