@@ -48,11 +48,14 @@ flowchart LR
     H --> J
 ```
 
-Colorization runs in `src/app.py` (and in `src/ui/live.py` for live webcam frames) before
-`analyze_frame()`; `src/pipeline/analyzer.py` orchestrates the remaining stages, which live in
-`src/pipeline/stages.py` (per-feature face tasks in `src/pipeline/face_tasks.py`, the prediction
-cache and thread pool in `src/pipeline/cache.py`). Model loading is in `src/pipeline/loader.py`,
-fusion in `src/fusion/`, and vendored third-party architectures in `src/nets/`.
+Colorization runs in the UI layer before `analyze_frame()`: in `src/ui/results.py` for uploads
+and snapshots, and in `src/ui/live.py` for live webcam frames. `src/pipeline/analyzer.py`
+orchestrates the remaining stages, which live in `src/pipeline/stages.py` (per-feature face tasks
+in `src/pipeline/face_tasks.py`, the prediction cache and thread pool in `src/pipeline/cache.py`).
+Model loading is in `src/pipeline/loader.py`, fusion in `src/fusion/`, and vendored third-party
+architectures in `src/nets/`. The Streamlit entry point `src/app.py` only wires these together:
+the theme (`src/ui/theme.py` plus `theme.css`), the sidebar (`src/ui/sidebar.py`), the per-image
+results view (`src/ui/results.py`), and the Live webcam tab (`src/ui/live.py`).
 
 ## Results
 
