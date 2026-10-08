@@ -2,7 +2,9 @@ import base64
 import csv
 import io
 import json
+import threading
 import time
+from collections import deque
 from html import escape
 
 import av
@@ -15,14 +17,15 @@ from streamlit_cropper import st_cropper
 from streamlit_webrtc import webrtc_streamer
 
 import inference
-from ui.live import (
-    LIVE_METRICS,
-    LIVE_METRICS_LOCK,
-    LIVE_STATE,
-    LIVE_STATE_LOCK,
-    make_video_frame_callback,
-)
+from ui.live import make_video_frame_callback
 
+# Live webcam state, guarded by locks for thread-safe access from streamlit-webrtc callbacks
+# running in separate threads. Streamlit re-executes this script per session and rerun, so these
+# must stay here rather than in an imported module, which would share them across sessions.
+LIVE_METRICS = deque(maxlen=120)
+LIVE_METRICS_LOCK = threading.Lock()
+LIVE_STATE = {"faces": [], "error": None, "updated": 0.0}
+LIVE_STATE_LOCK = threading.Lock()
 IMAGE_DISPLAY_WIDTH = 900
 
 # Page setup and visual system
@@ -1371,6 +1374,8 @@ with tab_webcam:
         )
         _video_frame_callback = make_video_frame_callback(
             lambda: models, lambda: live_config,
+            live_state=LIVE_STATE, live_state_lock=LIVE_STATE_LOCK,
+            live_metrics=LIVE_METRICS, live_metrics_lock=LIVE_METRICS_LOCK,
             frame_skip=frame_skip, active_colorization=active_colorization, voice_fusion=voice_fusion,
         )
 

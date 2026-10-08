@@ -17,13 +17,6 @@ except ImportError:
     from inference import analyze_frame, fuse_voice_and_emotion, maybe_colorize
     from pipeline.config import AnalysisConfig
 
-# Module-scope shared state for the live webcam stream, guarded by locks for thread-safe
-# access from streamlit-webrtc callbacks running in separate threads.
-LIVE_METRICS: deque = deque(maxlen=120)
-LIVE_METRICS_LOCK = threading.Lock()
-LIVE_STATE: dict[str, Any] = {"faces": [], "error": None, "updated": 0.0}
-LIVE_STATE_LOCK = threading.Lock()
-
 # Slow per-face classifiers that frame skipping throttles; detection, the landmark and hand
 # overlays, and liveness are cheap enough to keep running every frame.
 _THROTTLED_FIELDS = (
@@ -36,6 +29,10 @@ def make_video_frame_callback(
     models_provider: Callable[[], Any],
     config_provider: Callable[[], AnalysisConfig],
     *,
+    live_state: dict[str, Any],
+    live_state_lock: threading.Lock,
+    live_metrics: deque,
+    live_metrics_lock: threading.Lock,
     frame_skip: int = 1,
     active_colorization: set | None = None,
     voice_fusion: Any | None = None,
@@ -43,12 +40,14 @@ def make_video_frame_callback(
     """Build the streamlit-webrtc callback that analyzes frames and publishes live state.
 
     Classifiers run on every ``frame_skip``-th frame; detection and overlays run on all of them.
+    The live_* state belongs to the caller (one set per Streamlit session and rerun) and is only
+    touched under its lock.
     """
     colorization = active_colorization if active_colorization is not None else set()
     frame_counter = 0
 
     def callback(frame: av.VideoFrame) -> av.VideoFrame:
-        """Run detection/inference on one frame, update LIVE state, handle voice fusion."""
+        """Run detection/inference on one frame, update live state, handle voice fusion."""
         nonlocal frame_counter
         try:
             frame_started = time.perf_counter()
@@ -71,10 +70,10 @@ def make_video_frame_callback(
                 {key: face[key] for key in ("idx", "model_results")}
                 for face in cropped_faces
             ]
-            with LIVE_METRICS_LOCK:
-                LIVE_METRICS.append(metrics)
-            with LIVE_STATE_LOCK:
-                LIVE_STATE.update(faces=live_faces, error=None, updated=time.monotonic())
+            with live_metrics_lock:
+                live_metrics.append(metrics)
+            with live_state_lock:
+                live_state.update(faces=live_faces, error=None, updated=time.monotonic())
             if voice_fusion is not None and cropped_faces:
                 # v1 scope: fuse against the single largest detected face.
                 largest = max(cropped_faces, key=lambda f: (f["box"][2] - f["box"][0]) * (f["box"][3] - f["box"][1]))
@@ -88,10 +87,10 @@ def make_video_frame_callback(
             return av.VideoFrame.from_ndarray(annotated_frame, format="bgr24")
         except Exception as exc:
             # Inference failure must not crash the WebRTC video stream. Log the error to
-            # LIVE_STATE so the UI thread can display it, but always return a frame
+            # live_state so the UI thread can display it, but always return a frame
             # (raw passthrough) to keep the stream alive and the camera usable.
-            with LIVE_STATE_LOCK:
-                LIVE_STATE["error"] = f"{type(exc).__name__}: {exc}"
+            with live_state_lock:
+                live_state["error"] = f"{type(exc).__name__}: {exc}"
             return frame
 
     return callback
