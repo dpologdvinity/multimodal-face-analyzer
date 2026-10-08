@@ -141,8 +141,8 @@ wired but stays unavailable until you supply the Basel Face Model file yourself.
 
 The app also has tools that need no extra model: identity search against your own reference
 photos, SAVE to a local SQLite database with eigenfaces matching, a scan that labels every face
-recognized or unrecognized, an opt-in crowd count, image adjustment sliders, region
-crop and transform, per-face image operations, and an opt-in voice and face arousal check in
+recognized or unrecognized, an opt-in crowd count, image adjustment sliders, a mouse
+crop, per-face image operations, and an opt-in voice and face arousal check in
 LIVE mode. Per-model details: [docs/models.md](docs/models.md).
 
 ## Responsible use

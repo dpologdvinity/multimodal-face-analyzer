@@ -279,13 +279,13 @@ Eleven Lightroom-style sliders, all defaulting to 0 (no-op). Pure OpenCV/numpy -
 Each detected face card also has its own **Edit face** sliders. They change that face's preview, edited PNG download, and input to the one-click image operations. Other faces and the classification labels stay unchanged. All sliders use the same `apply_image_adjustments()` function; defaults are a no-op.
 Each slider panel has a reset button. **Reset all adjustments** clears the whole-image, shared face, and individual face sliders together.
 
-## Select Region & Transform (no model)
+## Crop (no model)
 
 | Backend | Framework | Output |
 | ------- | --------- | ------ |
-| Rectangle crop and geometric transform | OpenCV | Transformed PNG |
+| Mouse-drawn rectangle crop | streamlit-cropper | Cropped source image |
 
-Open **SELECT REGION & TRANSFORM** beneath an uploaded image or webcam snapshot, enter rectangle bounds, choose translate, reflect, rotate, scale, or shear, then apply and download the result. Coordinates use the image's pixel dimensions; an empty rectangle is rejected. Translation, reflection, and rotation retain the crop size, while scaling and shearing can change it. This works even when no face is detected. No model file or Docker build argument is needed.
+Press **Edit image** beside an uploaded image or webcam snapshot, drag the crop rectangle, then press **Crop photo** to analyze only that region. This works even when no face is detected. No model file or Docker build argument is needed.
 
 ## Per-Face Image Operations (no model)
 

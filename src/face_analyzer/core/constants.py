@@ -154,8 +154,7 @@ EMOTION_HIGH_AROUSAL_LABELS = {
 }
 EMOTION_LOW_AROUSAL_LABELS = {"neutral", "sad", "sadness"}
 
-# Image editing & transformation options
-GEOMETRIC_TRANSFORM_OPTIONS = ["translate", "reflect", "rotate", "scale", "shear"]
+# Image editing options
 IMAGE_OP_OPTIONS = ["intensity", "enhance", "sharpen", "color_correct", "denoise", "bilateral_filter", "wavelet_denoise"]
 INTENSITY_METHODS = ["negative", "log", "gamma", "contrast_stretch"]
 SHARPEN_METHODS = ["laplacian", "high_boost"]

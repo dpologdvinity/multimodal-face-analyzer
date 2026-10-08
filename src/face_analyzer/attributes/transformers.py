@@ -56,42 +56,6 @@ def maybe_colorize(models: Any, frame_bgr: np.ndarray, active_colorization: set)
     return colorize_frame(net, frame_bgr), True
 
 
-def apply_geometric_transform(region: np.ndarray, transform_type: str, **params: Any) -> np.ndarray:
-    """Apply geometric transformation (translate, reflect, rotate, scale, shear)."""
-    h, w = region.shape[:2]
-
-    if transform_type == "translate":
-        dx, dy = params.get("dx", 0), params.get("dy", 0)
-        m = np.float32([[1, 0, dx], [0, 1, dy]])
-        return cv2.warpAffine(region, m, (w, h))
-
-    if transform_type == "reflect":
-        axis = params.get("axis", "horizontal")
-        return cv2.flip(region, 1 if axis == "horizontal" else 0)
-
-    if transform_type == "rotate":
-        angle, scale = params.get("angle", 0.0), params.get("scale", 1.0)
-        m = cv2.getRotationMatrix2D((w / 2, h / 2), angle, scale)
-        return cv2.warpAffine(region, m, (w, h))
-
-    if transform_type == "scale":
-        fx, fy = params.get("fx", 1.0), params.get("fy", 1.0)
-        interp = cv2.INTER_AREA if fx < 1 and fy < 1 else cv2.INTER_CUBIC
-        return cv2.resize(region, None, fx=fx, fy=fy, interpolation=interp)
-
-    if transform_type == "shear":
-        axis, factor = params.get("axis", "x"), params.get("factor", 0.0)
-        if axis == "x":
-            out_w, out_h = max(1, int(np.ceil(w + abs(factor) * h))), h
-            m = np.float32([[1, factor, max(0, -factor * h)], [0, 1, 0], [0, 0, 1]])
-        else:
-            out_w, out_h = w, max(1, int(np.ceil(h + abs(factor) * w)))
-            m = np.float32([[1, 0, 0], [factor, 1, max(0, -factor * w)], [0, 0, 1]])
-        return cv2.warpPerspective(region, m, (out_w, out_h))
-
-    raise ValueError(f"Unknown transform_type: {transform_type}")
-
-
 def apply_intensity_transform(
     face_bgr: np.ndarray,
     method: str = "gamma",
