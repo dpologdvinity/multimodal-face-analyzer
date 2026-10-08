@@ -9,11 +9,6 @@ import numpy as np
 from ..core import DEX_MAX_AGE_SD, DEX_MEAN_VALUES
 from ._lock import _lock_for
 
-try:
-    from ..nets.mivolo.inference_wrapper import MiVOLOInference
-except ImportError:
-    MiVOLOInference = Any
-
 
 def caffe_probabilities(net: Any, blob: np.ndarray) -> np.ndarray:
     """Extract class probabilities from Caffe model output."""
