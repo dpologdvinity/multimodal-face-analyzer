@@ -285,6 +285,24 @@ def test_http_error_on_resume_restarts_without_range(tmp_path, monkeypatch):
     assert (model_dir / "w.onnx").read_bytes() == payload
 
 
+def test_http_416_with_complete_part_is_hashed_not_refetched(tmp_path, monkeypatch):
+    payload = b"already-complete"
+    model_dir = tmp_path / "models"
+    model_dir.mkdir()
+    (model_dir / "w.onnx.part").write_bytes(payload)
+    calls = []
+
+    def fake_urlopen(request, timeout):
+        calls.append(request.get_header("Range"))
+        raise urllib.error.HTTPError(request.full_url, 416, "Range Not Satisfiable", {}, None)
+
+    monkeypatch.setattr(fetch_models.urllib.request, "urlopen", fake_urlopen)
+
+    assert fetch_models.fetch_entry(_entry("w.onnx", payload), model_dir) == "downloaded"
+    assert calls == [f"bytes={len(payload)}-"]
+    assert (model_dir / "w.onnx").read_bytes() == payload
+
+
 def test_main_continues_after_a_failed_entry(tmp_path, monkeypatch):
     good = b"good"
 

@@ -104,7 +104,7 @@ def sha256_of(path: Path) -> str:
     return digest.hexdigest()
 
 
-def download(url: str, part: Path) -> None:
+def download(url: str, part: Path, expected_size: int | None = None) -> None:
     """Download url into part, resuming from an existing partial file when the server allows it."""
     offset = part.stat().st_size if part.exists() else 0
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
@@ -113,11 +113,14 @@ def download(url: str, part: Path) -> None:
     try:
         response = urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS)
     except urllib.error.HTTPError as exc:
+        if exc.code == 416 and expected_size is not None and offset >= expected_size:
+            # The partial file is already complete (or bogus); hashing decides which.
+            return
         if offset:
             # A stale or oversized partial file can make the Range request fail; start over once.
             print(f"  resume of {part.name} failed (HTTP {exc.code}); restarting", file=sys.stderr)
             part.unlink()
-            download(url, part)
+            download(url, part, expected_size)
             return
         raise FetchError(f"HTTP {exc.code} for {url}") from exc
     except (urllib.error.URLError, http.client.HTTPException, OSError) as exc:
@@ -159,7 +162,7 @@ def fetch_entry(entry: dict, model_dir: Path, force: bool = False) -> str:
     member = entry.get("archive_member")
     part = dest.with_name(dest.name + (".zip.part" if member else ".part"))
     print(f"downloading {entry['path']} ({entry['size'] / 1e6:.1f} MB) from {entry['url']}", file=sys.stderr)
-    download(entry["url"], part)
+    download(entry["url"], part, None if member else entry["size"])
     if member:
         extracted = dest.with_name(dest.name + ".tmp")
         try:
