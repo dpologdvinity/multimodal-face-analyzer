@@ -5,7 +5,9 @@ invent labels. Missing detections, unavailable models, and unknown outputs remai
 in denominators. Age buckets get containment counts, not exact-age credit; exact
 age, numeric MAE, and within-five-years are separate metrics.
 
-Run:
+Run from the repository root. `tools/benchmark.py` imports the `face_analyzer` package, so
+install it first with `pip install --no-deps -e .` (after `requirements.txt`) or
+`pip install -r requirements-dev.txt`:
 
 ```bash
 GENDER_MODEL='' RACE_MODEL='' RECOGNITION_MODEL='' \

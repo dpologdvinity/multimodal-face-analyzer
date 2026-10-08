@@ -7,9 +7,10 @@ Docker build arguments. For what each model does, see [models.md](models.md).
 
 Every `*.h5`, `*.pth`, `*.pt`, `*.caffemodel`, `*.safetensors`, `*.onnx`, and `*.task` file in
 `models/` is stored with [git-lfs](https://git-lfs.com/). The full tracked set is about 3.2 GB.
-A clone without LFS contains small pointer files in their place, which the model loaders cannot
-read, so pull the weights before running natively. A model whose file is absent altogether is
-skipped and reported as unavailable; a pointer file is not.
+A clone without LFS contains small pointer files in their place. The app still starts on such a
+clone (the SSD face detector is not stored in LFS), but every model whose weights are still
+pointers is skipped and reported as unavailable, exactly like a missing file, so pull the
+weights you want before running.
 
 ```bash
 git lfs install
@@ -245,8 +246,9 @@ multimodal-face-analyzer/
 │   ├── detectors/                 # BaseFaceDetector + factory; SSD, YOLO, SCRFD, RetinaFace
 │   ├── attributes/                # per-face predictors: age, gender, emotion, race, accessories, ...
 │   ├── fusion/                    # combined answers: fuse_gender/race/emotion, select_age
-│   ├── pipeline/                  # loader (load_models), analyzer (analyze_frame), stages, face_tasks, cache, drawing, tracker
-│   ├── ui/                        # Streamlit views: theme (+ theme.css), sidebar, results, live webcam tab
+│   ├── pipeline/                  # loader (load_models), analyzer (analyze_frame), config (AnalysisConfig),
+│   │                              #   stages, face_tasks, cache, landmarks, drawing, tracker
+│   ├── ui/                        # Streamlit views: theme (+ theme.css), sidebar, adjustments, results, live webcam tab
 │   ├── gallery/                   # SQLite saved faces, eigenfaces, identity search
 │   ├── liveness.py, model_selection.py
 │   └── nets/                      # vendored third-party model architectures

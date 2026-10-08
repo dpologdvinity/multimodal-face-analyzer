@@ -36,27 +36,35 @@ their answers.
 
 ```mermaid
 flowchart LR
-    A[Frame] --> C["Colorization (grayscale input only)"]
-    C --> B["Global adjustments (optional)"]
-    B --> D["Face detector: YOLO / SCRFD / RetinaFace, SSD fallback"]
-    D --> E[Face tracking]
-    E --> H["Hand landmarks (whole frame)"]
-    E --> F["Per face: roll alignment, crop, face adjustments, face landmarks"]
-    F --> G["Attribute backends in parallel"]
-    G --> I["Fusion and best-age selection"]
-    I --> J[Overlay and face cards]
-    H --> J
+    subgraph UI["ui/ (results.py, live.py)"]
+        A[Frame] --> C["Colorization (grayscale input only)"]
+        K[Face cards and result tables]
+    end
+    subgraph P["pipeline/: analyze_frame()"]
+        B["Global adjustments (optional)"] --> D["Face detector: YOLO / SCRFD / RetinaFace, SSD fallback"]
+        D --> E[Face tracking]
+        E --> H["Hand landmarks (whole frame)"]
+        E --> F["Per face: roll alignment, crop, face adjustments, face landmarks"]
+        F --> G["Attribute backends in parallel"]
+        G --> I["Fusion and best-age selection"]
+        I --> J[Annotated overlay]
+        H --> J
+    end
+    C --> B
+    J --> K
 ```
 
 The source is the installable `face_analyzer` package; paths below are relative to
 `src/face_analyzer/`. Colorization runs in the UI layer before `analyze_frame()`: in
 `ui/results.py` for uploads and snapshots, and in `ui/live.py` for live webcam frames.
-`pipeline/analyzer.py` orchestrates the remaining stages, which live in `pipeline/stages.py`
-(per-feature face tasks in `pipeline/face_tasks.py`, the prediction cache and thread pool in
-`pipeline/cache.py`). Model loading is in `pipeline/loader.py`, fusion in `fusion/`, and vendored
-third-party architectures in `nets/`. The Streamlit entry point `app.py` only wires these
-together: the theme (`ui/theme.py` plus `theme.css`), the sidebar (`ui/sidebar.py`), the
-per-image results view (`ui/results.py`), and the Live webcam tab (`ui/live.py`).
+`pipeline/analyzer.py` orchestrates the remaining stages, configured by one `AnalysisConfig`
+(`pipeline/config.py`); the stages live in `pipeline/stages.py` (per-feature face tasks in
+`pipeline/face_tasks.py`, the prediction cache and thread pool in `pipeline/cache.py`). Model
+loading is in `pipeline/loader.py`, fusion in `fusion/`, and vendored third-party architectures
+in `nets/`; `inference.py` is a facade that re-exports them for the UI. The Streamlit entry
+point `app.py` only wires these together: the theme (`ui/theme.py` plus `theme.css`), the
+sidebar (`ui/sidebar.py`), the image adjustment sliders (`ui/adjustments.py`), the per-image
+results view (`ui/results.py`), and the Live webcam tab (`ui/live.py`).
 
 ## Results
 
@@ -100,7 +108,7 @@ docker run -d -p 127.0.0.1:8501:8501 --name face_analyzer_container face-analyze
 ```
 
 The image runs `streamlit run src/face_analyzer/app.py`. For a manual install, add
-`pip install -e .` after the requirements so the `face_analyzer` package is importable. Build
+`pip install --no-deps -e .` after the requirements so the `face_analyzer` package is importable. Build
 arguments, manual setup, and the remote-access notes (the app has no authentication) are in
 [docs/setup.md](docs/setup.md).
 
