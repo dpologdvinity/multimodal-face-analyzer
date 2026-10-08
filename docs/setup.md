@@ -131,7 +131,7 @@ cache.
 # guided prompt -- grouped numbered options; multi-select as 1234, 1 2 3 4, or 1,2,3,4
 ./build-and-run.sh
 
-# or manually, with every ARG at its default (the first option in each row below)
+# or manually, with the Dockerfile defaults (one backend per feature)
 docker build -t face-analyzer .
 ```
 

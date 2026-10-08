@@ -10,15 +10,15 @@ detectors, and benchmarked fusion across interchangeable backends.
 <!-- DEMO: record 5-10s of LIVE mode (age/gender/emotion/landmarks on, change expression once),
      export ≤5 MB, ~800px wide → docs/media/demo.gif; full-UI screenshot → docs/media/screenshot.png -->
 
-A Streamlit app that detects faces in an uploaded image or webcam feed and runs any combination
+A terminal-styled Streamlit app, with upload and live-webcam tabs, that detects faces in an uploaded image or webcam feed and runs any combination
 of attribute models on each face: age, gender, race, emotion, gaze, liveness, recognition, and
 more. Most features have two or more backends that can run side by side, and the app combines
 their answers.
 
 ## Highlights
 
-- **Interchangeable face detectors.** SSD, YOLOv8-Face, SCRFD, and RetinaFace share one function
-  signature in `src/detectors/`, selected per frame by a factory with SSD as the fallback.
+- **Interchangeable face detectors.** SSD, YOLOv8-Face, SCRFD, and RetinaFace share a common call
+  shape in `src/detectors/`, selected per frame by a factory with SSD as the fallback.
 - **Fusion across label taxonomies.** Gender, race, and emotion backends are combined by
   weighted mean, blend, or vote. Race and emotion labels are first mapped onto shared canonical
   classes (FairFace's East and Southeast Asian become one `Asian` class; `happy` and `happiness`
@@ -36,9 +36,9 @@ their answers.
 
 ```mermaid
 flowchart LR
-    A[Frame] --> B["Global adjustments (optional)"]
-    B --> C["Colorization (grayscale input only)"]
-    C --> D["Face detector: YOLO / SCRFD / RetinaFace, SSD fallback"]
+    A[Frame] --> C["Colorization (grayscale input only)"]
+    C --> B["Global adjustments (optional)"]
+    B --> D["Face detector: YOLO / SCRFD / RetinaFace, SSD fallback"]
     D --> E[Face tracking]
     E --> H["Hand landmarks (whole frame)"]
     E --> F["Per face: roll alignment, crop, face adjustments, face landmarks"]
@@ -65,7 +65,8 @@ Measured with `tools/benchmark.py` on 75 hand-labelled faces (detection recall 1
 
 These are small, in-sample numbers. The fusion weights are hand-set and were chosen on the same
 75 faces they are scored on, with no held-out split; emotion labels are mostly `happy`, and age
-ranges are hand estimates. A public held-out evaluation is planned. Method, full caveats, and
+ranges are hand estimates. The numbers were recorded before two later FairFace/DEX
+preprocessing changes. A public held-out evaluation is planned. Method, full caveats, and
 the fusion weights: [docs/benchmark.md](docs/benchmark.md).
 
 ## Quick start
