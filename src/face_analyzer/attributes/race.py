@@ -10,9 +10,9 @@ from ..core import (
     FAIRFACE_AGE_LABELS,
     IMAGENET_MEAN,
     IMAGENET_STD,
-    RACE_CLOSE_MARGIN,
     RACE_LABELS_FAIRFACE,
 )
+from ..fusion.ensembles import _format_race_label
 from ._lock import _lock_for
 from .transformers import _margin_align, align_face_with_landmarks
 
@@ -21,15 +21,6 @@ def _softmax(x: np.ndarray) -> np.ndarray:
     """Compute numerically stable softmax."""
     exp = np.exp(x - np.max(x))
     return exp / exp.sum()
-
-
-def _format_race_label(probs: np.ndarray, labels: list[str]) -> str:
-    """Format race prediction label, combining close top-2 predictions."""
-    order = np.argsort(probs)[::-1]
-    top1, top2 = order[0], order[1]
-    if probs[top1] - probs[top2] < RACE_CLOSE_MARGIN:
-        return f"{labels[top1]} ({probs[top1] * 100:.0f}%)/{labels[top2]} ({probs[top2] * 100:.0f}%)"
-    return labels[top1]
 
 
 def _fairface_forward(
