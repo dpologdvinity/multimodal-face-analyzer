@@ -7,9 +7,7 @@ from face_analyzer.core.constants import (
     EMOTION_LABELS_FERPLUS,
     EMOTION_LABELS_HSEMOTION,
     EMOTION_LABELS_MINI_XCEPTION,
-    EYE_COLOR_LABELS,
     GENDER_LIST,
-    HAIR_COLOR_LABELS,
     RACE_CANONICAL_LABELS,
 )
 from face_analyzer.core.image_utils import (
@@ -42,8 +40,6 @@ def test_constants_integrity():
     assert "neutral" in EMOTION_LABELS_HSEMOTION
     assert "neutral" in EMOTION_LABELS_MINI_XCEPTION
     assert "white" in RACE_CANONICAL_LABELS
-    assert "black" in HAIR_COLOR_LABELS
-    assert "brown" in EYE_COLOR_LABELS
 
     # Re-export check in face_analyzer.inference
     assert inference.AGE_LIST == AGE_LIST

@@ -18,14 +18,12 @@ from .ranking import (
     _format_results,
     _gather_face_results,
     _sanitize_column_name,
-    _weighted_median,
     select_age,
     with_headline,
 )
 
 __all__ = [
     # ranking
-    "_weighted_median",
     "select_age",
     "with_headline",
     "_format_results",

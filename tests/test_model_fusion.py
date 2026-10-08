@@ -3,15 +3,6 @@ import unittest
 import numpy as np
 
 from face_analyzer import inference
-from face_analyzer.fusion.ranking import _weighted_median
-
-
-class WeightedMedianTests(unittest.TestCase):
-    def test_picks_value_where_cumulative_weight_reaches_half(self):
-        self.assertEqual(_weighted_median([10.0, 20.0, 30.0], [1.0, 5.0, 1.0]), 20.0)
-
-    def test_heavier_model_outranks_two_lighter_ones(self):
-        self.assertEqual(_weighted_median([10.0, 50.0, 12.0], [1.0, 9.0, 1.0]), 50.0)
 
 
 class SelectAgeTests(unittest.TestCase):
