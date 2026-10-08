@@ -243,7 +243,7 @@ multimodal-face-analyzer/
 │   ├── app.py                     # Streamlit entry point: page setup, model load, sidebar -> tabs wiring
 │   ├── inference.py               # facade re-exporting the modules below
 │   ├── core/                      # constants (paths, fusion weights), types (Models), image utils
-│   ├── detectors/                 # BaseFaceDetector + factory; SSD, YOLO, SCRFD, RetinaFace
+│   ├── detectors/                 # factory + backends: SSD, YOLO, SCRFD, RetinaFace
 │   ├── attributes/                # per-face predictors: age, gender, emotion, race, accessories, ...
 │   ├── fusion/                    # combined answers: fuse_gender/race/emotion, select_age
 │   ├── pipeline/                  # loader (load_models), analyzer (analyze_frame), config (AnalysisConfig),
