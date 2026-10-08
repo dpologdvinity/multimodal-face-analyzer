@@ -3,7 +3,34 @@
 How the per-model and combined accuracy figures were measured, what they do and do not show,
 and how the combined answers are formed. Per-model details are in [models.md](models.md).
 
-## Method
+There are two evaluations. The **held-out FairFace evaluation** below is the one to quote: 1,002
+public, labelled test faces that none of the settings were tuned on. The older **75-face set**
+is in-sample (the fusion weights were chosen on it) and is kept as a wiring check.
+
+## Held-out evaluation (FairFace validation)
+
+`tools/eval_heldout.py` runs the real `analyze_frame()` over 2,000 race-stratified images from
+the FairFace validation split (seed 0), fits fusion weights on one half and scores everything on
+the other. Test half, 95% bootstrap intervals in brackets; detection recall 100% on the test
+half (1,997 of 2,000 overall):
+
+| Feature | App (shipped) | Best single model | Weakest model |
+| ------- | ------------- | ----------------- | ------------- |
+| Gender | **96.7%** (95.5-97.7) | `mivolo` 96.7% (95.5-97.7) | `caffe` 73.5% (70.7-76.1) |
+| Race (6 classes) | **63.3%** (60.5-66.3) | `fairface` 76.5% (74.0-79.2) | `deepface` 63.0% (60.1-66.0) |
+| Age bucket (9) | **62.3%** (59.2-65.1) | `mivolo` 62.3% (59.2-65.1) | `caffe` 26.8% (23.8-29.5) |
+
+Main caveats: `fairface` and `deepface` race were both trained on FairFace's training split, so
+they are in-distribution here; ages are scored as FairFace's nine buckets, not years; emotion is
+not labelled in FairFace and is not evaluated. The combined race answer is worse than `fairface`
+alone because `deepface`'s near one-hot probabilities dominate the blend; weights fitted on the
+fit half recover 6.8 points but still trail `fairface` alone. Full tables, mappings, the fitted
+weights and every caveat: [eval/heldout_fairface.md](eval/heldout_fairface.md); raw numbers:
+[eval/heldout_fairface.json](eval/heldout_fairface.json).
+
+## In-sample 75-face set
+
+### Method
 
 `tools/benchmark.py` runs the real `analyze_frame()` pipeline over a set of images and scores
 every loaded age, gender, race, and emotion backend against `tools/ground_truth.json`. Each
@@ -25,7 +52,7 @@ The labelled set:
 - The 11 images are third-party photos and are not distributed with the repository, so these
   figures cannot be reproduced from a clone.
 
-## Results
+### Results
 
 Detection recall was 100% on all 75 faces.
 
@@ -48,14 +75,14 @@ been re-scored on this set.
 
 ### Limits
 
-- **No held-out split.** The fusion weights below were chosen by looking at results on these
+- **In-sample, no held-out split.** The fusion weights below were chosen by looking at results on these
   same 75 faces, so the combined figures are in-sample and optimistic.
 - **Small corpus.** One or two faces is about 1.3 percentage points, which is noise at this size.
 - **Skewed labels.** Emotion is almost all `happy`; gender is two-thirds female.
 
-A public, held-out evaluation on an external dataset is planned. Until then, treat these
-numbers as a sanity check of the wiring and the fusion rules, not as a measure of accuracy in
-general use.
+Treat these numbers as a sanity check of the wiring and the fusion rules, not as a measure of
+accuracy in general use; the held-out evaluation above is that measure. Several backends score
+far lower there (for example `deepface` race, 94.7% here and 63.0% on FairFace).
 
 ## Combined answers
 
@@ -82,7 +109,9 @@ The weights live in `src/face_analyzer/core/constants.py`:
 The weights are hand-set, not fitted. They are ordered by each model's accuracy on the 75-face
 set, so a weaker backend contributes less to the combined answer; race uses equal weights. They
 were chosen on the same set they are scored on, with no held-out split, which is why the
-combined figures above are in-sample. Re-run `tools/benchmark.py` after changing any model or
+75-face combined figures are in-sample. The held-out evaluation tests them against weights fitted
+on a separate half; see [eval/heldout_fairface.md](eval/heldout_fairface.md#fusion-weights) for
+that comparison and a recommendation (the shipped weights are unchanged). Re-run `tools/benchmark.py` after changing any model or
 its preprocessing, and revisit the weights if the ordering moves.
 
 ### Why age is not fused
