@@ -63,6 +63,8 @@ AGE_BACKENDS = ("mivolo", "fairface", "dex", "caffe")
 GENDER_BACKENDS = ("mivolo", "fairface", "caffe", "deepface")
 RACE_BACKENDS = ("fairface", "deepface")
 CANONICAL_RACES = tuple(RACE_CANONICAL_LABELS)
+# fuse_race displays canonical names ("Latino"), which are not all backend label spellings.
+CANONICAL_BY_DISPLAY = {label: key for key, label in RACE_CANONICAL_LABELS.items()}
 
 # Features the eval does not need; an empty selection skips loading them (see model_selection).
 UNUSED_FEATURE_ENV = (
@@ -262,7 +264,7 @@ def fused_race(raw: dict, weights: dict[str, float] | None = None) -> str | None
     else:
         with mock.patch.dict(RACE_FUSION_WEIGHTS, weights, clear=True):
             label = fuse_race(race_distributions(raw))
-    return None if label is None else canonical_race(shown_top1(label))
+    return None if label is None else CANONICAL_BY_DISPLAY.get(shown_top1(label))
 
 
 # --------------------------------------------------------------------------- statistics

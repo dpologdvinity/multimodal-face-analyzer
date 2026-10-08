@@ -150,6 +150,10 @@ class FusionWeightTests(unittest.TestCase):
                     "race_probs/deepface": [0, 0, 1.0, 0, 0, 0]}
         self.assertEqual(eval_heldout.fused_race(race_raw), "black")
         self.assertEqual(eval_heldout.fused_race(race_raw, {"fairface": 3.0, "deepface": 1.0}), "white")
+        for index, key in enumerate(["asian", "indian", "black", "white", "middle_eastern", "latino"]):
+            deepface_only = {"race_probs/fairface": [1 / 7] * 7,
+                             "race_probs/deepface": [float(i == index) for i in range(6)]}
+            self.assertEqual(eval_heldout.fused_race(deepface_only), key)
         self.assertEqual(GENDER_FUSION_WEIGHTS, shipped_gender)
         self.assertEqual(RACE_FUSION_WEIGHTS, shipped_race)
 
