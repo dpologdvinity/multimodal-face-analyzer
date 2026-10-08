@@ -275,7 +275,7 @@ def test_http_error_on_resume_restarts_without_range(tmp_path, monkeypatch):
     def fake_urlopen(request, timeout):
         ranges.append(request.get_header("Range"))
         if request.get_header("Range"):
-            raise urllib.error.HTTPError(request.full_url, 416, "Range Not Satisfiable", {}, None)
+            raise urllib.error.HTTPError(request.full_url, 500, "Server Error", {}, None)
         return io.BytesIO(payload)
 
     monkeypatch.setattr(fetch_models.urllib.request, "urlopen", fake_urlopen)
