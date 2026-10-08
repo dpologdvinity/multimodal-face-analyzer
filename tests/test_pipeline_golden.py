@@ -47,7 +47,10 @@ def _config(models) -> AnalysisConfig:
     }
     for feature, expected in EXPECTED_ACTIVE.items():
         missing = expected - set(loaded[feature])
-        assert not missing, f"golden backends failed to load for {feature}: {sorted(missing)}"
+        if missing:
+            # Explicit raise: a bare assert is stripped under -O and would let a partial
+            # backend set silently produce a different golden output.
+            raise AssertionError(f"golden backends failed to load for {feature}: {sorted(missing)}")
     return AnalysisConfig(
         conf_threshold=0.5,
         active_age=set(EXPECTED_ACTIVE["age"]),
