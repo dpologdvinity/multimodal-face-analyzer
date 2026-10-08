@@ -53,6 +53,33 @@ required files) before the first start; the guided scripts and the Docker build 
 Older checkouts stored the weights in git-lfs. The loader still treats an unpulled LFS pointer
 file like a missing model.
 
+### Upgrading a clone that has the git-lfs weights
+
+**Back up `models/` before you pull this change.** Git deletes files from disk when a pull stops
+tracking them, so the pull removes every weight the old commits tracked. Most can be downloaded
+again with `tools/fetch_models.py`, but the bring-your-own files cannot. Make a hard-linked copy
+first (no extra disk space), then copy back whatever you need:
+
+```bash
+cp -al models models.bak
+git pull
+cp -a models.bak/dan_affecnet7.pth models.bak/deep3d_recon_resnet50.pth models/   # whichever you have
+python tools/fetch_models.py --keys AGE_MODEL=fairface ...                         # the rest
+```
+
+If you already pulled without a backup, `dan_affecnet7.pth` can be restored from the last commit
+that tracked the weights, `c6fcc83` (the merge of PR #6), with git-lfs:
+
+```bash
+git lfs fetch origin c6fcc83 --include=models/dan_affecnet7.pth
+git show c6fcc83:models/dan_affecnet7.pth | git lfs smudge > models/dan_affecnet7.pth
+```
+
+The same works for any other file of that commit. The `deep3d_recon_resnet50.pth` stored there is
+a placeholder, not a working checkpoint (see its manifest note), so a working one only survives in
+a backup. Switching an upgraded checkout back to an older commit and then forward again deletes the
+weights the same way.
+
 ## Local setup
 
 The base install covers the required SSD face detector and every OpenCV-only backend:

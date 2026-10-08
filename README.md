@@ -105,6 +105,11 @@ weights come from the project's Hugging Face mirror; the rest come from their or
 source, and two (`dan` emotion and `deep3d` 3D reconstruction) are bring-your-own. See
 [docs/setup.md](docs/setup.md#model-weights) and [MODEL_LICENSES.md](MODEL_LICENSES.md).
 
+**Upgrading an existing clone?** Pulling this change deletes the git-lfs weights from disk, including
+the bring-your-own `dan` and `deep3d` files that cannot be downloaded again. Run
+`cp -al models models.bak` before `git pull`; see
+[docs/setup.md](docs/setup.md#upgrading-a-clone-that-has-the-git-lfs-weights).
+
 Native, with the guided installer (Debian/Ubuntu), which fetches the weights you pick:
 
 ```bash
