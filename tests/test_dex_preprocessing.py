@@ -18,6 +18,11 @@ class RecordingNet:
         return self.probabilities[None]
 
 
+def predict_dex_label(net):
+    """Decode and format a DEX prediction the way the pipeline does."""
+    return inference.format_dex_age(inference.dex_age_estimate(net, np.zeros((10, 10, 3), np.uint8)))
+
+
 class DexPreprocessingTests(unittest.TestCase):
     def test_crop_uses_separate_width_and_height_margins(self):
         frame = np.arange(60 * 80 * 3).reshape(60, 80, 3).astype(np.uint8)
@@ -34,11 +39,11 @@ class DexPreprocessingTests(unittest.TestCase):
     def test_expected_value_normalizes_distribution_not_argmax(self):
         probabilities = np.zeros(101)
         probabilities[20], probabilities[40] = 1, 3
-        self.assertEqual(inference.predict_age_dex(RecordingNet(probabilities), np.zeros((10, 10, 3), np.uint8)), "35")
+        self.assertEqual(predict_dex_label(RecordingNet(probabilities)), "35")
 
     def test_broad_distribution_does_not_present_precise_age(self):
         self.assertEqual(
-            inference.predict_age_dex(RecordingNet(np.ones(101) / 101), np.zeros((10, 10, 3), np.uint8)),
+            predict_dex_label(RecordingNet(np.ones(101) / 101)),
             "uncertain (mean 50, SD 29)",
         )
 
@@ -46,7 +51,7 @@ class DexPreprocessingTests(unittest.TestCase):
         for probabilities in (np.zeros(101), np.ones(100), np.full(101, np.nan),
                               np.full(101, np.inf), np.full(101, -1.0)):
             with self.subTest(probabilities=probabilities[:2]):
-                self.assertEqual(inference.predict_age_dex(RecordingNet(probabilities), np.zeros((10, 10, 3), np.uint8)), "unknown")
+                self.assertEqual(predict_dex_label(RecordingNet(probabilities)), "unknown")
 
     def test_pipeline_uses_original_dex_crop_and_cache_includes_its_context(self):
         frame = np.full((180, 180, 3), 80, np.uint8)

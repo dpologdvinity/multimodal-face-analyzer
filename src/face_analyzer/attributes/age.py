@@ -6,9 +6,8 @@ from typing import Any
 import cv2
 import numpy as np
 
-from ..core import AGE_LIST, DEX_MAX_AGE_SD, DEX_MEAN_VALUES
+from ..core import DEX_MAX_AGE_SD, DEX_MEAN_VALUES
 from ._lock import _lock_for
-from .race import fairface_age_label, fairface_probabilities
 
 try:
     from ..nets.mivolo.inference_wrapper import MiVOLOInference
@@ -21,11 +20,6 @@ def caffe_probabilities(net: Any, blob: np.ndarray) -> np.ndarray:
     with _lock_for(net):
         net.setInput(blob)
         return net.forward()[0].flatten()
-
-
-def predict_age_caffe(net: Any, blob: np.ndarray) -> str:
-    """Predict age bucket from a Caffe blob via argmax."""
-    return AGE_LIST[int(caffe_probabilities(net, blob).argmax())]
 
 
 def crop_face_dex(frame: np.ndarray, box: tuple[int, int, int, int]) -> np.ndarray:
@@ -69,11 +63,6 @@ def format_dex_age(estimate: tuple[float, float] | None) -> str:
     return f"{age:.0f}"
 
 
-def predict_age_dex(net: Any, face_bgr: np.ndarray) -> str:
-    """Predict a continuous age with DEX, labelling wide distributions."""
-    return format_dex_age(dex_age_estimate(net, face_bgr))
-
-
 def mivolo_estimate(net: Any, face_bgr: np.ndarray) -> tuple[float, str]:
     """Estimate age and gender from a single MiVOLO forward pass."""
     with _lock_for(net):
@@ -85,19 +74,3 @@ def mivolo_age_estimate(net: Any, face_bgr: np.ndarray) -> float:
     """Run MiVOLO age-only inference."""
     with _lock_for(net):
         return float(net.predict_age(face_bgr))
-
-
-def predict_age_mivolo(net: Any, face_bgr: np.ndarray) -> str:
-    """Predict age string using MiVOLO model."""
-    age, _ = mivolo_estimate(net, face_bgr)
-    return f"{int(round(age))}"
-
-
-def predict_age_fairface(
-    net: Any,
-    frame_bgr: np.ndarray,
-    box: tuple[int, int, int, int],
-    landmarks: np.ndarray | None = None,
-) -> str:
-    """Predict age bucket via FairFace using landmarks when available."""
-    return fairface_age_label(fairface_probabilities(net, frame_bgr, box, "age_output", landmarks))

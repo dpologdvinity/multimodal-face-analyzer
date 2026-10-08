@@ -15,10 +15,6 @@ from .age import (
     format_dex_age,
     mivolo_age_estimate,
     mivolo_estimate,
-    predict_age_caffe,
-    predict_age_dex,
-    predict_age_fairface,
-    predict_age_mivolo,
 )
 from .emotion import (
     VoiceFaceFusion,
@@ -31,12 +27,6 @@ from .emotion import (
     predict_emotion_hsemotion,
     predict_emotion_mini_xception,
 )
-from .gender import (
-    predict_gender_caffe,
-    predict_gender_deepface,
-    predict_gender_fairface,
-    predict_gender_mivolo,
-)
 from .race import (
     _fairface_forward,
     _format_race_label,
@@ -46,8 +36,6 @@ from .race import (
     fairface_gender_label,
     fairface_probabilities,
     fairface_race_label,
-    predict_race_deepface,
-    predict_race_fairface,
 )
 from .transformers import (
     _estimate_roll_angle,
@@ -97,24 +85,14 @@ __all__ = [
     "fairface_race_label",
     "fairface_gender_label",
     "fairface_age_label",
-    "predict_race_fairface",
     "deepface_probabilities",
-    "predict_race_deepface",
     "caffe_probabilities",
-    "predict_age_caffe",
     "crop_face_dex",
     "dex_age_estimate",
     "format_dex_age",
-    "predict_age_dex",
     "mivolo_estimate",
     "mivolo_age_estimate",
-    "predict_age_mivolo",
-    "predict_age_fairface",
     "MiVOLOInference",
-    "predict_gender_caffe",
-    "predict_gender_mivolo",
-    "predict_gender_fairface",
-    "predict_gender_deepface",
     "predict_emotion_dan",
     "predict_emotion_mini_xception",
     "predict_emotion_ferplus",

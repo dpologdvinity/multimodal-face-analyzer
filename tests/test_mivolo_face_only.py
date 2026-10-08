@@ -2,11 +2,7 @@ import unittest
 
 import numpy as np
 
-from face_analyzer.inference import (
-    mivolo_estimate,
-    predict_age_mivolo,
-    predict_gender_mivolo,
-)
+from face_analyzer.inference import mivolo_estimate
 
 
 class FakeMiVOLO:
@@ -35,14 +31,6 @@ class MiVOLOFaceOnlyTests(unittest.TestCase):
         self.assertEqual(mivolo_estimate(net, face), (31.4, "Male"))
         self.assertEqual(len(net.face_calls), 1)
         self.assertIs(net.face_calls[0], face)
-        self.assertEqual(net.body_calls, [])
-
-    def test_age_and_gender_wrappers_share_the_one_entry_point(self):
-        net = FakeMiVOLO()
-        face = np.zeros((60, 60, 3), dtype=np.uint8)
-        self.assertEqual(predict_age_mivolo(net, face), "31")
-        self.assertEqual(predict_gender_mivolo(net, face), "Male")
-        self.assertEqual(len(net.face_calls), 2)
         self.assertEqual(net.body_calls, [])
 
 

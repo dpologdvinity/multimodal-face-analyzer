@@ -11,7 +11,6 @@ from ..core import (
     IMAGENET_MEAN,
     IMAGENET_STD,
     RACE_CLOSE_MARGIN,
-    RACE_LABELS_DEEPFACE,
     RACE_LABELS_FAIRFACE,
 )
 from ._lock import _lock_for
@@ -78,24 +77,9 @@ def fairface_age_label(probs: np.ndarray) -> str:
     return FAIRFACE_AGE_LABELS[int(np.argmax(probs))]
 
 
-def predict_race_fairface(
-    net: Any,
-    frame_bgr: np.ndarray,
-    box: tuple[int, int, int, int],
-    landmarks: np.ndarray | None = None,
-) -> str:
-    """Predict race using FairFace model."""
-    return fairface_race_label(fairface_probabilities(net, frame_bgr, box, "race_output", landmarks))
-
-
 def deepface_probabilities(net: Any, face_bgr: np.ndarray) -> np.ndarray:
     """Compute class probabilities from DeepFace head."""
     face_rgb = cv2.cvtColor(cv2.resize(face_bgr, (224, 224)), cv2.COLOR_BGR2RGB).astype(np.float32)
     blob = face_rgb[np.newaxis, ...]
     with _lock_for(net):
         return net(blob, training=False).numpy().flatten()
-
-
-def predict_race_deepface(net: Any, face_bgr: np.ndarray) -> str:
-    """Predict race using DeepFace model."""
-    return _format_race_label(deepface_probabilities(net, face_bgr), RACE_LABELS_DEEPFACE)
