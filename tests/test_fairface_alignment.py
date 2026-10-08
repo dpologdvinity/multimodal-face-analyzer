@@ -89,11 +89,7 @@ class FairFaceAlignmentTests(unittest.TestCase):
         with patch("src.pipeline.analyzer.detect_faces", return_value=[box]) as detect, \
              patch("src.pipeline.analyzer._detect_face_landmarker", return_value=result) as landmarker:
             output = inference.analyze_frame(
-                models, frame, 0.5, active_age={"fairface"}, active_gender=set(),
-                active_emotion=set(), active_race=set(), active_recognition=set(), gallery={},
-                active_glasses=set(), active_mask=set(), active_hair_color=set(), active_eye_color=set(),
-                active_face_landmarks=set(), active_hands=set(), active_gaze=set(),
-                global_adjustments={}, face_adjustments={},
+                models, frame, inference.AnalysisConfig(active_age={"fairface"}),
             )
         detect.assert_called()
         landmarker.assert_called()

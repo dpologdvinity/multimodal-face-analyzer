@@ -31,32 +31,6 @@ class AnalysisConfig:
     liveness_tracker: Any | None = None
     active_liveness: set[str] | None = None
 
-    def to_dict(self) -> dict[str, Any]:
-        """Convert configuration options into a dictionary."""
-        return {
-            "conf_threshold": self.conf_threshold,
-            "active_age": set(self.active_age),
-            "active_gender": set(self.active_gender),
-            "active_emotion": set(self.active_emotion),
-            "active_race": set(self.active_race),
-            "active_recognition": set(self.active_recognition),
-            "gallery": self.gallery,
-            "active_glasses": set(self.active_glasses),
-            "active_mask": set(self.active_mask),
-            "active_hair_color": set(self.active_hair_color),
-            "active_eye_color": set(self.active_eye_color),
-            "active_face_landmarks": set(self.active_face_landmarks),
-            "active_hands": set(self.active_hands),
-            "active_gaze": set(self.active_gaze),
-            "global_adjustments": self.global_adjustments,
-            "face_adjustments": self.face_adjustments,
-            "face_detector": self.face_detector,
-            "metrics": self.metrics,
-            "tracker": self.tracker,
-            "liveness_tracker": self.liveness_tracker,
-            "active_liveness": set(self.active_liveness) if self.active_liveness is not None else None,
-        }
-
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> AnalysisConfig:
         """Construct AnalysisConfig from a dictionary."""

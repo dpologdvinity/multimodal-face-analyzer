@@ -241,6 +241,7 @@ multimodal-face-analyzer/
 │   ├── attributes/                # per-face predictors: age, gender, emotion, race, accessories, ...
 │   ├── fusion/                    # combined answers: fuse_gender/race/emotion, select_age
 │   ├── pipeline/                  # loader (load_models), analyzer (analyze_frame), drawing, tracker
+│   ├── ui/                        # live webcam frame callback (make_video_frame_callback)
 │   ├── gallery/                   # SQLite saved faces, eigenfaces, identity search
 │   ├── liveness.py, model_selection.py
 │   └── nets/                      # vendored third-party model architectures

@@ -274,33 +274,11 @@ def _record_model_latency(metrics: dict | None, feature: str, model: str, starte
 
 
 def analyze_frame(
-    models: Models,
-    frame: np.ndarray,
-    conf_threshold: float,
-    active_age: set,
-    active_gender: set,
-    active_emotion: set,
-    active_race: set,
-    active_recognition: set,
-    gallery: dict,
-    active_glasses: set,
-    active_mask: set,
-    active_hair_color: set,
-    active_eye_color: set,
-    active_face_landmarks: set,
-    active_hands: set,
-    active_gaze: set,
-    global_adjustments: dict,
-    face_adjustments: dict,
-    face_detector: str = "yolo",
-    metrics: dict | None = None,
-    tracker: Any | None = None,
-    liveness_tracker: Any | None = None,
-    active_liveness: set | None = None,
+    models: Models, frame: np.ndarray, config: AnalysisConfig
 ) -> tuple[np.ndarray, list[dict], bool, bool]:
     """Detect faces and run inference for whichever model keys are active per feature.
 
-    Multiple active models for the same feature (e.g. active_age = {"caffe", "fairface"})
+    Multiple active models for the same feature (e.g. config.active_age = {"caffe", "fairface"})
     all run and are shown together. No Streamlit calls (safe for background threads).
 
     global_adjustments apply to the whole frame first, before face detection even runs --
@@ -327,6 +305,27 @@ def analyze_frame(
     None, regardless of active_liveness. active_liveness additionally gates it off within LIVE
     mode itself (unchecked box = skipped); omitted callers default to every loaded backend.
     """
+    conf_threshold = config.conf_threshold
+    active_age = config.active_age
+    active_gender = config.active_gender
+    active_emotion = config.active_emotion
+    active_race = config.active_race
+    active_recognition = config.active_recognition
+    gallery = config.gallery
+    active_glasses = config.active_glasses
+    active_mask = config.active_mask
+    active_hair_color = config.active_hair_color
+    active_eye_color = config.active_eye_color
+    active_face_landmarks = config.active_face_landmarks
+    active_hands = config.active_hands
+    active_gaze = config.active_gaze
+    global_adjustments = config.global_adjustments
+    face_adjustments = config.face_adjustments
+    face_detector = config.face_detector
+    metrics = config.metrics
+    tracker = config.tracker
+    liveness_tracker = config.liveness_tracker
+    active_liveness = config.active_liveness
     if active_liveness is None:
         active_liveness = set(models.liveness_nets)
     if global_adjustments and any(global_adjustments.values()):
@@ -771,37 +770,6 @@ def analyze_frame(
     return annotated_frame, cropped_faces, bool(face_boxes), hands_detected
 
 
-def analyze_frame_with_config(
-    models: Models, frame: np.ndarray, config: AnalysisConfig
-) -> tuple[np.ndarray, list[dict], bool, bool]:
-    """Execute the facial analysis pipeline using a consolidated AnalysisConfig object."""
-    return analyze_frame(
-        models=models,
-        frame=frame,
-        conf_threshold=config.conf_threshold,
-        active_age=config.active_age,
-        active_gender=config.active_gender,
-        active_emotion=config.active_emotion,
-        active_race=config.active_race,
-        active_recognition=config.active_recognition,
-        gallery=config.gallery,
-        active_glasses=config.active_glasses,
-        active_mask=config.active_mask,
-        active_hair_color=config.active_hair_color,
-        active_eye_color=config.active_eye_color,
-        active_face_landmarks=config.active_face_landmarks,
-        active_hands=config.active_hands,
-        active_gaze=config.active_gaze,
-        global_adjustments=config.global_adjustments,
-        face_adjustments=config.face_adjustments,
-        face_detector=config.face_detector,
-        metrics=config.metrics,
-        tracker=config.tracker,
-        liveness_tracker=config.liveness_tracker,
-        active_liveness=config.active_liveness,
-    )
-
-
 AGGREGATE_FEATURES = ("age", "gender", "race")
 
 
@@ -822,7 +790,6 @@ def aggregate_demographics(cropped_faces: list[dict]) -> dict[str, dict[str, dic
 
 __all__ = [
     "analyze_frame",
-    "analyze_frame_with_config",
     "aggregate_demographics",
     "_cached_face_predict",
     "predict_face_landmarks_mediapipe",

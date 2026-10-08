@@ -56,16 +56,12 @@ class DexPreprocessingTests(unittest.TestCase):
         net = RecordingNet(probabilities)
         models = inference.Models(face_net=None, age_nets={"dex": net},
                                   eye_color_nets={"colorimetric": object()})
-        options = dict(active_age={"dex"}, active_gender=set(), active_emotion=set(),
-                       active_race=set(), active_recognition=set(), gallery={}, active_glasses=set(),
-                       active_mask=set(), active_hair_color=set(), active_eye_color=set(),
-                       active_face_landmarks=set(), active_hands=set(), active_gaze=set(),
-                       global_adjustments={}, face_adjustments={"brightness": 10})
+        config = inference.AnalysisConfig(active_age={"dex"}, face_adjustments={"brightness": 10})
         with patch("src.pipeline.analyzer.detect_faces", return_value=[box]) as detect, \
              patch("src.pipeline.analyzer._estimate_roll_angle", return_value=20) as roll:
             for context_pixel in (20, 200):
                 frame[40:55, 40:130] = context_pixel
-                output = inference.analyze_frame(models, frame, 0.5, **options)
+                output = inference.analyze_frame(models, frame, config)
                 crop = inference.apply_image_adjustments(frame[40:130, 40:130], {"brightness": 10})
                 expected = cv2.dnn.blobFromImage(crop, 1.0, (224, 224), inference.DEX_MEAN_VALUES, swapRB=False, crop=False)
                 np.testing.assert_array_equal(net.blob, expected)

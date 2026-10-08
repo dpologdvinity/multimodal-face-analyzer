@@ -48,9 +48,10 @@ flowchart LR
     H --> J
 ```
 
-Colorization runs in `src/app.py` before `analyze_frame()`; the remaining stages are in
-`src/pipeline/analyzer.py`. Model loading is in `src/pipeline/loader.py`, fusion in
-`src/fusion/`, and vendored third-party architectures in `src/nets/`.
+Colorization runs in `src/app.py` (and in `src/ui/live.py` for live webcam frames) before
+`analyze_frame()`; the remaining stages are in `src/pipeline/analyzer.py`. Model loading is in
+`src/pipeline/loader.py`, fusion in `src/fusion/`, and vendored third-party architectures in
+`src/nets/`.
 
 ## Results
 

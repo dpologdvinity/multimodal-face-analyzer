@@ -21,8 +21,8 @@ class ExpressionCropTests(unittest.TestCase):
               patch("src.pipeline.analyzer.predict_emotion_ferplus", return_value="happiness") as ferplus,
               patch("src.pipeline.analyzer.predict_emotion_hsemotion", return_value="happiness") as hse):
             _, faces, _, _ = inference.analyze_frame(
-                models, frame, .5, set(), set(), {"ferplus", "hsemotion"}, set(), set(), {},
-                set(), set(), set(), set(), set(), set(), set(), {}, {}, face_detector="ssd",
+                models, frame,
+                inference.AnalysisConfig(active_emotion={"ferplus", "hsemotion"}, face_detector="ssd"),
             )
         for mocked in (detect, roll, rotate, ferplus, hse):
             mocked.assert_called()

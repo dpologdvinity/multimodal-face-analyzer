@@ -2,9 +2,7 @@ import base64
 import csv
 import io
 import json
-import threading
 import time
-from collections import deque
 from html import escape
 
 import av
@@ -17,13 +15,14 @@ from streamlit_cropper import st_cropper
 from streamlit_webrtc import webrtc_streamer
 
 import inference
+from ui.live import (
+    LIVE_METRICS,
+    LIVE_METRICS_LOCK,
+    LIVE_STATE,
+    LIVE_STATE_LOCK,
+    make_video_frame_callback,
+)
 
-# Module-scope shared state for live webcam stream, guarded by locks for thread-safe access
-# from streamlit-webrtc callbacks running in separate threads.
-LIVE_METRICS = deque(maxlen=120)
-LIVE_METRICS_LOCK = threading.Lock()
-LIVE_STATE = {"faces": [], "error": None, "updated": 0.0}
-LIVE_STATE_LOCK = threading.Lock()
 IMAGE_DISPLAY_WIDTH = 900
 
 # Page setup and visual system
@@ -1026,13 +1025,21 @@ def process_and_display(frame: np.ndarray, identifier: str, conf_threshold: floa
     spinner_text = f"Analyzing with {', '.join(active_labels)}..." if active_labels else "Detecting faces..."
     with st.spinner(spinner_text):
         annotated_frame, cropped_faces, has_faces, hands_detected = inference.analyze_frame(
-            models, frame, conf_threshold, active_age, active_gender, active_emotion, active_race,
-            active_recognition, st.session_state.get("gallery", {}),
-            active_glasses, active_mask, active_hair_color, active_eye_color,
-            active_face_landmarks, active_hands, active_gaze,
-            {name: values[2] for name, values in inference.IMAGE_ADJUSTMENT_RANGES.items()}, face_adjustments,
-            face_detector=active_face_detector,
-            active_liveness=active_liveness,
+            models, frame,
+            inference.AnalysisConfig(
+                conf_threshold=conf_threshold,
+                active_age=active_age, active_gender=active_gender, active_emotion=active_emotion,
+                active_race=active_race, active_recognition=active_recognition,
+                gallery=st.session_state.get("gallery", {}),
+                active_glasses=active_glasses, active_mask=active_mask,
+                active_hair_color=active_hair_color, active_eye_color=active_eye_color,
+                active_face_landmarks=active_face_landmarks, active_hands=active_hands,
+                active_gaze=active_gaze,
+                global_adjustments={name: values[2] for name, values in inference.IMAGE_ADJUSTMENT_RANGES.items()},
+                face_adjustments=face_adjustments,
+                face_detector=active_face_detector,
+                active_liveness=active_liveness,
+            ),
         )
 
     if was_colorized:
@@ -1329,10 +1336,6 @@ with tab_webcam:
             "SNAPSHOT for that), so skipping them here only reduces CPU load, with no visible "
             "staleness to interpolate around.",
         )
-        # Counter for frame-skip logic: run slow classifiers every Nth frame to reduce
-        # CPU load while keeping face detection (fast) and landmarks (smooth) at full rate.
-        frame_counter = {"n": 0}
-        _NO_MODELS: set = set()
         face_tracker = _get_face_tracker()
         liveness_tracker = _get_liveness_tracker()
         reset_col, voice_col = st.columns([1, 2])
@@ -1354,63 +1357,22 @@ with tab_webcam:
             voice_fusion.reset()
         gallery_snapshot = dict(st.session_state.get("gallery", {}))
 
-        def _video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
-            """Process each video frame: run detection/inference, update LIVE state, handle voice fusion."""
-            try:
-                frame_started = time.perf_counter()
-                metrics = {}
-                img = frame.to_ndarray(format="bgr24")
-                img, _ = inference.maybe_colorize(models, img, active_colorization)
-                frame_counter["n"] += 1
-                run_classifiers = frame_counter["n"] % frame_skip == 0
-                # Pass empty model sets if classifiers are skipped this frame; face detection
-                # still runs (always fast), so video remains smooth while expensive classifiers run sparse.
-                annotated_frame, cropped_faces, _, _ = inference.analyze_frame(
-                    models, img, conf_threshold,
-                    active_age if run_classifiers else _NO_MODELS,
-                    active_gender if run_classifiers else _NO_MODELS,
-                    active_emotion if run_classifiers else _NO_MODELS,
-                    active_race if run_classifiers else _NO_MODELS,
-                    active_recognition if run_classifiers else _NO_MODELS, gallery_snapshot,
-                    active_glasses if run_classifiers else _NO_MODELS,
-                    active_mask if run_classifiers else _NO_MODELS,
-                    active_hair_color if run_classifiers else _NO_MODELS,
-                    active_eye_color if run_classifiers else _NO_MODELS,
-                    active_face_landmarks, active_hands,
-                    active_gaze if run_classifiers else _NO_MODELS,
-                    global_adjustments, face_adjustments,
-                    face_detector=active_face_detector, metrics=metrics, tracker=face_tracker,
-                    liveness_tracker=liveness_tracker,
-                    active_liveness=active_liveness,
-                )
-                metrics["frame_ms"] = (time.perf_counter() - frame_started) * 1000
-                metrics["timestamp"] = time.monotonic()
-                live_faces = [
-                    {key: face[key] for key in ("idx", "model_results")}
-                    for face in cropped_faces
-                ]
-                with LIVE_METRICS_LOCK:
-                    LIVE_METRICS.append(metrics)
-                with LIVE_STATE_LOCK:
-                    LIVE_STATE.update(faces=live_faces, error=None, updated=time.monotonic())
-                if voice_fusion is not None and cropped_faces:
-                    # v1 scope: fuse against the single largest detected face.
-                    largest = max(cropped_faces, key=lambda f: (f["box"][2] - f["box"][0]) * (f["box"][3] - f["box"][1]))
-                    emotion_label = largest["emotion"][0] if largest["emotion"] else None
-                    voice_arousal = voice_fusion.current_arousal()
-                    voice_fusion.set_latest_status({
-                        "voice_arousal": voice_arousal,
-                        "emotion": emotion_label,
-                        "consistency": inference.fuse_voice_and_emotion(voice_arousal, emotion_label) if emotion_label else None,
-                    })
-                return av.VideoFrame.from_ndarray(annotated_frame, format="bgr24")
-            except Exception as exc:
-                # Inference failure must not crash the WebRTC video stream. Log the error to
-                # LIVE_STATE so the UI thread can display it, but always return a frame
-                # (raw passthrough) to keep the stream alive and the camera usable.
-                with LIVE_STATE_LOCK:
-                    LIVE_STATE["error"] = f"{type(exc).__name__}: {exc}"
-                return frame
+        live_config = inference.AnalysisConfig(
+            conf_threshold=conf_threshold,
+            active_age=active_age, active_gender=active_gender, active_emotion=active_emotion,
+            active_race=active_race, active_recognition=active_recognition, gallery=gallery_snapshot,
+            active_glasses=active_glasses, active_mask=active_mask,
+            active_hair_color=active_hair_color, active_eye_color=active_eye_color,
+            active_face_landmarks=active_face_landmarks, active_hands=active_hands,
+            active_gaze=active_gaze,
+            global_adjustments=global_adjustments, face_adjustments=face_adjustments,
+            face_detector=active_face_detector, tracker=face_tracker,
+            liveness_tracker=liveness_tracker, active_liveness=active_liveness,
+        )
+        _video_frame_callback = make_video_frame_callback(
+            lambda: models, lambda: live_config,
+            frame_skip=frame_skip, active_colorization=active_colorization, voice_fusion=voice_fusion,
+        )
 
         def _audio_frame_callback(frame: av.AudioFrame) -> av.AudioFrame:
             """Ingest audio samples into voice fusion tracker if enabled."""

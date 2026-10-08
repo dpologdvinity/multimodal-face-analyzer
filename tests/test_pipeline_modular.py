@@ -1,15 +1,12 @@
 """Unit tests for the modular pipeline subpackage (src/pipeline)."""
+import inspect
 import unittest
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 
 from src.core.types import Models
-from src.pipeline.analyzer import (
-    aggregate_demographics,
-    analyze_frame,
-    analyze_frame_with_config,
-)
+from src.pipeline.analyzer import aggregate_demographics, analyze_frame
 from src.pipeline.config import AnalysisConfig
 from src.pipeline.drawing import (
     draw_face_landmarks,
@@ -40,14 +37,15 @@ class TestAnalysisConfig(unittest.TestCase):
         self.assertIsNone(config.tracker)
         self.assertIsNone(config.liveness_tracker)
 
-    def test_from_dict_and_to_dict(self):
-        """Test converting AnalysisConfig to and from dictionary."""
+    def test_from_dict_ignores_unknown_keys(self):
+        """Test building AnalysisConfig from a dictionary."""
         data = {
             "conf_threshold": 0.7,
             "face_detector": "ssd",
             "active_age": {"caffe"},
             "active_gender": {"mivolo"},
             "global_adjustments": {"brightness": 10},
+            "not_a_field": 1,
         }
         config = AnalysisConfig.from_dict(data)
         self.assertEqual(config.conf_threshold, 0.7)
@@ -55,11 +53,6 @@ class TestAnalysisConfig(unittest.TestCase):
         self.assertEqual(config.active_age, {"caffe"})
         self.assertEqual(config.active_gender, {"mivolo"})
         self.assertEqual(config.global_adjustments, {"brightness": 10})
-
-        exported = config.to_dict()
-        self.assertEqual(exported["conf_threshold"], 0.7)
-        self.assertEqual(exported["face_detector"], "ssd")
-        self.assertEqual(exported["active_age"], {"caffe"})
 
 
 class TestFaceTracker(unittest.TestCase):
@@ -172,45 +165,31 @@ class TestDemographicsAggregation(unittest.TestCase):
 
 
 class TestAnalyzeFrameModular(unittest.TestCase):
-    """Verify analyze_frame execution and dispatching with config."""
+    """Verify analyze_frame execution with a consolidated AnalysisConfig."""
+
+    def test_signature_is_models_frame_config(self):
+        """Verify analyze_frame takes exactly the models, the frame and one config."""
+        self.assertEqual(list(inspect.signature(analyze_frame).parameters), ["models", "frame", "config"])
 
     def test_analyze_frame_empty_no_faces(self):
         """Verify analyze_frame returns empty face list when no faces detected."""
         frame = np.zeros((100, 100, 3), dtype=np.uint8)
         models = Models(face_net=MagicMock())
         with patch("src.pipeline.analyzer.detect_faces", return_value=[]):
-            annotated, faces, hands, metrics = analyze_frame(
-                models=models,
-                frame=frame,
-                conf_threshold=0.5,
-                active_age=set(),
-                active_gender=set(),
-                active_emotion=set(),
-                active_race=set(),
-                active_recognition=set(),
-                gallery={},
-                active_glasses=set(),
-                active_mask=set(),
-                active_hair_color=set(),
-                active_eye_color=set(),
-                active_face_landmarks=set(),
-                active_hands=set(),
-                active_gaze=set(),
-                global_adjustments={},
-                face_adjustments={},
-            )
+            annotated, faces, has_faces, hands = analyze_frame(models, frame, AnalysisConfig())
             self.assertEqual(len(faces), 0)
+            self.assertFalse(has_faces)
             self.assertFalse(hands)
             self.assertEqual(annotated.shape, frame.shape)
 
-    def test_analyze_frame_with_config(self):
-        """Verify analyze_frame_with_config forwards parameters properly."""
+    def test_analyze_frame_honours_config_detector_and_threshold(self):
+        """Verify the config's detector and confidence threshold reach face detection."""
         frame = np.zeros((100, 100, 3), dtype=np.uint8)
         models = Models(face_net=MagicMock())
         config = AnalysisConfig(conf_threshold=0.6, face_detector="ssd")
-        with patch("src.pipeline.analyzer.detect_faces", return_value=[]):
-            annotated, faces, hands, metrics = analyze_frame_with_config(models, frame, config)
-            self.assertEqual(len(faces), 0)
+        with patch("src.pipeline.analyzer.detect_faces", return_value=[]) as detect:
+            analyze_frame(models, frame, config)
+        self.assertEqual(detect.call_args.args[-1], 0.6)
 
 
 if __name__ == "__main__":
