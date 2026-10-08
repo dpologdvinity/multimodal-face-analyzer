@@ -11,7 +11,11 @@ class NativeInstallerVerbosityTests(unittest.TestCase):
     """Verify install-and-run.sh produces correct prompts and environment variables."""
 
     def _run_installer(
-        self, *args: str, input_data: str | None = None, capture_env: bool = False
+        self,
+        *args: str,
+        input_data: str | None = None,
+        capture_env: bool = False,
+        capture_args: bool = False,
     ) -> str:
         """Run installer script in isolated sandbox with fake binaries."""
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -29,6 +33,7 @@ class NativeInstallerVerbosityTests(unittest.TestCase):
             venv_python.write_text(
                 '#!/bin/sh\n'
                 'if [ -n "$CAPTURE_ENV" ]; then env > "$CAPTURE_ENV"; fi\n'
+                'if [ -n "$CAPTURE_ARGS" ]; then echo "$*" >> "$CAPTURE_ARGS"; fi\n'
                 'exit 0\n'
             )
             venv_python.chmod(0o755)
@@ -38,6 +43,8 @@ class NativeInstallerVerbosityTests(unittest.TestCase):
             env["VENV_DIR"] = str(temp / "venv")
             if capture_env:
                 env["CAPTURE_ENV"] = str(temp / "captured-env")
+            if capture_args:
+                env["CAPTURE_ARGS"] = str(temp / "captured-args")
             result = subprocess.run(
                 ["bash", str(SCRIPT), *args],
                 cwd=SCRIPT.parent,
@@ -51,6 +58,8 @@ class NativeInstallerVerbosityTests(unittest.TestCase):
             output = result.stdout + result.stderr
             if capture_env:
                 output += (temp / "captured-env").read_text()
+            if capture_args:
+                output += (temp / "captured-args").read_text()
             return output
 
     def test_default_prompts_hide_dependency_details(self):
@@ -204,6 +213,17 @@ class NativeInstallerVerbosityTests(unittest.TestCase):
         output = self._run_installer(input_data=selections, capture_env=True)
 
         self.assertIn("HAIR_COLOR_MODEL=colorimetric", output)
+
+    def test_selected_weights_are_fetched_before_launch(self):
+        """The installer downloads only the selected models via tools/fetch_models.py."""
+        selections = "\n".join(["2", "1", "0", "0", "2", "0", "0", "0"]) + "\n"
+        output = self._run_installer(input_data=selections, capture_args=True)
+
+        fetch = [line for line in output.splitlines() if line.startswith("tools/fetch_models.py --keys ")]
+        self.assertEqual(len(fetch), 1)
+        for pair in ("SCRFD_FACE_MODEL=scrfd", "AGE_MODEL=fairface", "GENDER_MODEL=", "EMOTION_MODEL=ferplus"):
+            self.assertIn(f" {pair} ", f"{fetch[0]} ")
+        self.assertLess(output.index("tools/fetch_models.py"), output.index("-m streamlit run"))
 
 
 class NativeInstallerOpenCVPinTests(unittest.TestCase):

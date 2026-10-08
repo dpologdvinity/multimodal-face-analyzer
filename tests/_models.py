@@ -1,4 +1,4 @@
-"""Skip helpers for tests that need git-lfs model weights or untracked local data."""
+"""Skip helpers for tests that need downloaded model weights or untracked local data."""
 from pathlib import Path
 
 import pytest
@@ -7,7 +7,7 @@ _LFS_POINTER_PREFIX = b"version https://git-lfs"
 
 
 def require_model(path: Path) -> None:
-    """Skip the calling test when a model file is missing or is an unpulled LFS pointer."""
+    """Skip the calling test when a model file is missing or is an old, unpulled LFS pointer."""
     if not path.is_file():
         pytest.skip(f"model file missing: {path.name}")
     with path.open("rb") as fh:

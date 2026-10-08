@@ -98,30 +98,39 @@ in-sample benchmark (the set the weights were hand-set on) is kept in
 
 ## Quick start
 
-Model weights are stored with [git-lfs](https://git-lfs.com/), which is required. The full set
-is about 3.2 GB; `git lfs pull --include=...` fetches a subset (see [docs/setup.md](docs/setup.md)).
+No git-lfs needed. The model weights (about 2.9 GB for every downloadable model) are fetched on
+demand by `tools/fetch_models.py`, which downloads only the models you select and checks each
+file's sha256 against [models/manifest.json](models/manifest.json). Permissively licensed
+weights come from the project's Hugging Face mirror; the rest come from their original upstream
+source, and two (`dan` emotion and `deep3d` 3D reconstruction) are bring-your-own. See
+[docs/setup.md](docs/setup.md#model-weights) and [MODEL_LICENSES.md](MODEL_LICENSES.md).
 
-Native, with the guided installer (Debian/Ubuntu):
+**Upgrading an existing clone?** Pulling this change deletes the git-lfs weights from disk, including
+the bring-your-own `dan` and `deep3d` files that cannot be downloaded again. Run
+`cp -al models models.bak` before `git pull`; see
+[docs/setup.md](docs/setup.md#upgrading-a-clone-that-has-the-git-lfs-weights).
+
+Native, with the guided installer (Debian/Ubuntu), which fetches the weights you pick:
 
 ```bash
-git lfs install
 git clone https://github.com/dpologdvinity/multimodal-face-analyzer.git
-cd multimodal-face-analyzer && git lfs pull
+cd multimodal-face-analyzer
 ./install-and-run.sh          # pick backends, then open http://localhost:8501
 ```
 
-Docker:
+Docker, which downloads the selected weights during the build:
 
 ```bash
-git lfs install
 git clone https://github.com/dpologdvinity/multimodal-face-analyzer.git
-cd multimodal-face-analyzer && git lfs pull
+cd multimodal-face-analyzer
 docker build -t face-analyzer .          # or ./build-and-run.sh for guided model selection
 docker run -d -p 127.0.0.1:8501:8501 --name face_analyzer_container face-analyzer
 ```
 
 The image runs `streamlit run src/face_analyzer/app.py`. For a manual install, add
-`pip install --no-deps -e .` after the requirements so the `face_analyzer` package is importable. Build
+`pip install --no-deps -e .` after the requirements so the `face_analyzer` package is importable, then
+fetch weights with `python tools/fetch_models.py --keys AGE_MODEL=fairface EMOTION_MODEL=hsemotion`
+(or `--all`; `--list` shows every file and its source). Build
 arguments, manual setup, and the remote-access notes (the app has no authentication) are in
 [docs/setup.md](docs/setup.md).
 
@@ -148,8 +157,9 @@ arguments, manual setup, and the remote-access notes (the app has no authenticat
 | 3D reconstruction | `deep3d` | **No working default weights**: needs the registration-gated Basel Face Model |
 
 The 16 rows after face detection are the analysis features in the `Models` container
-(`src/face_analyzer/core/types.py`). Fifteen work with the weights in this repository; 3D reconstruction is
-wired but stays unavailable until you supply the Basel Face Model file yourself.
+(`src/face_analyzer/core/types.py`). Fifteen work with weights `tools/fetch_models.py` downloads; 3D
+reconstruction is wired but stays unavailable until you supply its checkpoint and the Basel Face
+Model file yourself. The `dan` emotion backend is bring-your-own as well.
 
 The app also has tools that need no extra model: identity search against your own reference
 photos, SAVE to a local SQLite database with eigenfaces matching, a scan that labels every face

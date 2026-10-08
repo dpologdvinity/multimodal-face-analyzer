@@ -17,8 +17,8 @@ jobs:
       matrix:
         python-version: ["3.11", "3.12"]
     steps:
-      # No lfs: the model weights are multiple GB and must never be fetched in CI;
-      # tests that need them skip on the unpulled pointer files.
+      # Only the required files are downloaded (the SSD detector, ~3 MB), so the app smoke tests
+      # run; the optional weights are multiple GB and tests that need them skip when missing.
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
@@ -29,4 +29,5 @@ jobs:
             requirements-dev.txt
       - run: pip install -r requirements-dev.txt
       - run: ruff check .
+      - run: python tools/fetch_models.py --keys
       - run: python -m pytest -q

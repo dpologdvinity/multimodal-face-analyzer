@@ -11,3 +11,22 @@ venv/
 ideas/
 build/
 **/*.egg-info/
+# Only the tracked model files go into the build context; the Dockerfile downloads the
+# selected weights with tools/fetch_models.py. Keep in sync with .gitignore.
+models/*
+!models/manifest.json
+!models/opencv_face_detector.pbtxt
+!models/haarcascade_eye.xml
+!models/colorization_deploy_v2.prototxt
+!models/pts_in_hull.npy
+!models/mivolo_v2_config.json
+!models/BFM
+models/BFM/*
+!models/BFM/similarity_Lm3D_all.mat
+# Local-only data that has no place in the image
+assets/
+data/
+tmp/
+outputs/
+.venv-eval/
+.worktrees/

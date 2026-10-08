@@ -36,6 +36,7 @@ from ..core.constants import (
     HSEMOTION_MODEL,
     MASK_MODEL,
     MINI_XCEPTION_MODEL,
+    MIVOLO_CONFIG,
     MIVOLO_MODEL,
     MODEL_DIR,
     RETINAFACE_MODEL,
@@ -125,7 +126,8 @@ def load_models() -> Models:
     """Load every model whose file(s)/dependencies are present and return a Models container."""
     if not _present(FACE_PROTO, FACE_MODEL):
         raise FileNotFoundError(
-            f"Missing face detector file(s) in {MODEL_DIR}: {FACE_PROTO.name}, {FACE_MODEL.name} (required)."
+            f"Missing face detector file(s) in {MODEL_DIR}: {FACE_PROTO.name}, {FACE_MODEL.name} (required). "
+            "Run `python tools/fetch_models.py --keys` to download them."
         )
     face_net = cv2.dnn.readNet(str(FACE_MODEL), str(FACE_PROTO))
 
@@ -149,11 +151,10 @@ def load_models() -> Models:
         recognition_nets["lbph"] = True
 
     if MIVOLO_SUPPORTED and _present(MIVOLO_MODEL):
-        mivolo_config = MODEL_DIR / "mivolo_v2_config.json"
-        if _present(mivolo_config):
+        if _present(MIVOLO_CONFIG):
             mivolo_net = MiVOLOInference(
                 model_path=str(MIVOLO_MODEL),
-                config_path=str(mivolo_config),
+                config_path=str(MIVOLO_CONFIG),
                 device="cpu",
                 half=False,
                 verbose=False,

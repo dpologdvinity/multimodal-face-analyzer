@@ -3,24 +3,82 @@
 How to install, build, and run the analyzer natively or in Docker, plus the full table of
 Docker build arguments. For what each model does, see [models.md](models.md).
 
-## Model weights (git-lfs)
+## Model weights
 
-Every `*.h5`, `*.pth`, `*.pt`, `*.caffemodel`, `*.safetensors`, `*.onnx`, and `*.task` file in
-`models/` is stored with [git-lfs](https://git-lfs.com/). The full tracked set is about 3.2 GB.
-A clone without LFS contains small pointer files in their place. The app still starts on such a
-clone (the SSD face detector is not stored in LFS), but every model whose weights are still
-pointers is skipped and reported as unavailable, exactly like a missing file, so pull the
-weights you want before running.
+Weights are not stored in git. [`models/manifest.json`](../models/manifest.json) lists every model
+file the app can load, with its size, sha256, license, the build args that select it, and where it
+comes from. `tools/fetch_models.py` (standard library only) downloads the files you select into
+`models/`, or into `FACE_ANALYZER_MODEL_DIR` when that is set. The complete downloadable set is
+about 2.9 GB.
 
 ```bash
-git lfs install
-git clone https://github.com/dpologdvinity/multimodal-face-analyzer.git
-cd multimodal-face-analyzer
-git lfs pull                                  # all weights
-git lfs pull --include="models/fairface_7class.onnx,models/hsemotion_enet_b0_8_best_vgaf.onnx"  # or a subset
+python tools/fetch_models.py --list                                   # every file, its source and build args
+python tools/fetch_models.py --keys AGE_MODEL=fairface,caffe EMOTION_MODEL=hsemotion
+python tools/fetch_models.py --keys ferplus scrfd                     # bare model keys work too
+python tools/fetch_models.py --all
 ```
 
-Set `FACE_ANALYZER_MODEL_DIR` to load weights from a directory other than `models/`.
+`--keys` takes the same `ARG=key[,key]` pairs as the Docker build args (an empty value selects
+nothing) or bare model keys. The required files (the SSD face detector and the eye cascade) are
+always included. Each file is downloaded to a `.part` file, checked against its sha256, and only
+then moved into place. A file that already exists with the right hash is skipped, and an
+interrupted download resumes where it stopped. A hash mismatch is an error (exit code 1) and the
+download is discarded. An existing file with a different hash is left alone unless you pass
+`--force`.
+
+Each manifest entry has one of three sources, decided by its license
+([MODEL_LICENSES.md](../MODEL_LICENSES.md)):
+
+- `hf`: permissively licensed (MIT, Apache-2.0, BSD, CC BY) and mirrored, unchanged, in the
+  [kaitlynbassford/face-analyzer-weights](https://huggingface.co/kaitlynbassford/face-analyzer-weights)
+  Hugging Face repo, whose model card carries the attributions and license notices.
+- `upstream`: restricted or unclear license, so not mirrored. It is downloaded from the original
+  project's own GitHub release, raw file, Hugging Face repo, or website. SCRFD comes out of
+  InsightFace's `buffalo_m.zip` release asset (`det_2.5g.onnx`), so selecting it downloads the
+  276 MB archive to extract a 3 MB file.
+- `manual`: no direct download exists (Google Drive or a registration form). The script prints
+  where to get the file and where to put it, and the feature stays listed as unavailable until
+  you do. These are `dan_affecnet7.pth` (`dan` emotion), `deep3d_recon_resnet50.pth` and
+  `BFM/BFM_model_front.mat` (`deep3d` 3D reconstruction). A self-supplied file whose hash differs
+  from the one this repo was tested with only triggers a warning.
+
+A few small, permissively licensed files stay in git: `opencv_face_detector.pbtxt`,
+`haarcascade_eye.xml`, `colorization_deploy_v2.prototxt`, `pts_in_hull.npy`,
+`mivolo_v2_config.json`, and `BFM/similarity_Lm3D_all.mat` (the manifest's `"in_git": true`
+entries). Every other file in `models/` is gitignored, including the required SSD weights
+(`opencv_face_detector_uint8.pb`, 2.7 MB, no license stated upstream). The app cannot start
+without them, so run `python tools/fetch_models.py --keys` (with no keys it fetches only the
+required files) before the first start; the guided scripts and the Docker build do this for you.
+
+Older checkouts stored the weights in git-lfs. The loader still treats an unpulled LFS pointer
+file like a missing model.
+
+### Upgrading a clone that has the git-lfs weights
+
+**Back up `models/` before you pull this change.** Git deletes files from disk when a pull stops
+tracking them, so the pull removes every weight the old commits tracked. Most can be downloaded
+again with `tools/fetch_models.py`, but the bring-your-own files cannot. Make a hard-linked copy
+first (no extra disk space), then copy back whatever you need:
+
+```bash
+cp -al models models.bak
+git pull
+cp -a models.bak/dan_affecnet7.pth models.bak/deep3d_recon_resnet50.pth models/   # whichever you have
+python tools/fetch_models.py --keys AGE_MODEL=fairface ...                         # the rest
+```
+
+If you already pulled without a backup, `dan_affecnet7.pth` can be restored from the last commit
+that tracked the weights, `c6fcc83` (the merge of PR #6), with git-lfs:
+
+```bash
+git lfs fetch origin c6fcc83 --include=models/dan_affecnet7.pth
+git show c6fcc83:models/dan_affecnet7.pth | git lfs smudge > models/dan_affecnet7.pth
+```
+
+The same works for any other file of that commit. The `deep3d_recon_resnet50.pth` stored there is
+a placeholder, not a working checkpoint (see its manifest note), so a working one only survives in
+a backup. Switching an upgraded checkout back to an older commit and then forward again deletes the
+weights the same way.
 
 ## Local setup
 
@@ -31,6 +89,7 @@ conda create -n vision_env python=3.11 -y
 conda activate vision_env
 pip install -r requirements.txt
 pip install --no-deps -e .
+python tools/fetch_models.py --keys    # the required SSD detector; add ARG=key pairs for more
 streamlit run src/face_analyzer/app.py
 ```
 
@@ -70,9 +129,11 @@ python -m pytest -q
 ruff check .
 ```
 
-Tests that need a real weight file skip when it is missing or still an LFS pointer, so the suite
-runs on a clone without `git lfs pull`. CI runs ruff and the test suite on Python 3.11 and 3.12
-against exactly such a clone.
+Tests that need a real weight file skip when it is missing (or an old LFS pointer), so the suite
+runs on a fresh clone. CI runs ruff and the test suite on Python 3.11 and 3.12 against such a
+clone after fetching only the required files (`python tools/fetch_models.py --keys`), so the app
+smoke tests still run. `tests/test_fetch_models.py` checks the manifest and the
+fetch tool offline, including that every model path in `core/constants.py` has a manifest entry.
 
 ### Held-out evaluation
 
@@ -122,7 +183,8 @@ with green choices before orange choices where applicable.
 ### Native install and run
 
 Run `./install-and-run.sh` for a guided native setup. It creates or reuses `.venv`, installs the
-selected dependency groups, and starts the app at `http://localhost:8501`.
+selected dependency groups, fetches the selected weights with `tools/fetch_models.py`, and starts
+the app at `http://localhost:8501`.
 
 ```bash
 ./install-and-run.sh
@@ -155,9 +217,8 @@ runtime libraries. On other systems, install the equivalent `libgl1`, `libglib2.
 ### Docker build and run
 
 Run `./build-and-run.sh` for the equivalent grouped prompts followed by a Docker build and launch.
-It stages only the selected model files into a temporary Docker build context, builds them into the
-image, asks whether to live-mount `src/` for testing, and then starts the container. This avoids
-sending the full models directory (more than 3 GB) to Docker for every guided build.
+It passes the selections as build args (the image build downloads those weights), asks whether to
+live-mount `src/` for testing, and then starts the container.
 While the container is running, enter `q` to stop it or `d` to stop it and remove the image and build
 cache.
 
@@ -226,11 +287,13 @@ Multiple models per feature (e.g. `AGE_MODEL=fairface,caffe`) can be built in to
 app sidebar shows a checkbox per built model, and checking more than one for the same feature runs
 and displays all of them at once.
 
-Disabled model files never land in an image layer. Guided builds also exclude them from the Docker
-build context by staging only selected files. Direct `docker build .` retains the conditional-copy
-behavior but still sends the full context. Every model file the Dockerfile bind-mounts must exist
-in the checkout (BuildKit resolves bind-mount sources before any conditional logic runs), so run
-`git lfs pull` before a direct build.
+The build downloads only the selected weights, with `tools/fetch_models.py` and the build args
+as its `--keys`, so disabled models never land in an image layer and no local weights are needed.
+`.dockerignore` keeps any weights you have in `models/` out of the build context, which stays a few
+MB. A failed download or a sha256 mismatch fails the build. Selecting a bring-your-own model
+(`dan`, `deep3d`) does not: the build prints where to get the file, the app lists the feature as
+unavailable, and you can mount the file in at run time, for example
+`-v "$PWD/models/dan_affecnet7.pth:/app/models/dan_affecnet7.pth:ro"`.
 
 Optional packages are installed only when a backend needs them:
 
@@ -270,7 +333,7 @@ multimodal-face-analyzer/
 ├── Dockerfile, build-and-run.sh   # per-feature Docker build + guided wrapper
 ├── install-and-run.sh             # guided native install
 ├── requirements*.txt, pyproject.toml
-├── models/                        # weights and configs (git-lfs)
+├── models/                        # manifest.json + small configs; weights fetched on demand
 ├── src/face_analyzer/             # the installable face_analyzer package
 │   ├── app.py                     # Streamlit entry point: page setup, model load, sidebar -> tabs wiring
 │   ├── inference.py               # facade re-exporting the modules below
@@ -285,7 +348,7 @@ multimodal-face-analyzer/
 │   ├── liveness.py, model_selection.py
 │   └── nets/                      # vendored third-party model architectures
 ├── tests/                         # pytest suite
-├── tools/                         # benchmark.py, dump_predictions.py, score_fusion.py, ground_truth.json,
+├── tools/                         # fetch_models.py, benchmark.py, dump_predictions.py, score_fusion.py, ground_truth.json,
 │                                  #   fetch_fairface.py + eval_heldout.py (held-out FairFace eval)
 └── docs/                          # this documentation
 ```
