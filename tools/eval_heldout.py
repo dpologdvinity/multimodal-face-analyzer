@@ -487,7 +487,11 @@ def run_inference(rows: list[int], labels: dict, parquet: Path, cache: Path,
         import torch
 
         torch.set_num_threads(2)
-        torch.set_num_interop_threads(1)
+        # torch refuses this once parallel work has started, e.g. on a second run_inference call.
+        try:
+            torch.set_num_interop_threads(1)
+        except RuntimeError:
+            pass
     except ImportError:
         pass
 
@@ -850,6 +854,8 @@ def score(records: list[dict], fit_rows: list[int], test_rows: list[int], seed: 
     result["cache_vs_display_mismatches"] = mismatches
     result["fairface_landmark_alignment_share"] = round(float(np.mean(
         [bool(r["fairface_aligned"]) for r in test_faces + fit_faces])), 4)
+    result["fairface_landmark_alignment_share_test"] = round(float(np.mean(
+        [bool(r["fairface_aligned"]) for r in test_faces])), 4)
     result.update(gender=gender, race=race, age=age)
     return result
 

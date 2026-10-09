@@ -105,6 +105,10 @@ RetinaFace and has no MediaPipe, so it shows `fairface`'s own answer (with one b
 | **Demo (shipped): as above, near-profiles on the box crop** | **92.2% (90.5-93.9)** | **76.0% (73.6-78.6)** | **59.4% (56.4-62.4)** | 95.6% |
 | Full app: SSD, aligned on MediaPipe landmarks (table above) | 93.1% (91.5-94.6) | 76.5% (74.0-79.2) | 60.3% (57.2-63.3) | 91.2% |
 
+The aligned share is over the 1,002 test faces; for the shipped row it is
+`fairface_landmark_alignment_share_test` in its JSON (`fairface_landmark_alignment_share` covers
+both halves).
+
 Paired per-face differences on the 1,002 test faces (RetinaFace and SSD both found all of them):
 aligning on RetinaFace's landmarks (`7bb4639`) gained +4.2 pp gender (+1.9 to +6.3), +14.3 pp
 race (+11.2 to +17.5) and +12.8 pp age (+9.4 to +16.4) over the unaligned demo. Keeping
@@ -118,7 +122,7 @@ within the noise. The demo still trails the full app's headline gender and age (
 RetinaFace predicts the eye centers and nose tip, while FairFace was trained on crops aligned to
 dlib's four eye corners and nose. The demo aligns on the eyes and nose only, with each pair of
 reference corners merged into its center. It falls back to the box crop when the eyes come out
-swapped, or closer than 0.15 of the box width as on near-profiles (the remaining 4.4%). Before
+swapped, or closer than 0.15 of the box width as on near-profiles (4.4% of test faces). Before
 this, a face without MediaPipe landmarks got a 1.5x box crop with only the Haar-cascade roll
 leveling, so its position and scale followed the detector's box rather than the face, which is
 why the unaligned row is so much lower.

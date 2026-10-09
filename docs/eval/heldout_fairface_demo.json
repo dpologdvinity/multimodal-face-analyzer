@@ -54,7 +54,7 @@
     },
     "date": "2026-10-09",
     "scored_on": "2026-10-09",
-    "scoring_git_commit": "15aeb68",
+    "scoring_git_commit": "0239c5d",
     "seconds_per_image_mean": 0.263,
     "seconds_per_image_median": 0.262,
     "total_inference_minutes": 8.8
@@ -193,6 +193,7 @@
       "previous_fused_race": 0
     },
     "fairface_landmark_alignment_share": 0.9495,
+    "fairface_landmark_alignment_share_test": 0.9561,
     "gender": {
       "backends": {
         "fairface": {

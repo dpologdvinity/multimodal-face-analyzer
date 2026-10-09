@@ -267,6 +267,10 @@ class ExtraAgeTests(unittest.TestCase):
         self.assertEqual(report["cache_vs_display_mismatches"]["best_age"], 0)
 
 
+class ParquetReached(Exception):
+    """Raised by the stubbed parquet read: run_inference got past its detector and MediaPipe guards."""
+
+
 class RunInferenceFlagTests(unittest.TestCase):
     """--detector and --no-mediapipe, checked with a stub loader: no data and no models."""
 
@@ -290,21 +294,36 @@ class RunInferenceFlagTests(unittest.TestCase):
                 os.environ[name] = value
 
     def _run(self, models, detector="ssd", mediapipe=True):
-        """Call run_inference with load_models stubbed to record the environment it saw."""
+        """Call run_inference with load_models stubbed to record the environment it saw.
+
+        A run that passes every guard stops at the stubbed parquet read with ParquetReached.
+        """
         import tempfile
+        from contextlib import ExitStack
         from unittest.mock import MagicMock, patch
+
+        from face_analyzer.pipeline import analyzer, face_tasks, stages
 
         def load_models():
             self.seen_env = dict(os.environ)
             return models
 
-        # pyarrow is an eval-only dependency, absent from CI; nothing reaches the parquet here.
+        # pyarrow is an eval-only dependency, absent from CI; torch is patched out so the run
+        # leaves this process's torch thread settings alone.
         pyarrow = MagicMock()
-        with tempfile.TemporaryDirectory() as cache, \
-                patch.dict(sys.modules, {"pyarrow": pyarrow, "pyarrow.parquet": pyarrow.parquet}), \
-                patch.object(self.inference, "load_models", load_models):
-            eval_heldout.run_inference([0], {"race": [0]}, Path(cache) / "none.parquet", Path(cache),
-                                       set(), 0.5, 0, detector, mediapipe)
+        pyarrow.parquet.read_table.side_effect = ParquetReached
+        with ExitStack() as stack:
+            cache = Path(stack.enter_context(tempfile.TemporaryDirectory()))
+            stack.enter_context(patch.dict(sys.modules, {
+                "pyarrow": pyarrow, "pyarrow.parquet": pyarrow.parquet, "torch": None}))
+            stack.enter_context(patch.object(self.inference, "load_models", load_models))
+            # _instrument rebinds these pipeline hooks; restore them for the other tests.
+            for module, name in ((stages, "_cached_face_predict"), (face_tasks, "_cached_face_predict"),
+                                 (analyzer, "_detect"), (stages, "fairface_landmarks_from_mediapipe"),
+                                 (stages, "fairface_landmarks_from_detector")):
+                stack.enter_context(patch.object(module, name, getattr(module, name)))
+            eval_heldout.run_inference([0], {"race": [0], "path": ["0.jpg"]}, cache / "none.parquet",
+                                       cache, set(), 0.5, 0, detector, mediapipe)
 
     def _loaded(self, detector, landmarks=False):
         """A Models stub with one detector and, optionally, the MediaPipe face landmarker."""
@@ -333,6 +352,12 @@ class RunInferenceFlagTests(unittest.TestCase):
     def test_exits_when_the_requested_detector_is_not_loaded(self):
         with self.assertRaisesRegex(SystemExit, "detector 'retinaface' is not loaded"):
             self._run(self._loaded("ssd"), detector="retinaface")
+
+    def test_a_loaded_detector_without_mediapipe_runs_past_the_guards(self):
+        with self.assertRaises(ParquetReached):
+            self._run(self._loaded("retinaface"), detector="retinaface", mediapipe=False)
+        self.assertEqual(self.seen_env["RETINAFACE_MODEL"], "set")
+        self.assertEqual(self.seen_env["FACE_LANDMARKS_MODEL"], "")
 
     def test_exits_when_mediapipe_loads_despite_no_mediapipe(self):
         with self.assertRaisesRegex(SystemExit, "MediaPipe face landmarker loaded"):
