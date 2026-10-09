@@ -25,8 +25,18 @@ def _scrfd_distance2bbox(points: np.ndarray, distance: np.ndarray) -> np.ndarray
 
 def detect_faces_scrfd(session: Any, frame: np.ndarray | None, conf_threshold: float = 0.5) -> list[list[int]]:
     """Detect faces using SCRFD ONNX session and return [x1, y1, x2, y2] bounding boxes."""
+    return detect_faces_scrfd_landmarks(session, frame, conf_threshold)[0]
+
+
+def detect_faces_scrfd_landmarks(
+    session: Any, frame: np.ndarray | None, conf_threshold: float = 0.5,
+) -> tuple[list[list[int]], list[np.ndarray | None]]:
+    """Detect faces with SCRFD; return the boxes and each box's 5x2 landmarks (None without a kps head).
+
+    Landmark order: image-left eye, image-right eye, nose tip, image-left and image-right mouth corner.
+    """
     if session is None or frame is None or getattr(frame, "size", 0) == 0:
-        return []
+        return [], []
     frame_h, frame_w = frame.shape[:2]
     scale = SCRFD_FACE_INPUT_SIZE / max(frame_h, frame_w)
     resized = cv2.resize(frame, (int(frame_w * scale), int(frame_h * scale)), interpolation=cv2.INTER_LINEAR)
@@ -39,7 +49,10 @@ def detect_faces_scrfd(session: Any, frame: np.ndarray | None, conf_threshold: f
     input_name = session.get_inputs()[0].name
     outputs = session.run(None, {input_name: blob})
 
-    all_boxes, all_scores = [], []
+    num_strides = len(SCRFD_FACE_STRIDES)
+    # The "bnkps" exports add one keypoint output per stride after the score and box outputs.
+    has_kps = len(outputs) >= 3 * num_strides
+    all_boxes, all_scores, all_points = [], [], []
     for idx, stride in enumerate(SCRFD_FACE_STRIDES):
         scores = outputs[idx]
         bbox_preds = outputs[3 + idx] * stride
@@ -53,9 +66,12 @@ def detect_faces_scrfd(session: Any, frame: np.ndarray | None, conf_threshold: f
             continue
         all_boxes.append(_scrfd_distance2bbox(anchor_centers[mask], bbox_preds[mask]))
         all_scores.append(scores[mask, 0])
+        if has_kps:
+            kps_preds = outputs[2 * num_strides + idx][mask].reshape(-1, 5, 2) * stride
+            all_points.append(anchor_centers[mask][:, np.newaxis, :] + kps_preds)
 
     if not all_scores:
-        return []
+        return [], []
 
     boxes = np.concatenate(all_boxes, axis=0) / scale
     scores = np.concatenate(all_scores, axis=0)
@@ -63,9 +79,14 @@ def detect_faces_scrfd(session: Any, frame: np.ndarray | None, conf_threshold: f
     nms_boxes = [[x1, y1, x2 - x1, y2 - y1] for x1, y1, x2, y2 in boxes]
     keep = cv2.dnn.NMSBoxes(nms_boxes, scores.tolist(), conf_threshold, SCRFD_FACE_NMS_THRESHOLD)
     if len(keep) == 0:
-        return []
-    boxes = boxes[np.array(keep).flatten()]
+        return [], []
+    keep = np.array(keep).flatten()
+    boxes = boxes[keep]
     boxes[:, [0, 2]] = boxes[:, [0, 2]].clip(0, frame_w)
     boxes[:, [1, 3]] = boxes[:, [1, 3]].clip(0, frame_h)
 
-    return boxes.astype(int).tolist()
+    if has_kps:
+        points = list((np.concatenate(all_points, axis=0)[keep] / scale).astype(np.float32))
+    else:
+        points = [None] * len(keep)
+    return boxes.astype(int).tolist(), points

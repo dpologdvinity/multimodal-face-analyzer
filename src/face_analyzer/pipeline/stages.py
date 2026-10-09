@@ -9,7 +9,9 @@ import numpy as np
 
 from ..attributes import (
     _estimate_roll_angle,
+    fairface_landmarks_from_detector,
     fairface_landmarks_from_mediapipe,
+    level_face_points,
     level_face_region,
     mivolo_age_estimate,
     mivolo_estimate,
@@ -28,8 +30,8 @@ from ..core.types import (
 )
 from ..detectors import (
     detect_faces,
-    detect_faces_retinaface,
-    detect_faces_scrfd,
+    detect_faces_retinaface_landmarks,
+    detect_faces_scrfd_landmarks,
     detect_faces_yolo,
     face_detector_net,
     resolve_face_detector,
@@ -97,26 +99,30 @@ def _prepare_frame(frame: np.ndarray, config: AnalysisConfig) -> np.ndarray:
     return frame
 
 
-def _detect(models: Models, frame: np.ndarray, config: AnalysisConfig) -> list:
+def _detect(models: Models, frame: np.ndarray, config: AnalysisConfig) -> tuple[list, list]:
     """Run the one configured face detector, falling back to SSD (then any loaded detector) if absent.
 
     Unlike every other feature, exactly one detector runs per frame -- running two and merging
     their boxes would just produce duplicate/overlapping faces, not a meaningfully combined result.
+    Returns (boxes, landmarks): each box's 5x2 detector landmarks, or None from SSD and YOLO.
     """
     conf_threshold = config.conf_threshold
     # With no detector loaded, the SSD path's bare-net call returns no faces.
     face_detector = resolve_face_detector(models, config.face_detector) or "ssd"
     detect_fn = {
         "yolo": detect_faces_yolo,
-        "scrfd": detect_faces_scrfd,
-        "retinaface": detect_faces_retinaface,
+        "scrfd": detect_faces_scrfd_landmarks,
+        "retinaface": detect_faces_retinaface_landmarks,
         # SSD keeps going through the factory's legacy bare-net path, as it always has.
         "ssd": detect_faces,
     }[face_detector]
-    return _cached_face_predict(
+    detections = _cached_face_predict(
         "face_detection", f"{face_detector}:{conf_threshold}", frame, detect_fn,
         face_detector_net(models, face_detector), frame, conf_threshold,
     )
+    if face_detector in ("scrfd", "retinaface"):
+        return detections
+    return detections, [None] * len(detections)
 
 
 def _run_whole_frame_features(
@@ -148,17 +154,21 @@ def _frame_inputs(models: Models, config: AnalysisConfig) -> _FrameInputs:
 
 def _prepare_face(
     models: Models, frame: np.ndarray, box: tuple, track_id: Any, config: AnalysisConfig, shared: _FrameInputs,
+    detector_landmarks: np.ndarray | None = None,
 ) -> _FaceInputs | None:
     """Roll-align, crop and face-adjust one face, then compute its shared landmarks and blobs.
 
     face_adjustments apply to this face's own crop only, after detection but before
     classification -- they affect just this face's thumbnail/attributes, not the shared
-    frame or other faces. Returns None when the crop is empty.
+    frame or other faces. FairFace aligns on MediaPipe's landmarks, else on the detector's
+    (frame coordinates, as _detect returns them), else on the box. Returns None when the
+    crop is empty.
     """
     x1, y1, x2, y2 = box
     active_age, active_gender = config.active_age, config.active_gender
     face_adjustments = config.face_adjustments
     crop_frame, (cx1, cy1, cx2, cy2) = frame, (x1, y1, x2, y2)
+    angle = None
     if shared.eye_cascade is not None:
         probe = frame[max(0, y1 - 20):min(y2 + 20, frame.shape[0]), max(0, x1 - 20):min(x2 + 20, frame.shape[1])]
         angle = (
@@ -203,6 +213,11 @@ def _prepare_face(
             if local_landmarks is not None:
                 local_landmarks += np.array([x1_crop, y1_crop], dtype=np.float32)
                 fairface_landmarks = local_landmarks
+    if fairface_landmarks is None and detector_landmarks is not None:
+        # The FairFace forward reads crop_frame, which is the leveled region when the face was rotated.
+        fairface_landmarks = fairface_landmarks_from_detector(
+            level_face_points(frame.shape, (x1, y1, x2, y2), angle, detector_landmarks)
+        )
     texture_score = predict_texture_artifact_score(face) if run_liveness else 0.0
     blink_score = blink_score_from_landmarker(landmarker_result) if run_liveness else None
 
@@ -235,12 +250,13 @@ def _prepare_face(
 
 def _analyze_face(
     models: Models, frame: np.ndarray, box: tuple, track_id: Any, config: AnalysisConfig, shared: _FrameInputs,
+    detector_landmarks: np.ndarray | None = None,
 ) -> dict | None:
     """Run every attribute task for one face in parallel; None when the crop is empty.
 
     Returns {"inputs": _FaceInputs, <feature>: that task's result} for _annotate/_face_record.
     """
-    inputs = _prepare_face(models, frame, box, track_id, config, shared)
+    inputs = _prepare_face(models, frame, box, track_id, config, shared, detector_landmarks)
     if inputs is None:
         return None
     submit = _INFERENCE_EXECUTOR.submit

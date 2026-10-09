@@ -58,8 +58,18 @@ def _retinaface_decode(loc: np.ndarray, priors: np.ndarray) -> np.ndarray:
 
 def detect_faces_retinaface(session: Any, frame: np.ndarray | None, conf_threshold: float = 0.5) -> list[list[int]]:
     """Detect faces using RetinaFace ONNX session and return [x1, y1, x2, y2] bounding boxes."""
+    return detect_faces_retinaface_landmarks(session, frame, conf_threshold)[0]
+
+
+def detect_faces_retinaface_landmarks(
+    session: Any, frame: np.ndarray | None, conf_threshold: float = 0.5,
+) -> tuple[list[list[int]], list[np.ndarray]]:
+    """Detect faces with RetinaFace; return the boxes and each box's 5x2 landmarks in frame pixels.
+
+    Landmark order: image-left eye, image-right eye, nose tip, image-left and image-right mouth corner.
+    """
     if session is None or frame is None or getattr(frame, "size", 0) == 0:
-        return []
+        return [], []
     frame_h, frame_w = frame.shape[:2]
     scale = min(RETINAFACE_INPUT_HEIGHT / frame_h, RETINAFACE_INPUT_WIDTH / frame_w)
     new_h, new_w = int(frame_h * scale), int(frame_w * scale)
@@ -70,25 +80,32 @@ def detect_faces_retinaface(session: Any, frame: np.ndarray | None, conf_thresho
     blob = canvas[np.newaxis, ...]
 
     input_name = session.get_inputs()[0].name
-    loc, conf, _landm = session.run(None, {input_name: blob})
-    loc, conf = loc[0], conf[0]
+    loc, conf, landm = session.run(None, {input_name: blob})
+    loc, conf, landm = loc[0], conf[0], landm[0]
 
-    boxes = _retinaface_decode(loc, _retinaface_priors())
+    priors = _retinaface_priors()
+    boxes = _retinaface_decode(loc, priors)
     boxes[:, 0::2] *= RETINAFACE_INPUT_WIDTH
     boxes[:, 1::2] *= RETINAFACE_INPUT_HEIGHT
     scores = _retinaface_softmax(conf, axis=-1)[:, 1]
 
     mask = scores > conf_threshold
-    boxes, scores = boxes[mask], scores[mask]
+    boxes, scores, landm, priors = boxes[mask], scores[mask], landm[mask], priors[mask]
     if len(boxes) == 0:
-        return []
+        return [], []
 
     nms_boxes = [[x1, y1, x2 - x1, y2 - y1] for x1, y1, x2, y2 in boxes]
     keep = cv2.dnn.NMSBoxes(nms_boxes, scores.tolist(), conf_threshold, RETINAFACE_NMS_THRESHOLD)
     if len(keep) == 0:
-        return []
-    boxes = boxes[np.array(keep).flatten()] / scale
+        return [], []
+    keep = np.array(keep).flatten()
+    boxes = boxes[keep] / scale
     boxes[:, [0, 2]] = boxes[:, [0, 2]].clip(0, frame_w)
     boxes[:, [1, 3]] = boxes[:, [1, 3]].clip(0, frame_h)
 
-    return boxes.astype(int).tolist()
+    points = landm[keep].reshape(-1, 5, 2)
+    priors = priors[keep, np.newaxis, :]
+    points = priors[..., :2] + points * RETINAFACE_VARIANCE[0] * priors[..., 2:]
+    points *= np.array([RETINAFACE_INPUT_WIDTH, RETINAFACE_INPUT_HEIGHT], dtype=np.float32) / scale
+
+    return boxes.astype(int).tolist(), list(points.astype(np.float32))

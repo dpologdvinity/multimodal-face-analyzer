@@ -3,8 +3,8 @@
 Two phases, both run by default:
 
 1. **Inference.** Draws a race-stratified sample (fixed seed), runs the real analyze_frame()
-   on each image with every loaded age/gender/race/emotion backend and the SSD detector, and
-   appends each image's raw per-backend outputs (probabilities where the backend exposes them)
+   on each image with every loaded age/gender/race/emotion backend and one detector (SSD unless
+   --detector picks another; --no-mediapipe turns off MediaPipe landmark alignment), and appends each image's raw per-backend outputs (probabilities where the backend exposes them)
    to data/eval_cache/predictions.jsonl. Already-cached rows are skipped, so the run resumes.
 2. **Scoring.** Re-scores the cached outputs only (no model imports): per-backend accuracy,
    the app's headline answers via the shipped select_gender/select_race/select_age, the
@@ -14,6 +14,11 @@ Two phases, both run by default:
 
     python tools/fetch_fairface.py
     FACE_ANALYZER_MODEL_DIR=/path/to/models python tools/eval_heldout.py [--n 2000] [--score-only]
+
+The public demo's configuration (RetinaFace, demo models only, no MediaPipe):
+
+    FACE_ANALYZER_DEMO=1 python tools/eval_heldout.py --detector retinaface --no-mediapipe \
+        --cache data/eval_cache/demo --output docs/eval/heldout_fairface_demo.json
 
 Method, label mappings and caveats: docs/eval/heldout_fairface.md.
 """
@@ -41,6 +46,7 @@ from face_analyzer.core.constants import (
     RACE_LABELS_DEEPFACE,
     RACE_LABELS_FAIRFACE,
 )
+from face_analyzer.demo import is_demo_mode
 from face_analyzer.fusion import (
     canonical_race_probabilities,
     select_age,
@@ -79,6 +85,8 @@ UNUSED_FEATURE_ENV = (
     "RECONSTRUCTION_3D_MODEL", "AGE_PROGRESSION_MODEL", "YOLO_FACE_MODEL", "SCRFD_FACE_MODEL",
     "RETINAFACE_MODEL", "LIVENESS_MODEL",
 )
+# The selection variable of each optional detector (SSD has none), kept loaded when --detector picks it.
+DETECTOR_ENV = {"yolo": "YOLO_FACE_MODEL", "scrfd": "SCRFD_FACE_MODEL", "retinaface": "RETINAFACE_MODEL"}
 
 
 # --------------------------------------------------------------------------- sampling
@@ -401,6 +409,7 @@ def _instrument(sink: dict) -> None:
     original_predict = stages._cached_face_predict
     original_detect = stages._detect
     original_landmarks = stages.fairface_landmarks_from_mediapipe
+    original_detector_landmarks = stages.fairface_landmarks_from_detector
 
     def recording_predict(feature, model_key, face_bgr, predict_fn, *args):
         started = time.perf_counter()
@@ -411,20 +420,31 @@ def _instrument(sink: dict) -> None:
         return value
 
     def largest_detection(models, frame, config):
-        boxes = original_detect(models, frame, config)
+        boxes, landmarks = original_detect(models, frame, config)
         sink["detections"] = [[int(v) for v in box] for box in boxes]
         chosen = largest_in_frame(boxes, *frame.shape[:2])
-        return [] if chosen is None else [chosen]
+        if chosen is None:
+            return [], []
+        return [chosen], [landmarks[sink["detections"].index(chosen)]]
 
+    # The detector's landmarks are only tried when MediaPipe's are missing.
     def recording_landmarks(*args, **kwargs):
         result = original_landmarks(*args, **kwargs)
         sink["fairface_aligned"] = result is not None
+        sink["fairface_alignment"] = "mediapipe" if result is not None else None
+        return result
+
+    def recording_detector_landmarks(*args, **kwargs):
+        result = original_detector_landmarks(*args, **kwargs)
+        sink["fairface_aligned"] = result is not None
+        sink["fairface_alignment"] = "detector" if result is not None else None
         return result
 
     stages._cached_face_predict = recording_predict
     face_tasks._cached_face_predict = recording_predict
     analyzer._detect = largest_detection
     stages.fairface_landmarks_from_mediapipe = recording_landmarks
+    stages.fairface_landmarks_from_detector = recording_detector_landmarks
 
 
 def _versions() -> dict[str, str | None]:
@@ -448,10 +468,16 @@ def _versions() -> dict[str, str | None]:
 
 
 def run_inference(rows: list[int], labels: dict, parquet: Path, cache: Path,
-                  exclude: set[str], conf: float, seed: int) -> None:
+                  exclude: set[str], conf: float, seed: int, detector: str = "ssd",
+                  mediapipe: bool = True) -> None:
     """Run analyze_frame on every sampled row not already cached, appending to the cache."""
     for name in UNUSED_FEATURE_ENV:
-        os.environ[name] = ""
+        if name != DETECTOR_ENV.get(detector):
+            os.environ[name] = ""
+    if not mediapipe:
+        os.environ["FACE_LANDMARKS_MODEL"] = ""
+    # ONNX Runtime otherwise starts one thread per core and pins them past any taskset limit.
+    os.environ.setdefault("FACE_ANALYZER_ORT_THREADS", "2")
     import cv2
     import pyarrow.parquet as pq
 
@@ -477,16 +503,23 @@ def run_inference(rows: list[int], labels: dict, parquet: Path, cache: Path,
         return
 
     models = inference.load_models()
+    # analyze_frame silently falls back to another detector, which would mislabel the whole run.
+    if inference.resolve_face_detector(models, detector) != detector:
+        raise SystemExit(f"detector {detector!r} is not loaded")
+    if not mediapipe and models.face_landmarks_nets:
+        raise SystemExit("--no-mediapipe was given but the MediaPipe face landmarker loaded")
     active = {feature: {key for key in nets if f"{feature}:{key}" not in exclude}
               for feature, nets in (("age", models.age_nets), ("gender", models.gender_nets),
                                     ("race", models.race_nets), ("emotion", models.emotion_nets))}
     config = inference.AnalysisConfig(
-        conf_threshold=conf, face_detector="ssd", active_age=active["age"],
+        conf_threshold=conf, face_detector=detector, active_age=active["age"],
         active_gender=active["gender"], active_race=active["race"],
         active_emotion=active["emotion"],
     )
     meta = {"backends": {feature: sorted(keys) for feature, keys in active.items()},
-            "excluded": sorted(exclude), "detector": "ssd", "conf_threshold": conf,
+            "excluded": sorted(exclude), "detector": detector, "conf_threshold": conf,
+            "mediapipe_landmarks": bool(models.face_landmarks_nets),
+            "demo_mode": is_demo_mode(),
             "model_dir": str(MODEL_DIR),
             "versions": _versions(), "date": date.today().isoformat()}
     (cache / "meta.json").write_text(json.dumps(meta, indent=2) + "\n")
@@ -499,7 +532,8 @@ def run_inference(rows: list[int], labels: dict, parquet: Path, cache: Path,
     with predictions.open("a") as handle:
         for count, row in enumerate(todo, 1):
             sink.clear()
-            sink.update(raw={}, latency_ms={}, detections=[], fairface_aligned=None)
+            sink.update(raw={}, latency_ms={}, detections=[], fairface_aligned=None,
+                        fairface_alignment=None)
             frame = cv2.imdecode(np.frombuffer(images[row].as_py(), np.uint8), cv2.IMREAD_COLOR)
             started = time.perf_counter()
             error = None
@@ -519,6 +553,7 @@ def run_inference(rows: list[int], labels: dict, parquet: Path, cache: Path,
                             for row_ in (faces[0]["model_results"] if faces else [])
                             if row_["Feature"] in ("AGE", "GENDER", "RACE", "EMOTION")},
                 "fairface_aligned": sink["fairface_aligned"],
+                "fairface_alignment": sink["fairface_alignment"],
                 "latency_ms": sink["latency_ms"],
                 "seconds": round(time.perf_counter() - started, 3), "error": error,
             }
@@ -883,7 +918,11 @@ def main() -> None:
     parser.add_argument("--n", type=int, default=2000, help="images to sample (race-stratified)")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--resamples", type=int, default=1000, help="bootstrap resamples")
-    parser.add_argument("--conf", type=float, default=0.5, help="SSD detection threshold")
+    parser.add_argument("--conf", type=float, default=0.5, help="face detection threshold")
+    parser.add_argument("--detector", default="ssd", choices=("ssd", *DETECTOR_ENV),
+                        help="face detector to run (default ssd)")
+    parser.add_argument("--no-mediapipe", action="store_true",
+                        help="do not load the MediaPipe face landmarker (as on the public demo)")
     parser.add_argument("--config", default="1.25", help="FairFace padding config to evaluate")
     parser.add_argument("--data", type=Path, default=DATA_DIR, help="tools/fetch_fairface.py --dest")
     parser.add_argument("--cache", type=Path, default=None, help="default data/eval_cache/<config>")
@@ -907,7 +946,8 @@ def main() -> None:
 
     extra = dict(item.split("=", 1) if "=" in item else (item, "") for item in args.extra_age)
     if not args.score_only:
-        run_inference(rows, labels, parquet, args.cache, exclude, args.conf, args.seed)
+        run_inference(rows, labels, parquet, args.cache, exclude, args.conf, args.seed,
+                      args.detector, not args.no_mediapipe)
         if extra:
             import cv2
             import pyarrow.parquet as pq

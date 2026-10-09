@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 
 from face_analyzer import inference
+from face_analyzer.attributes import level_face_points, level_face_region
 from face_analyzer.attributes.race import _fairface_forward
 
 # dlib get_face_chip_details: outer/inner right eye, outer/inner left eye, nose.
@@ -97,6 +98,50 @@ class FairFaceAlignmentTests(unittest.TestCase):
         self.assertEqual(output[1][0]["raw_columns"]["age_fairface"], "70+")
         # Float32 landmark roundoff can move interpolation by one uint8 level.
         np.testing.assert_allclose(net.blob, expected, atol=1 / (255 * 0.224))
+
+    def test_detector_eye_centers_and_nose_align_like_the_reference(self):
+        """Align on detector eye centers and nose as on the five-point reference they summarize."""
+        mouth = [[90.0, 170.0], [134.0, 170.0]]
+        points = np.array([REFERENCE[2:4].mean(axis=0), REFERENCE[0:2].mean(axis=0), REFERENCE[4], *mouth])
+        landmarks = inference.fairface_landmarks_from_detector(points)
+        aligned = inference.align_face_with_landmarks(self.frame, landmarks, 224)
+        np.testing.assert_allclose(aligned[1:-1, 1:-1], self.frame[1:-1, 1:-1], atol=1)
+
+    def test_detector_landmarks_with_swapped_or_missing_eyes_are_rejected(self):
+        """Reject detector points a similarity transform would align upside down, or that are invalid."""
+        points = np.array([[150, 70], [70, 70], [112, 120], [80, 160], [140, 160]], dtype=np.float32)
+        self.assertIsNone(inference.fairface_landmarks_from_detector(points))
+        self.assertIsNone(inference.fairface_landmarks_from_detector(np.full((5, 2), np.nan)))
+        self.assertIsNone(inference.fairface_landmarks_from_detector(None))
+
+    def test_level_face_points_follow_the_leveled_region(self):
+        """Map a frame point to where level_face_region's rotated region shows it."""
+        frame = np.zeros((300, 300, 3), np.uint8)
+        point = np.array([[130.0, 120.0]], np.float32)
+        cv2.circle(frame, (130, 120), 3, (255, 255, 255), -1)
+        box = (100, 100, 200, 200)
+        region, _ = level_face_region(frame, box, 12.0)
+        x, y = np.rint(level_face_points(frame.shape, box, 12.0, point)[0]).astype(int)
+        self.assertEqual(region[y, x].tolist(), [255, 255, 255])
+        np.testing.assert_array_equal(level_face_points(frame.shape, box, 2.0, point), point)
+
+    def test_analyze_frame_aligns_fairface_on_detector_landmarks_without_mediapipe(self):
+        """Feed FairFace the face aligned on RetinaFace's landmarks when MediaPipe is absent."""
+        frame = np.tile(self.frame, (2, 2, 1))
+        box = (80, 90, 240, 280)
+        points = np.array([[130, 150], [190, 150], [160, 185], [135, 220], [185, 220]], dtype=np.float32)
+        net = RecordingNet()
+        _fairface_forward(net, frame, box, "age_output", inference.fairface_landmarks_from_detector(points))
+        expected = net.blob.copy()
+        models = inference.Models(face_net=None, retinaface_nets={"retinaface": object()},
+                                  age_nets={"fairface": net})
+        with patch("face_analyzer.pipeline.stages.detect_faces_retinaface_landmarks",
+                   return_value=([list(box)], [points])) as detect:
+            inference.analyze_frame(
+                models, frame, inference.AnalysisConfig(active_age={"fairface"}, face_detector="retinaface"),
+            )
+        detect.assert_called()
+        np.testing.assert_array_equal(net.blob, expected)
 
 
 if __name__ == "__main__":

@@ -43,15 +43,15 @@ def analyze_frame(
     """
     frame = _prepare_frame(frame, config)
     annotated_frame = frame.copy()
-    face_boxes = _detect(models, frame, config)
+    face_boxes, face_landmarks = _detect(models, frame, config)
     tracker = config.tracker
     track_ids = tracker.update(face_boxes) if tracker is not None else [None] * len(face_boxes)
     hands_detected = _run_whole_frame_features(models, frame, annotated_frame, config)
     shared = _frame_inputs(models, config)
 
     cropped_faces = []
-    for idx, (box, track_id) in enumerate(zip(face_boxes, track_ids, strict=False), 1):
-        analysis = _analyze_face(models, frame, box, track_id, config, shared)
+    for idx, (box, track_id, landmarks) in enumerate(zip(face_boxes, track_ids, face_landmarks, strict=False), 1):
+        analysis = _analyze_face(models, frame, box, track_id, config, shared, landmarks)
         if analysis is None:
             continue
         _annotate(models, annotated_frame, idx, analysis, config)

@@ -219,6 +219,31 @@ def _margin_align(frame_bgr: np.ndarray, box: tuple[int, int, int, int], output_
     return cv2.warpAffine(frame_bgr, m, (output_size, output_size), borderValue=0.0)
 
 
+# FairFace's reference with each eye's two corners merged into its center, for detectors (RetinaFace,
+# SCRFD) whose five points are eye centers, nose tip and mouth corners. Order: image-right eye,
+# image-left eye, nose, matching the five-point reference.
+_FAIRFACE_REFERENCE_EYES_NOSE = np.array([
+    FAIRFACE_REFERENCE_LANDMARKS[0:2].mean(axis=0),
+    FAIRFACE_REFERENCE_LANDMARKS[2:4].mean(axis=0),
+    FAIRFACE_REFERENCE_LANDMARKS[4],
+])
+_FAIRFACE_REFERENCES = {5: FAIRFACE_REFERENCE_LANDMARKS, 3: _FAIRFACE_REFERENCE_EYES_NOSE}
+
+
+def fairface_landmarks_from_detector(points: np.ndarray | None) -> np.ndarray | None:
+    """Convert detector five-point landmarks (image-left eye first) to FairFace's eyes-and-nose order."""
+    if points is None:
+        return None
+    points = np.asarray(points, dtype=np.float32)
+    if points.shape != (5, 2) or not np.isfinite(points).all():
+        return None
+    left_eye, right_eye, nose = points[0], points[1], points[2]
+    # A similarity transform cannot mirror, so swapped eyes would align the face upside down.
+    if right_eye[0] - left_eye[0] < 1:
+        return None
+    return np.stack([right_eye, left_eye, nose])
+
+
 def fairface_landmarks_from_mediapipe(
     points: list[tuple[float, float]], width: int, height: int,
 ) -> np.ndarray | None:
@@ -235,14 +260,15 @@ def fairface_landmarks_from_mediapipe(
 def align_face_with_landmarks(
     frame_bgr: np.ndarray, landmarks: np.ndarray, output_size: int,
 ) -> np.ndarray | None:
-    """Align face to FairFace reference landmarks using similarity transform."""
+    """Align face to FairFace reference landmarks (five-point, or eyes and nose) by similarity transform."""
     source = np.asarray(landmarks, dtype=np.float64)
-    if source.shape != (5, 2) or not np.isfinite(source).all():
+    reference = _FAIRFACE_REFERENCES.get(len(source)) if source.ndim == 2 else None
+    if reference is None or source.shape != reference.shape or not np.isfinite(source).all():
         return None
     if np.linalg.matrix_rank(source - source.mean(axis=0)) < 2:
         return None
-    target = (FAIRFACE_REFERENCE_LANDMARKS + 0.25) / 1.5 * output_size
-    design = np.zeros((10, 4), dtype=np.float64)
+    target = (reference + 0.25) / 1.5 * output_size
+    design = np.zeros((2 * len(source), 4), dtype=np.float64)
     design[0::2, :2] = np.column_stack((target[:, 0], -target[:, 1]))
     design[1::2, :2] = np.column_stack((target[:, 1], target[:, 0]))
     design[0::2, 2] = 1
@@ -276,24 +302,47 @@ def level_face_region(
     frame_bgr: np.ndarray, box: tuple[int, int, int, int], angle_deg: float | None,
 ) -> tuple[np.ndarray, tuple[int, int, int, int]]:
     """Return (region, box) rotated level when the roll angle exceeds 3 degrees, else the inputs."""
-    if angle_deg is not None and abs(angle_deg) > 3:
+    if _needs_leveling(angle_deg):
         return _rotate_region(frame_bgr, box, angle_deg)
     return frame_bgr, box
+
+
+def level_face_points(
+    frame_shape: tuple[int, ...], box: tuple[int, int, int, int], angle_deg: float | None, points: np.ndarray,
+) -> np.ndarray:
+    """Map frame points into the coordinates of the region level_face_region returns for the same face."""
+    if not _needs_leveling(angle_deg):
+        return points
+    (rx1, ry1, _, _), _, m = _level_geometry(frame_shape, box, angle_deg)
+    return ((points - np.array([rx1, ry1], dtype=np.float32)) @ m[:, :2].T + m[:, 2]).astype(np.float32)
+
+
+def _needs_leveling(angle_deg: float | None) -> bool:
+    """Return whether a roll angle is large enough for level_face_region to rotate the face."""
+    return angle_deg is not None and abs(angle_deg) > 3
+
+
+def _level_geometry(
+    frame_shape: tuple[int, ...], box: tuple[int, int, int, int], angle_deg: float, pad_factor: float = 0.8,
+) -> tuple[tuple[int, int, int, int], tuple[int, int, int, int], np.ndarray]:
+    """Return the padded region's frame bounds, the box inside it and the leveling rotation matrix."""
+    x1, y1, x2, y2 = box
+    w, h = x2 - x1, y2 - y1
+    pad = int(pad_factor * max(w, h))
+    fy, fx = frame_shape[:2]
+    rx1, ry1 = max(0, x1 - pad), max(0, y1 - pad)
+    rx2, ry2 = min(fx, x2 + pad), min(fy, y2 + pad)
+    local_box = (x1 - rx1, y1 - ry1, x2 - rx1, y2 - ry1)
+    lcx, lcy = (local_box[0] + local_box[2]) / 2.0, (local_box[1] + local_box[3]) / 2.0
+    m = cv2.getRotationMatrix2D((lcx, lcy), angle_deg, 1.0)
+    return (rx1, ry1, rx2, ry2), local_box, m
 
 
 def _rotate_region(
     frame_bgr: np.ndarray, box: tuple[int, int, int, int], angle_deg: float, pad_factor: float = 0.8,
 ) -> tuple[np.ndarray, tuple[int, int, int, int]]:
     """Rotate image region around face bounding box center to level roll angle."""
-    x1, y1, x2, y2 = box
-    w, h = x2 - x1, y2 - y1
-    pad = int(pad_factor * max(w, h))
-    fy, fx = frame_bgr.shape[:2]
-    rx1, ry1 = max(0, x1 - pad), max(0, y1 - pad)
-    rx2, ry2 = min(fx, x2 + pad), min(fy, y2 + pad)
+    (rx1, ry1, rx2, ry2), local_box, m = _level_geometry(frame_bgr.shape, box, angle_deg, pad_factor)
     region = frame_bgr[ry1:ry2, rx1:rx2]
-    local_box = (x1 - rx1, y1 - ry1, x2 - rx1, y2 - ry1)
-    lcx, lcy = (local_box[0] + local_box[2]) / 2.0, (local_box[1] + local_box[3]) / 2.0
-    m = cv2.getRotationMatrix2D((lcx, lcy), angle_deg, 1.0)
     rotated = cv2.warpAffine(region, m, (region.shape[1], region.shape[0]), borderMode=cv2.BORDER_REPLICATE)
     return rotated, local_box
