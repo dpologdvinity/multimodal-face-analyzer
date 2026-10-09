@@ -23,6 +23,25 @@ def _softmax(x: np.ndarray) -> np.ndarray:
     return exp / exp.sum()
 
 
+def fairface_aligned_face(
+    frame_bgr: np.ndarray,
+    box: tuple[int, int, int, int],
+    landmarks: np.ndarray | None = None,
+) -> np.ndarray:
+    """Return the 224x224 BGR face FairFace-style backends see: landmark-aligned, else margin-cropped."""
+    aligned = align_face_with_landmarks(frame_bgr, landmarks, 224) if landmarks is not None else None
+    if aligned is None:
+        aligned = _margin_align(frame_bgr, box, 224, margin=1.5)
+    return aligned
+
+
+def imagenet_blob(face_bgr: np.ndarray) -> np.ndarray:
+    """Convert a BGR face to a 1x3xHxW float32 RGB blob with ImageNet mean/std normalization."""
+    face_rgb = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2RGB)
+    face_norm = (face_rgb.astype(np.float32) / 255.0 - IMAGENET_MEAN) / IMAGENET_STD
+    return face_norm.transpose(2, 0, 1)[np.newaxis, ...].astype(np.float32)
+
+
 def _fairface_forward(
     net: Any,
     frame_bgr: np.ndarray,
@@ -31,12 +50,7 @@ def _fairface_forward(
     landmarks: np.ndarray | None = None,
 ) -> np.ndarray:
     """Run forward pass on FairFace model for specified output head."""
-    aligned = align_face_with_landmarks(frame_bgr, landmarks, 224) if landmarks is not None else None
-    if aligned is None:
-        aligned = _margin_align(frame_bgr, box, 224, margin=1.5)
-    face_rgb = cv2.cvtColor(aligned, cv2.COLOR_BGR2RGB)
-    face_norm = (face_rgb.astype(np.float32) / 255.0 - IMAGENET_MEAN) / IMAGENET_STD
-    blob = face_norm.transpose(2, 0, 1)[np.newaxis, ...].astype(np.float32)
+    blob = imagenet_blob(fairface_aligned_face(frame_bgr, box, landmarks))
     with _lock_for(net):
         net.setInput(blob)
         return net.forward(output_name).flatten()

@@ -272,6 +272,15 @@ def _estimate_roll_angle(face_bgr: np.ndarray, eye_cascade: Any) -> float | None
     return angle if abs(angle) <= 45 else None
 
 
+def level_face_region(
+    frame_bgr: np.ndarray, box: tuple[int, int, int, int], angle_deg: float | None,
+) -> tuple[np.ndarray, tuple[int, int, int, int]]:
+    """Return (region, box) rotated level when the roll angle exceeds 3 degrees, else the inputs."""
+    if angle_deg is not None and abs(angle_deg) > 3:
+        return _rotate_region(frame_bgr, box, angle_deg)
+    return frame_bgr, box
+
+
 def _rotate_region(
     frame_bgr: np.ndarray, box: tuple[int, int, int, int], angle_deg: float, pad_factor: float = 0.8,
 ) -> tuple[np.ndarray, tuple[int, int, int, int]]:

@@ -9,8 +9,8 @@ import numpy as np
 
 from ..attributes import (
     _estimate_roll_angle,
-    _rotate_region,
     fairface_landmarks_from_mediapipe,
+    level_face_region,
     mivolo_age_estimate,
     mivolo_estimate,
     predict_texture_artifact_score,
@@ -172,8 +172,7 @@ def _prepare_face(
             _cached_face_predict("roll_angle", "haarcascade", probe, _estimate_roll_angle, probe, shared.eye_cascade)
             if probe.size else None
         )
-        if angle is not None and abs(angle) > 3:
-            crop_frame, (cx1, cy1, cx2, cy2) = _rotate_region(frame, (x1, y1, x2, y2), angle)
+        crop_frame, (cx1, cy1, cx2, cy2) = level_face_region(frame, (x1, y1, x2, y2), angle)
 
     x1_crop, y1_crop, x2_crop, y2_crop = face_crop_bounds(
         (cx1, cy1, cx2, cy2), crop_frame.shape[:2],
