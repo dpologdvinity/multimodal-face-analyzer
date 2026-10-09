@@ -163,6 +163,15 @@ race -1.4 (-3.4 to +0.7) and age +0.5 (-1.8 to +2.8). It was fitted on FairFace,
 would have been in-distribution evidence only. Details:
 [eval/heldout_fairface.md](eval/heldout_fairface.md#learned-stacker).
 
+### Why no new age model
+
+A ConvNeXt-Tiny fine-tuned on FairFace's training split, on the app's own aligned crop, was the
+next attempt at beating `mivolo`'s age. It was to ship only if it beat `mivolo` on the held-out
+FairFace test half (paired interval above zero) and was not clearly worse on UTKFace. It failed
+both: 60.0% against 62.3% on FairFace (-2.3 points, -5.6 to +1.2), even though FairFace is its
+own training distribution, and 58.8% against 67.5% on UTKFace (-8.7, -11.2 to -6.3). Details:
+[eval/age_model.md](eval/age_model.md).
+
 ## Confirmed-age development set
 
 A separate three-image set with externally confirmed ages is used for preprocessing changes;

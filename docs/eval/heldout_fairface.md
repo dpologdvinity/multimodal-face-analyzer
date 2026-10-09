@@ -25,6 +25,7 @@ no model re-run, after the race and gender headline changes below), SSD detector
 | `fairface` | 93.1% (91.5-94.6) | 76.5% (74.0-79.2) | 60.3% (57.2-63.3) | 0.47 (0.42-0.51) |
 | `caffe` | 73.5% (70.7-76.1) | - | 26.8% (23.8-29.5) | 1.43 (1.35-1.51) |
 | `deepface` | 77.5% (74.8-80.0) | 63.0% (60.1-66.0) | - | - |
+| `convnext` (not an app backend) | - | - | 60.0% (56.7-63.1) | 0.44 (0.40-0.47) |
 | `dex` | - | - | 39.1% (36.2-41.9) | 0.79 (0.75-0.84) |
 | **App (shipped)** | **96.7% (95.5-97.7)** | **76.5% (74.0-79.2)** | **62.3% (59.2-65.1)** | 0.42 (0.38-0.45) |
 
@@ -43,8 +44,13 @@ reliable backend (`select_gender`, ordered `mivolo` > `fairface` > `deepface` > 
 held-out accuracy, the same order on both halves), which gives the same answer on every test
 face (paired difference +0.0 pp, interval +0.0 to +0.0) without calling it a fusion.
 
+`convnext` is a ConvNeXt-Tiny fine-tuned on FairFace's training split for this evaluation's age
+buckets; it did not beat `mivolo` (-2.3 pp, -5.6 to +1.2, paired) and is not an app backend. It
+was scored afterwards on the same detections and crops (`--extra-age`); see
+[age_model.md](age_model.md), which also has an out-of-distribution comparison on UTKFace.
+
 `fairface`'s native seven-class race accuracy (East and Southeast Asian kept apart) is 70.6%
-(67.9-73.5). Within one age bucket: `mivolo` 97.0%, `fairface` 95.4%, `dex` 84.9%, `caffe` 62.0%.
+(67.9-73.5). Within one age bucket: `mivolo` 97.0%, `convnext` 96.6%, `fairface` 95.4%, `dex` 84.9%, `caffe` 62.0%.
 `dex` reports a spread above 10 years (shown as `uncertain` in the app) on 87% of faces.
 
 ### Race by class

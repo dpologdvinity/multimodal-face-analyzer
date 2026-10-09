@@ -99,7 +99,9 @@ validation split (race-stratified sample, seed 0; 95% bootstrap intervals; detec
 
 Fusion weights fitted on the other half of the sample did no better than the previous gender
 ones; for race, fitted weights (70.1%) still trailed `fairface` alone. Full tables, label mappings and
-caveats: [docs/eval/heldout_fairface.md](docs/eval/heldout_fairface.md). The earlier 75-face,
+caveats: [docs/eval/heldout_fairface.md](docs/eval/heldout_fairface.md). A ConvNeXt-Tiny age model
+fine-tuned on FairFace did not beat MiVOLO there or on UTKFace, so it is not shipped
+([docs/eval/age_model.md](docs/eval/age_model.md)). The earlier 75-face,
 in-sample benchmark (the set the weights were hand-set on) is kept in
 [docs/benchmark.md](docs/benchmark.md).
 

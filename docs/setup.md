@@ -167,6 +167,14 @@ still rewrites the tracked `docs/eval/heldout_fairface.json`, and `scored_on` an
 `scoring_git_commit` change on every run. For checks that should leave the JSON alone, add
 `--output <path>`.
 
+`--extra-age KEY=model.onnx` also runs an age model that is not an app backend on the same
+detections and aligned faces, cached separately in `data/eval_cache/<config>/extra_age_KEY.jsonl`;
+the committed JSON includes `convnext` this way, so re-score it with
+`--score-only --extra-age convnext`. `tools/eval_utkface.py` is the out-of-distribution
+counterpart on UTKFace (non-commercial research only; download it with
+`kaggle datasets download moritzm00/utkface-cropped -p data/utkface --unzip`) and writes
+`docs/eval/age_model.json`; see [eval/age_model.md](eval/age_model.md).
+
 ## Guided run scripts
 
 Both run scripts use the same grouped prompts: FACE DETECTION, AGE, GENDER, RACE, EMOTION,
@@ -351,6 +359,7 @@ multimodal-face-analyzer/
 ├── tools/                         # fetch_models.py, benchmark.py, dump_predictions.py, score_fusion.py, ground_truth.json,
 │                                  #   fetch_fairface.py + eval_heldout.py (held-out FairFace eval),
 │                                  #   fit_stacker.py (learned stacker, tested on that eval's cache)
+│                                  #   eval_utkface.py (UTKFace age eval), kaggle/age_model/ (age model training kernels)
 └── docs/                          # this documentation
 ```
 

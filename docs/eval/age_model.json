@@ -1,0 +1,752 @@
+{
+  "utkface": {
+    "dataset": {
+      "name": "UTKFace (aligned and cropped faces)",
+      "source": "kaggle moritzm00/utkface-cropped",
+      "license": "non-commercial research only; used for evaluation, not redistributed",
+      "n_parsed": 23703,
+      "n_malformed_names_skipped": 5
+    },
+    "sample": {
+      "n": 1500,
+      "seed": 0,
+      "stratified_by": "age decade (90+ pooled)",
+      "allocation": "proportional",
+      "bootstrap_resamples": 1000
+    },
+    "extra_age": {
+      "backends": [
+        "convnext"
+      ],
+      "crop_mismatches": {
+        "convnext": 0
+      }
+    },
+    "run": {
+      "backends": {
+        "age": [
+          "caffe",
+          "dex",
+          "fairface",
+          "mivolo"
+        ],
+        "gender": [
+          "caffe",
+          "fairface",
+          "mivolo"
+        ]
+      },
+      "detector": "ssd",
+      "conf_threshold": 0.5,
+      "pad_fraction": 0.6666666666666666,
+      "versions": {
+        "python": "3.11.17",
+        "numpy": "2.4.6",
+        "opencv-python-headless": "4.14.0.94",
+        "torch": "2.14.1+cpu",
+        "tensorflow-cpu": "2.21.0",
+        "tf-keras": "2.21.0",
+        "onnxruntime": "1.30.0",
+        "mediapipe": "1.1.0",
+        "ultralytics": "8.1.0",
+        "timm": "0.8.13.dev0",
+        "git_commit": "36dff91"
+      },
+      "date": "2026-10-08",
+      "scored_on": "2026-10-09",
+      "seconds_per_face_mean": 1.695,
+      "total_inference_minutes": 42.4
+    },
+    "scores": {
+      "detection_recall": {
+        "value": 0.9987,
+        "ci95": [
+          0.9967,
+          1.0
+        ],
+        "n": 1500
+      },
+      "errors": 0,
+      "fairface_landmark_alignment_share": 1.0,
+      "age": {
+        "backends": {
+          "convnext": {
+            "bucket_accuracy": {
+              "value": 0.5881,
+              "ci95": [
+                0.5634,
+                0.6142
+              ],
+              "n": 1498
+            },
+            "within_one_bucket": {
+              "value": 0.9519,
+              "ci95": [
+                0.9406,
+                0.9626
+              ],
+              "n": 1498
+            },
+            "mean_bucket_offset": {
+              "value": 0.466,
+              "ci95": [
+                0.4319,
+                0.4953
+              ],
+              "n": 1498
+            }
+          },
+          "mivolo": {
+            "bucket_accuracy": {
+              "value": 0.6749,
+              "ci95": [
+                0.6515,
+                0.6983
+              ],
+              "n": 1498
+            },
+            "within_one_bucket": {
+              "value": 0.984,
+              "ci95": [
+                0.978,
+                0.99
+              ],
+              "n": 1498
+            },
+            "mean_bucket_offset": {
+              "value": 0.3411,
+              "ci95": [
+                0.3157,
+                0.3672
+              ],
+              "n": 1498
+            },
+            "mae_years": {
+              "value": 3.6765,
+              "ci95": [
+                3.5028,
+                3.864
+              ],
+              "n": 1498
+            }
+          },
+          "fairface": {
+            "bucket_accuracy": {
+              "value": 0.5754,
+              "ci95": [
+                0.5507,
+                0.6021
+              ],
+              "n": 1498
+            },
+            "within_one_bucket": {
+              "value": 0.9306,
+              "ci95": [
+                0.9166,
+                0.9426
+              ],
+              "n": 1498
+            },
+            "mean_bucket_offset": {
+              "value": 0.5067,
+              "ci95": [
+                0.4726,
+                0.5414
+              ],
+              "n": 1498
+            }
+          },
+          "dex": {
+            "bucket_accuracy": {
+              "value": 0.3999,
+              "ci95": [
+                0.3752,
+                0.4266
+              ],
+              "n": 1498
+            },
+            "within_one_bucket": {
+              "value": 0.8244,
+              "ci95": [
+                0.8044,
+                0.8425
+              ],
+              "n": 1498
+            },
+            "mean_bucket_offset": {
+              "value": 0.8271,
+              "ci95": [
+                0.7864,
+                0.8712
+              ],
+              "n": 1498
+            },
+            "mae_years": {
+              "value": 8.4018,
+              "ci95": [
+                8.0548,
+                8.78
+              ],
+              "n": 1498
+            }
+          },
+          "caffe": {
+            "bucket_accuracy": {
+              "value": 0.3585,
+              "ci95": [
+                0.3344,
+                0.3832
+              ],
+              "n": 1498
+            },
+            "within_one_bucket": {
+              "value": 0.6649,
+              "ci95": [
+                0.6395,
+                0.6889
+              ],
+              "n": 1498
+            },
+            "mean_bucket_offset": {
+              "value": 1.2931,
+              "ci95": [
+                1.2223,
+                1.3672
+              ],
+              "n": 1498
+            }
+          }
+        },
+        "minus_mivolo": {
+          "convnext": {
+            "bucket_accuracy": {
+              "value": -0.0868,
+              "ci95": [
+                -0.1115,
+                -0.0628
+              ],
+              "n": 1498
+            },
+            "within_one_bucket": {
+              "value": -0.032,
+              "ci95": [
+                -0.0414,
+                -0.022
+              ],
+              "n": 1498
+            }
+          },
+          "fairface": {
+            "bucket_accuracy": {
+              "value": -0.0995,
+              "ci95": [
+                -0.1255,
+                -0.0734
+              ],
+              "n": 1498
+            },
+            "within_one_bucket": {
+              "value": -0.0534,
+              "ci95": [
+                -0.0674,
+                -0.0414
+              ],
+              "n": 1498
+            }
+          },
+          "dex": {
+            "bucket_accuracy": {
+              "value": -0.275,
+              "ci95": [
+                -0.3058,
+                -0.2443
+              ],
+              "n": 1498
+            },
+            "within_one_bucket": {
+              "value": -0.1595,
+              "ci95": [
+                -0.1789,
+                -0.1422
+              ],
+              "n": 1498
+            }
+          },
+          "caffe": {
+            "bucket_accuracy": {
+              "value": -0.3164,
+              "ci95": [
+                -0.3471,
+                -0.2837
+              ],
+              "n": 1498
+            },
+            "within_one_bucket": {
+              "value": -0.3191,
+              "ci95": [
+                -0.3445,
+                -0.2931
+              ],
+              "n": 1498
+            }
+          }
+        },
+        "best_shipped": {
+          "bucket_accuracy": {
+            "value": 0.6749,
+            "ci95": [
+              0.6515,
+              0.6983
+            ],
+            "n": 1498
+          },
+          "chosen_backend": {
+            "convnext": 0,
+            "mivolo": 1498,
+            "fairface": 0,
+            "dex": 0,
+            "caffe": 0
+          }
+        },
+        "per_true_bucket": {
+          "0-2": {
+            "n": 100,
+            "convnext": 0.87,
+            "mivolo": 0.84,
+            "fairface": 0.89,
+            "dex": 0.0,
+            "caffe": 0.72
+          },
+          "3-9": {
+            "n": 93,
+            "convnext": 0.7634,
+            "mivolo": 0.8065,
+            "fairface": 0.6989,
+            "dex": 0.0,
+            "caffe": 0.3656
+          },
+          "10-19": {
+            "n": 97,
+            "convnext": 0.5361,
+            "mivolo": 0.5876,
+            "fairface": 0.6186,
+            "dex": 0.5773,
+            "caffe": 0.2371
+          },
+          "20-29": {
+            "n": 465,
+            "convnext": 0.7634,
+            "mivolo": 0.7398,
+            "fairface": 0.7763,
+            "dex": 0.514,
+            "caffe": 0.8
+          },
+          "30-39": {
+            "n": 286,
+            "convnext": 0.4685,
+            "mivolo": 0.6783,
+            "fairface": 0.4231,
+            "dex": 0.4056,
+            "caffe": 0.0
+          },
+          "40-49": {
+            "n": 142,
+            "convnext": 0.4366,
+            "mivolo": 0.6197,
+            "fairface": 0.3803,
+            "dex": 0.4859,
+            "caffe": 0.0634
+          },
+          "50-59": {
+            "n": 145,
+            "convnext": 0.4759,
+            "mivolo": 0.5103,
+            "fairface": 0.4069,
+            "dex": 0.4483,
+            "caffe": 0.0552
+          },
+          "60-69": {
+            "n": 83,
+            "convnext": 0.253,
+            "mivolo": 0.4699,
+            "fairface": 0.2289,
+            "dex": 0.2892,
+            "caffe": 0.0
+          },
+          "70+": {
+            "n": 87,
+            "convnext": 0.3448,
+            "mivolo": 0.6437,
+            "fairface": 0.3908,
+            "dex": 0.3448,
+            "caffe": 0.2184
+          }
+        }
+      },
+      "gender": {
+        "backends": {
+          "mivolo": {
+            "value": 0.984,
+            "ci95": [
+              0.9773,
+              0.99
+            ],
+            "n": 1498
+          },
+          "fairface": {
+            "value": 0.9266,
+            "ci95": [
+              0.9132,
+              0.9393
+            ],
+            "n": 1498
+          },
+          "caffe": {
+            "value": 0.7897,
+            "ci95": [
+              0.767,
+              0.8097
+            ],
+            "n": 1498
+          }
+        }
+      },
+      "n_faces": 1498
+    }
+  },
+  "fairface_test_half": {
+    "source": "heldout_fairface.json",
+    "age": {
+      "backends": {
+        "convnext": {
+          "bucket_accuracy": {
+            "value": 0.5998,
+            "ci95": [
+              0.5669,
+              0.6307
+            ],
+            "n": 1002
+          },
+          "mean_bucket_offset": {
+            "value": 0.4371,
+            "ci95": [
+              0.4032,
+              0.475
+            ],
+            "n": 1002
+          },
+          "within_one_bucket": {
+            "value": 0.9661,
+            "ci95": [
+              0.9541,
+              0.977
+            ],
+            "n": 1002
+          }
+        },
+        "mivolo": {
+          "bucket_accuracy": {
+            "value": 0.6228,
+            "ci95": [
+              0.5918,
+              0.6507
+            ],
+            "n": 1002
+          },
+          "mean_bucket_offset": {
+            "value": 0.4162,
+            "ci95": [
+              0.3832,
+              0.4541
+            ],
+            "n": 1002
+          },
+          "within_one_bucket": {
+            "value": 0.9701,
+            "ci95": [
+              0.9591,
+              0.98
+            ],
+            "n": 1002
+          }
+        },
+        "fairface": {
+          "bucket_accuracy": {
+            "value": 0.6028,
+            "ci95": [
+              0.5719,
+              0.6327
+            ],
+            "n": 1002
+          },
+          "mean_bucket_offset": {
+            "value": 0.4651,
+            "ci95": [
+              0.4242,
+              0.507
+            ],
+            "n": 1002
+          },
+          "within_one_bucket": {
+            "value": 0.9541,
+            "ci95": [
+              0.9411,
+              0.9661
+            ],
+            "n": 1002
+          }
+        },
+        "dex": {
+          "bucket_accuracy": {
+            "value": 0.3912,
+            "ci95": [
+              0.3623,
+              0.4192
+            ],
+            "n": 1002
+          },
+          "mean_bucket_offset": {
+            "value": 0.7904,
+            "ci95": [
+              0.7455,
+              0.8363
+            ],
+            "n": 1002
+          },
+          "within_one_bucket": {
+            "value": 0.8493,
+            "ci95": [
+              0.8283,
+              0.8703
+            ],
+            "n": 1002
+          }
+        },
+        "caffe": {
+          "bucket_accuracy": {
+            "value": 0.2675,
+            "ci95": [
+              0.2385,
+              0.2954
+            ],
+            "n": 1002
+          },
+          "mean_bucket_offset": {
+            "value": 1.4261,
+            "ci95": [
+              1.3483,
+              1.512
+            ],
+            "n": 1002
+          },
+          "within_one_bucket": {
+            "value": 0.6198,
+            "ci95": [
+              0.5888,
+              0.6487
+            ],
+            "n": 1002
+          }
+        }
+      },
+      "minus_mivolo": {
+        "convnext": {
+          "bucket_accuracy": {
+            "value": -0.023,
+            "ci95": [
+              -0.0559,
+              0.012
+            ],
+            "n": 1002
+          },
+          "within_one_bucket": {
+            "value": -0.004,
+            "ci95": [
+              -0.016,
+              0.008
+            ],
+            "n": 1002
+          }
+        },
+        "fairface": {
+          "bucket_accuracy": {
+            "value": -0.02,
+            "ci95": [
+              -0.0519,
+              0.017
+            ],
+            "n": 1002
+          },
+          "within_one_bucket": {
+            "value": -0.016,
+            "ci95": [
+              -0.0299,
+              -0.001
+            ],
+            "n": 1002
+          }
+        },
+        "dex": {
+          "bucket_accuracy": {
+            "value": -0.2315,
+            "ci95": [
+              -0.2725,
+              -0.1926
+            ],
+            "n": 1002
+          },
+          "within_one_bucket": {
+            "value": -0.1208,
+            "ci95": [
+              -0.1427,
+              -0.0998
+            ],
+            "n": 1002
+          }
+        },
+        "caffe": {
+          "bucket_accuracy": {
+            "value": -0.3553,
+            "ci95": [
+              -0.3912,
+              -0.3134
+            ],
+            "n": 1002
+          },
+          "within_one_bucket": {
+            "value": -0.3503,
+            "ci95": [
+              -0.3833,
+              -0.3204
+            ],
+            "n": 1002
+          }
+        }
+      },
+      "best_shipped": {
+        "bucket_accuracy": {
+          "value": 0.6228,
+          "ci95": [
+            0.5918,
+            0.6507
+          ],
+          "n": 1002
+        },
+        "mean_bucket_offset": {
+          "value": 0.4162,
+          "ci95": [
+            0.3832,
+            0.4541
+          ],
+          "n": 1002
+        },
+        "within_one_bucket": {
+          "value": 0.9701,
+          "ci95": [
+            0.9591,
+            0.98
+          ],
+          "n": 1002
+        },
+        "chosen_backend": {
+          "convnext": 0,
+          "mivolo": 1001,
+          "fairface": 1,
+          "dex": 0,
+          "caffe": 0
+        }
+      },
+      "dex_uncertain_share": 0.8723
+    },
+    "extra_age": {
+      "backends": [
+        "convnext"
+      ],
+      "crop_mismatches": {
+        "convnext": 0
+      },
+      "note": "run by run_extra_age on the same detections and crops"
+    }
+  },
+  "training": {
+    "backbone": {
+      "timm_name": "convnext_tiny.fb_in22k_ft_in1k",
+      "hf_repo": "timm/convnext_tiny.fb_in22k_ft_in1k",
+      "revision": "bc48a87f119bae1b06418f5340bfa97ef75d4609",
+      "license": "Apache-2.0 (Hugging Face model card of timm/convnext_tiny.fb_in22k_ft_in1k); upstream facebookresearch/ConvNeXt weights are MIT",
+      "mlp": "1x1 conv (conv_mlp=True), weights reshaped"
+    },
+    "data": {
+      "dataset": "HuggingFaceM4/FairFace",
+      "revision": "54d573cdb8b5af490ba8da9da2799628f6e5c496",
+      "files": [
+        "1.25/train-00000-of-00004-e715178553977907.parquet",
+        "1.25/train-00001-of-00004-f38b58e3987f3fbf.parquet",
+        "1.25/train-00002-of-00004-239e931aa9c3b3e6.parquet",
+        "1.25/train-00003-of-00004-847c279691a19548.parquet"
+      ],
+      "license": "CC BY 4.0",
+      "train_images": 86744,
+      "detected": 86654,
+      "train": 82322,
+      "select": 4332,
+      "select_rule": "5% of every (age, race) stratum of TRAIN, seed 0",
+      "validation_used": false
+    },
+    "loss": "cross-entropy on Gaussian ordinal soft labels (sigma 0.5 buckets)",
+    "augmentation": "on GPU: flip, rotation +-10 deg, scale 0.9-1.1, shift +-5%, contrast 0.7-1.3, brightness +-25, saturation 0.6-1.4, 5% grayscale, 15% down-up resample to 48-112 px",
+    "best": {
+      "accuracy": 0.6101,
+      "within_one": 0.9656,
+      "mean_offset": 0.428,
+      "epoch": 11,
+      "weights": "ema"
+    },
+    "select_final": {
+      "accuracy": 0.6101,
+      "within_one": 0.9656,
+      "mean_offset": 0.428
+    },
+    "cv2_check": {
+      "cv2": "4.14.0",
+      "max_abs_diff": 7.867813110351562e-06,
+      "argmax_agree": 1.0
+    },
+    "onnx": {
+      "file": "age_convnext_fairface.onnx",
+      "opset": 17,
+      "input": "input 1x3x224x224 RGB ImageNet-normalized",
+      "output": "age_logits 1x9 (FairFace buckets 0-2 ... 70+)"
+    },
+    "args": {
+      "prep": "/kaggle/input/notebooks/kaitlynbassford/face-age-prep",
+      "crops": "/kaggle/input/face-age-crops",
+      "out": "/kaggle/working",
+      "epochs": 12,
+      "patience": 4,
+      "batch": 128,
+      "lr": 0.0002,
+      "head_lr_mult": 5.0,
+      "weight_decay": 0.05,
+      "drop_path": 0.1,
+      "sigma": 0.5,
+      "aux_weight": 0.0,
+      "ema": 0.9995,
+      "time_budget_min": 120.0,
+      "diagnose": false,
+      "max_steps": 0,
+      "smoke": false
+    },
+    "versions": {
+      "python": "3.13.15",
+      "torch": "2.11.0+cu128",
+      "timm": "1.0.30",
+      "opencv": "4.14.0",
+      "numpy": "2.1.3",
+      "onnx": "1.23.2"
+    },
+    "device": "Tesla T4",
+    "gpus_used": 1,
+    "minutes": 92.4
+  }
+}
