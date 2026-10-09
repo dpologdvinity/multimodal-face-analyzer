@@ -17,14 +17,26 @@ Demo mode changes the following:
   SEARCH (eigenfaces and identity search over `known_people/`), enrolled galleries and ENROLL,
   LBPH training, and SCAN ALL FACES are all off. Their sidebar sections and buttons are hidden,
   the gallery file is never read, and nothing is written to `faces/`, `db/`, `eigen/` or `gallery/`.
+  As a second line of defense, `save_face`, `save_gallery` and `enroll_lbph_face` raise
+  `PermissionError` in demo mode. Decoded uploads and per-face predictions are not cached either,
+  so nothing derived from an image outlives the request that analyzed it.
 - **No live webcam mode.** WebRTC needs a TURN server on most hosts, so the Webcam tab offers
   snapshots only, with a one-line note that live mode runs locally only.
 - **A responsible-use note** at the top: the results are apparent attributes only, the models
   have known biases, the results must not be used for decisions about people, and uploads are
-  processed in memory and never stored.
-- **Bounded memory.** Each upload is limited to 10 MB and the first 3 images are analyzed. Images
-  are downscaled to a longest side of 1600 px, and any image whose header declares more than
-  50 megapixels is rejected before decoding.
+  processed in memory and never stored. A one-line credit for the demo's models (FairFace's
+  CC BY 4.0 license requires attribution) sits at the bottom of the page.
+- **No error details for visitors.** `client.showErrorDetails` is set to `none` at runtime, so a
+  crash shows a generic message, while the server log keeps the traceback. This is set in code
+  rather than in a `.streamlit/config.toml`, because Streamlit reads that file from the working
+  directory, and a tracked one at the repo root would also hide tracebacks during local
+  development and in the Docker image. `.streamlit/` stays gitignored for local settings.
+- **Bounded memory.** Each upload is limited to 10 MB and the first 3 images are analyzed. Only
+  JPEG, PNG and WebP files are decoded; any other file is rejected before decoding, whatever its
+  extension, and so is any image whose header declares more than 50 megapixels. Images are
+  downscaled to a longest side of 1600 px. Only one analysis runs at a time per process: another
+  visitor's upload waits (up to 2 minutes) with a "being analyzed" note instead of adding its
+  peak memory on top.
 - **Only permissively licensed, lightweight models.** These are `hf` entries in
   `models/manifest.json` (mirrored on `kaitlynbassford/face-analyzer-weights`), and none needs
   torch or TensorFlow:
@@ -89,9 +101,9 @@ AppTest and confirmed against a real `streamlit run streamlit_app.py` server:
 | Analyze a 3072 px grayscale photo with 6 faces (downscaled to 1600 px, then colorized) | 1.6 GB |
 
 That leaves about 1 GB of headroom under the 2.7 GB limit. Models are loaded once per process
-and shared by all sessions, so concurrent visitors add their own images and intermediate
-buffers, not extra model copies. Colorization accounts for about
-0.55 GB of the peak. If the app hits the memory limit under real traffic, remove
+and shared by all sessions, and analyses run one at a time, so concurrent visitors add only
+their own decoded images and rendered results, not another analysis peak. Colorization accounts
+for about 0.55 GB of the peak. If the app hits the memory limit under real traffic, remove
 `COLORIZATION_MODEL` from `DEMO_MODELS` in `src/face_analyzer/demo.py` first.
 
 ### Dependencies
@@ -113,10 +125,12 @@ buffers, not extra model copies. Colorization accounts for about
 
 ## Docker host
 
-The Dockerfile's default build already contains every demo weight and onnxruntime. Run the
-image with demo mode on:
+The Dockerfile's default build has onnxruntime and every demo weight except `ferplus`: its
+`EMOTION_MODEL` default is `hsemotion`, which demo mode does not load. Add `ferplus` to the build,
+then run the image with demo mode on:
 
 ```bash
+docker build -t face-analyzer --build-arg EMOTION_MODEL=hsemotion,ferplus .
 docker run -d -p 127.0.0.1:8501:8501 -e FACE_ANALYZER_DEMO=1 --name face_analyzer_demo face-analyzer
 ```
 
