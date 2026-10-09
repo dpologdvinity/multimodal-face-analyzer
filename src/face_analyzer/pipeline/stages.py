@@ -294,9 +294,14 @@ def _annotate(
     x1, y1, x2, y2 = inputs.box
     track_id = inputs.track_id
     box_thickness = int(round(annotated_frame.shape[0] / 150)) or 1
-    cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), (0, 255, 0), box_thickness, 8)
+    if config.box_outline is not None:
+        # A contrasting rim a pixel or two wide on each side keeps the box visible where its
+        # colour matches the skin or background underneath.
+        rim = box_thickness + 2 * max(1, box_thickness // 3)
+        cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), config.box_outline, rim, 8)
+    cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), config.box_color, box_thickness, 8)
     display_id = track_id if track_id is not None else idx
-    draw_outlined_text(annotated_frame, str(display_id), (x1, max(20, y1 - 10)), (0, 255, 255))
+    draw_outlined_text(annotated_frame, str(display_id), (x1, max(20, y1 - 10)), config.label_color)
 
     landmarks_net = models.face_landmarks_nets.get("mediapipe")
     if landmarks_net is not None and "mediapipe" in config.active_face_landmarks:

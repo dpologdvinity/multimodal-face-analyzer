@@ -12,7 +12,7 @@ detectors, and held-out-tested ways of combining interchangeable backends.
 <!-- DEMO: record 5-10s of LIVE mode (age/gender/emotion/landmarks on, change expression once),
      export ≤5 MB, ~800px wide → docs/media/demo.gif; full-UI screenshot → docs/media/screenshot.png -->
 
-A terminal-styled Streamlit app, with upload and live-webcam tabs, that detects faces in an uploaded image or webcam feed and runs any combination
+A Streamlit app, with upload and live-webcam tabs, that detects faces in an uploaded image or webcam feed and runs any combination
 of attribute models on each face: age, gender, race, emotion, gaze, liveness, recognition, and
 more. Most features have two or more backends that can run side by side, and the app combines
 their answers.
@@ -197,6 +197,19 @@ photos, SAVE to a local SQLite database with eigenfaces matching, a scan that la
 recognized or unrecognized, an opt-in crowd count, image adjustment sliders, a mouse
 crop, per-face image operations, and an opt-in voice and face arousal check in
 LIVE mode. Per-model details: [docs/models.md](docs/models.md).
+
+### Themes
+
+Four themes, picked in the sidebar: **Umbra** (dark, the default), **Lumen** (its light
+counterpart), **Safelight** (darkroom amber) and **Cyanotype** (blueprint blue on paper). Each is
+one block of colour tokens in `src/face_analyzer/ui/theme.css`; `tests/test_theme.py` checks every
+text and accent token against WCAG AA contrast.
+
+| Umbra | Lumen |
+| ----- | ----- |
+| ![Umbra theme](docs/media/themes/umbra.png) | ![Lumen theme](docs/media/themes/lumen.png) |
+| **Safelight** | **Cyanotype** |
+| ![Safelight theme](docs/media/themes/safelight.png) | ![Cyanotype theme](docs/media/themes/cyanotype.png) |
 
 ## Responsible use
 

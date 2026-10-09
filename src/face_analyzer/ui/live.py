@@ -26,6 +26,7 @@ from ..inference import (
 from ..pipeline.config import AnalysisConfig
 from .results import target_card_html
 from .sidebar import SidebarState
+from .theme import box_style
 
 # Slow per-face classifiers that frame skipping throttles; detection, the landmark and hand
 # overlays, and liveness are cheap enough to keep running every frame.
@@ -141,7 +142,7 @@ def _get_voice_fusion() -> VoiceFaceFusion:
 
 def render_live_tab(
     models: Any, sidebar: SidebarState, live_session: dict[str, Any], *,
-    global_adjustments: dict, face_adjustments: dict,
+    global_adjustments: dict, face_adjustments: dict, theme: str,
 ) -> None:
     """Render the Live capture mode: stream controls, the WebRTC feed, and live/after-run stats."""
     state, state_lock = live_session["live_state"], live_session["live_state_lock"]
@@ -181,6 +182,7 @@ def render_live_tab(
         gallery=gallery_snapshot,
         global_adjustments=global_adjustments, face_adjustments=face_adjustments,
         tracker=face_tracker, liveness_tracker=liveness_tracker,
+        **box_style(theme),
     )
     _video_frame_callback = make_video_frame_callback(
         lambda: models, lambda: live_config,

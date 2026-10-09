@@ -311,8 +311,9 @@ Each detected face has an **Edit face** expander containing its sliders, **IMAGE
 
 ## Interface
 
-- Two tabs: **Image upload** and **Webcam**, with Snapshot and Live capture modes. The UI is a
-  terminal-styled Streamlit theme.
+- Two tabs: **Image upload** and **Webcam**, with Snapshot and Live capture modes. The sidebar
+  **Theme** picker offers Umbra (dark, the default), Lumen (light), Safelight (dark amber) and
+  Cyanotype (light blue); each theme is a block of colour tokens in `ui/theme.css`.
 - Hover over or focus a detected face box in the annotated image to see that face's results;
   the full per-face cards remain below the image.
 - The sidebar shows one checkbox per loaded model per feature, and an `Unavailable:` caption

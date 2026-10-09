@@ -360,7 +360,7 @@ multimodal-face-analyzer/
 │   ├── fusion/                    # combined answers: fuse_emotion, select_age/gender/race
 │   ├── pipeline/                  # loader (load_models), analyzer (analyze_frame), config (AnalysisConfig),
 │   │                              #   stages, face_tasks, cache, landmarks, drawing, tracker
-│   ├── ui/                        # Streamlit views: theme (+ theme.css), sidebar, adjustments, results, live webcam tab
+│   ├── ui/                        # Streamlit views: themes (+ theme.css tokens), sidebar, adjustments, results, live webcam tab
 │   ├── gallery/                   # SQLite saved faces, eigenfaces, identity search
 │   ├── liveness.py, model_selection.py, demo.py (demo-mode allowlist and limits)
 │   └── nets/                      # vendored third-party model architectures

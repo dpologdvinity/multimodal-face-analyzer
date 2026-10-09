@@ -178,6 +178,37 @@ class TestAnalyzeFrameModular(unittest.TestCase):
         self.assertEqual(detect.call_args.args[-1], 0.6)
 
 
+class TestFaceBoxColour(unittest.TestCase):
+    """Verify the config's box colours reach the drawn pixels."""
+
+    BOX = (60, 80, 200, 240)
+
+    def _draw(self, config):
+        """Analyze a flat grey frame with one stubbed detection and return the annotated frame."""
+        frame = np.full((300, 300, 3), 90, np.uint8)
+        with patch("face_analyzer.pipeline.stages.detect_faces", return_value=[self.BOX]):
+            annotated, faces, has_faces, _ = analyze_frame(Models(face_net=MagicMock()), frame, config)
+        self.assertTrue(has_faces)
+        self.assertEqual(len(faces), 1)
+        return annotated
+
+    def test_default_box_stays_green_without_an_outline(self):
+        """Keep the original green box for callers that set no colour."""
+        annotated = self._draw(AnalysisConfig())
+        x1, y1, x2, _ = self.BOX
+        self.assertEqual(tuple(annotated[160, x1]), (0, 255, 0))
+        self.assertEqual(tuple(annotated[y1, (x1 + x2) // 2]), (0, 255, 0))
+        self.assertEqual(tuple(annotated[160, x1 - 2]), (90, 90, 90))
+
+    def test_configured_box_and_outline_colours_are_drawn(self):
+        """Draw the box in box_color with a box_outline rim just outside it."""
+        annotated = self._draw(AnalysisConfig(box_color=(10, 20, 30), box_outline=(250, 240, 230)))
+        x1, y1, x2, _ = self.BOX
+        self.assertEqual(tuple(annotated[160, x1]), (10, 20, 30))
+        self.assertEqual(tuple(annotated[y1, (x1 + x2) // 2]), (10, 20, 30))
+        self.assertEqual(tuple(annotated[160, x1 - 2]), (250, 240, 230))
+
+
 class TestRaceHeadline(unittest.TestCase):
     """Verify the race headline flows from _race_task through _face_record."""
 
