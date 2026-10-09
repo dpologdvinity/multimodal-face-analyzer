@@ -139,8 +139,9 @@ def train_lbph_recognizer():
 
 
 # Upload formats the demo accepts; anything else (e.g. a Radiance .hdr renamed to .png, which cv2
-# decodes as float32) could bypass the pixel cap's memory estimate.
-_CAPPED_IMAGE_FORMATS = {"JPEG", "PNG", "WEBP"}
+# decodes as float32) could bypass the pixel cap's memory estimate. Pillow reports multi-picture
+# JPEGs from phone cameras as "MPO"; cv2 decodes their first frame like any JPEG.
+_CAPPED_IMAGE_FORMATS = {"JPEG", "MPO", "PNG", "WEBP"}
 
 
 def _check_image_header(file_bytes: bytes | bytearray | np.ndarray, max_pixels: int) -> None:
