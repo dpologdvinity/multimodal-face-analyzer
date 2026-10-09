@@ -97,9 +97,14 @@ What happens on first boot:
   On each run the entry point therefore compares the modification times of
   `src/face_analyzer/**/*.py` with those at import. When they differ, it drops the package's
   modules and clears `st.cache_resource` and `st.cache_data`, so the code and the models reload
-  once. While an analysis is running it leaves the reload to a later page run, and the reloaded
-  code keeps the same one-analysis slot. If the demo still behaves like the old code after a
-  deploy, use **Reboot app** in the app's Community Cloud menu.
+  once. While an analysis is running it leaves the reload to a later page run. The one-analysis
+  slot lives on a small module outside the package, so old and new code share the same
+  semaphore even if a module was already evicted or an import failed.
+- One rare race remains: a visitor's run that already passed the check when the reload happens
+  finishes on the old modules, and if it loads models then, it puts the old code's models back
+  into `st.cache_resource`. They stay until the next source change or a restart. If the demo
+  still behaves like the old code after a deploy, use **Reboot app** in the app's Community
+  Cloud menu.
 
 ### Measured memory
 

@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import os
+import sys
 import threading
+import types
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 
@@ -32,7 +34,19 @@ DEMO_MAX_IMAGE_SIDE = 1600
 DEMO_MAX_IMAGE_PIXELS = 50_000_000
 # One analysis at a time per process: a colorized run alone peaks near 1.6 GB of a 2.7 GB host.
 DEMO_ANALYSIS_WAIT_SECONDS = 120.0
-_ANALYSIS_SLOT = threading.BoundedSemaphore(1)
+# The slot lives on a module outside the package, which streamlit_app.py's source reload never
+# purges: a re-executed demo.py must pick up the same semaphore, or two analyses could run at once.
+ANALYSIS_SLOT_HOLDER = "_face_analyzer_reload_state"
+
+
+def _shared_analysis_slot() -> threading.BoundedSemaphore:
+    """Return the process-wide analysis semaphore, creating it on first use."""
+    holder = sys.modules.setdefault(ANALYSIS_SLOT_HOLDER, types.ModuleType(ANALYSIS_SLOT_HOLDER))
+    # dict.setdefault is atomic, so concurrent imports still agree on one semaphore.
+    return vars(holder).setdefault("analysis_slot", threading.BoundedSemaphore(1))
+
+
+_ANALYSIS_SLOT = _shared_analysis_slot()
 
 RESPONSIBLE_USE_NOTE = (
     "Public demo. Age, gender, race and emotion are guesses about how a face *appears* in one "

@@ -96,7 +96,7 @@ def test_a_source_change_reloads_exactly_once_across_concurrent_runs(tmp_path):
     assert run() is False and len(purges) == 1
 
 
-def test_purge_waits_for_a_running_analysis_and_keeps_its_semaphore():
+def test_purge_waits_for_a_running_analysis():
     import face_analyzer.demo as old_demo
 
     slot = old_demo._ANALYSIS_SLOT
@@ -107,15 +107,41 @@ def test_purge_waits_for_a_running_analysis_and_keeps_its_semaphore():
         try:
             assert streamlit_app.purge_package() is False
             assert sys.modules["face_analyzer.demo"] is old_demo
+            clear_resource.assert_not_called()
         finally:
             slot.release()
 
         assert streamlit_app.purge_package() is True
-        new_demo = sys.modules["face_analyzer.demo"]
-        assert new_demo is not old_demo
-        assert new_demo._ANALYSIS_SLOT is slot
-        assert not any(name.startswith("face_analyzer.") and name != "face_analyzer.demo"
-                       for name in sys.modules)
+        assert not any(name == "face_analyzer" or name.startswith("face_analyzer.") for name in sys.modules)
         clear_resource.assert_called_once()
         clear_data.assert_called_once()
     assert sys.modules["face_analyzer.demo"] is old_demo
+
+
+@pytest.mark.parametrize("evict_first", [False, True], ids=["purge", "watcher-evicted-demo-first"])
+def test_one_analysis_semaphore_survives_a_reload(evict_first):
+    import face_analyzer.demo as old_demo
+
+    slot = old_demo._ANALYSIS_SLOT
+    with patch.dict(sys.modules), patch.object(st.cache_resource, "clear"), patch.object(st.cache_data, "clear"):
+        if evict_first:
+            # Streamlit's own file watcher can drop a changed module before the entry point runs.
+            del sys.modules["face_analyzer.demo"]
+        assert streamlit_app.purge_package() is True
+        new_demo = importlib.import_module("face_analyzer.demo")
+        assert new_demo is not old_demo
+        assert new_demo._ANALYSIS_SLOT is slot
+
+
+def test_one_analysis_semaphore_survives_a_failed_import():
+    import face_analyzer.demo as old_demo
+
+    slot = old_demo._ANALYSIS_SLOT
+    with patch.dict(sys.modules), patch.object(st.cache_resource, "clear"), patch.object(st.cache_data, "clear"):
+        assert streamlit_app.purge_package() is True
+        # A None entry makes the import fail, as a half-written file mid-pull would.
+        sys.modules["face_analyzer.demo"] = None
+        with pytest.raises(ImportError):
+            importlib.import_module("face_analyzer.demo")
+        del sys.modules["face_analyzer.demo"]
+        assert importlib.import_module("face_analyzer.demo")._ANALYSIS_SLOT is slot

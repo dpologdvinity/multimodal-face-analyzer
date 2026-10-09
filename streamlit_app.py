@@ -23,7 +23,8 @@ import streamlit as st  # noqa: E402
 PACKAGE = "face_analyzer"
 SOURCE_DIR = ROOT / "src" / PACKAGE
 # Streamlit re-executes only this script, so reload state lives in sys.modules, which outlives
-# every run. The name is outside the package, so purging the package never drops it.
+# every run. The name is outside the package, so purging the package never drops it; demo.py
+# keeps its analysis semaphore there too (ANALYSIS_SLOT_HOLDER).
 _STATE_MODULE = "_face_analyzer_reload_state"
 
 
@@ -34,22 +35,21 @@ def source_fingerprint(source_dir: Path = SOURCE_DIR) -> int:
 
 def reload_state() -> types.ModuleType:
     """Return the process-wide reload state: a lock and the fingerprint of the imported source."""
-    fresh = types.ModuleType(_STATE_MODULE)
-    fresh.lock = threading.Lock()
-    fresh.fingerprint = None
-    # setdefault is atomic, so concurrent first runs all end up sharing one lock.
-    return sys.modules.setdefault(_STATE_MODULE, fresh)
+    # Each setdefault is atomic, so concurrent first runs share one module and one lock, whether
+    # this or demo.py's semaphore created the module.
+    state = sys.modules.setdefault(_STATE_MODULE, types.ModuleType(_STATE_MODULE))
+    vars(state).setdefault("lock", threading.Lock())
+    vars(state).setdefault("fingerprint", None)
+    return state
 
 
 def purge_package() -> bool:
     """Drop the package's modules and Streamlit's caches; False if an analysis is running.
 
-    Holding the analysis slot keeps a model reload from stacking on a running analysis. The
-    new demo module gets the same slot, so there is never a second semaphore an analysis on
-    the old code could run beside.
+    Holding the analysis slot keeps a model reload from stacking on a running analysis. The slot
+    itself lives on the reload state module, so the re-imported demo.py reuses it.
     """
-    old_demo = sys.modules.get(f"{PACKAGE}.demo")
-    slot = getattr(old_demo, "_ANALYSIS_SLOT", None)
+    slot = vars(reload_state()).get("analysis_slot")
     if slot is not None and not slot.acquire(blocking=False):
         return False
     try:
@@ -57,10 +57,6 @@ def purge_package() -> bool:
             del sys.modules[name]
         st.cache_resource.clear()
         st.cache_data.clear()
-        if slot is not None:
-            from face_analyzer import demo
-
-            demo._ANALYSIS_SLOT = slot
     finally:
         if slot is not None:
             slot.release()
