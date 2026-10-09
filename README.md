@@ -1,6 +1,6 @@
 # Multimodal Face Analyzer
 
-Real-time multi-model face analysis: 16 per-face and whole-frame features, four pluggable face
+Real-time multi-model face analysis: 15 per-face and whole-frame features, four pluggable face
 detectors, and held-out-tested ways of combining interchangeable backends.
 
 [![CI](https://github.com/dpologdvinity/multimodal-face-analyzer/actions/workflows/ci.yml/badge.svg)](https://github.com/dpologdvinity/multimodal-face-analyzer/actions/workflows/ci.yml)
@@ -180,7 +180,6 @@ answers are `fairface`'s alone: on the same held-out test faces, gender 92.2% (9
 | Recognition | `vggface`, `lbph` | Against a gallery you enroll yourself |
 | Glasses | `mobilenet` | |
 | Mask | `mobilenetv2` | |
-| Hair color | `colorimetric` | Heuristic, not a trained model |
 | Eye color | `colorimetric` | Heuristic, not a trained model |
 | Face landmarks | `mediapipe` | 468-point mesh |
 | Hand landmarks | `mediapipe` | Whole frame, up to two hands |
@@ -188,8 +187,8 @@ answers are `fairface`'s alone: on the same held-out test faces, gender 92.2% (9
 | Age progression | `franunet` | Non-commercial use only |
 | 3D reconstruction | `deep3d` | **No working default weights**: needs the registration-gated Basel Face Model |
 
-The 16 rows after face detection are the analysis features in the `Models` container
-(`src/face_analyzer/core/types.py`). Fifteen work with weights `tools/fetch_models.py` downloads; 3D
+The 15 rows after face detection are the analysis features in the `Models` container
+(`src/face_analyzer/core/types.py`). Fourteen work with weights `tools/fetch_models.py` downloads; 3D
 reconstruction is wired but stays unavailable until you supply its checkpoint and the Basel Face
 Model file yourself. The `dan` emotion backend is bring-your-own as well.
 

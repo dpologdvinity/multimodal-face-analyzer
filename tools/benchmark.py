@@ -57,7 +57,6 @@ EMOTION_ALIASES = {
 CONFIRMED_MODELS = {
     "age": ("best", "mivolo", "fairface", "caffe", "dex"),
     "emotion": ("fused", "dan", "hsemotion", "ferplus", "mini_xception"),
-    "hair color": ("colorimetric",),
     "eye color": ("colorimetric",),
 }
 
@@ -66,7 +65,7 @@ def parse_confirmed(markdown: str) -> dict:
     """Read exact user-confirmed labels; never widen or infer labels."""
     labels = {}
     current = None
-    fields = {"age": "age", "emotion": "emotion", "hair": "hair color", "eyes": "eye color"}
+    fields = {"age": "age", "emotion": "emotion", "eyes": "eye color"}
     for line in markdown.splitlines():
         if line.startswith("### "):
             current = line[4:].strip()
@@ -170,7 +169,6 @@ def run_confirmed(args) -> None:
             inference.AnalysisConfig(
                 conf_threshold=args.conf, active_age=set(models.age_nets),
                 active_emotion=set(models.emotion_nets),
-                active_hair_color=set(models.hair_color_nets),
                 active_eye_color=set(models.eye_color_nets), face_detector=args.detector,
             ),
         )

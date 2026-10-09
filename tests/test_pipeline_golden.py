@@ -30,7 +30,6 @@ EXPECTED_ACTIVE = {
     "gender": {"caffe", "fairface"},
     "emotion": {"ferplus", "hsemotion"},
     "race": {"fairface"},
-    "hair_color": {"colorimetric"},
     "eye_color": {"colorimetric"},
 }
 
@@ -42,7 +41,6 @@ def _config(models) -> AnalysisConfig:
         "gender": models.gender_nets,
         "emotion": models.emotion_nets,
         "race": models.race_nets,
-        "hair_color": models.hair_color_nets,
         "eye_color": models.eye_color_nets,
     }
     for feature, expected in EXPECTED_ACTIVE.items():
@@ -57,7 +55,6 @@ def _config(models) -> AnalysisConfig:
         active_gender=set(EXPECTED_ACTIVE["gender"]),
         active_emotion=set(EXPECTED_ACTIVE["emotion"]),
         active_race=set(EXPECTED_ACTIVE["race"]),
-        active_hair_color=set(EXPECTED_ACTIVE["hair_color"]),
         active_eye_color=set(EXPECTED_ACTIVE["eye_color"]),
         face_detector="ssd",
     )

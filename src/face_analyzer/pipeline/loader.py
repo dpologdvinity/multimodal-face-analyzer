@@ -236,11 +236,6 @@ def load_models() -> Models:
     if native_model_selected("RACE_MODEL", "deepface") and TF_SUPPORTED and _present(DEEPFACE_RACE_MODEL):
         race_nets["deepface"] = build_race_model(str(DEEPFACE_RACE_MODEL))
 
-    hair_color_nets = (
-        {"colorimetric": True}
-        if native_model_selected("HAIR_COLOR_MODEL", "colorimetric")
-        else {}
-    )
     eye_color_nets = {}
     if _present(EYE_CASCADE_FILE):
         eye_color_nets["colorimetric"] = cv2.CascadeClassifier(str(EYE_CASCADE_FILE))
@@ -327,7 +322,6 @@ def load_models() -> Models:
         recognition_nets,
         glasses_nets,
         mask_nets,
-        hair_color_nets,
         eye_color_nets,
         colorization_nets,
         face_landmarks_nets,

@@ -161,13 +161,11 @@ RECOGNITION_MODEL="$REPLY_MODEL"
 prompt_feature "ADDITIONAL CLASSIFICATIONS" 0 \
     "mediapipe|liveness - mediapipe|orange" \
     "mobilenet|glasses - mobilenet|orange" \
-    "mobilenetv2|mask - mobilenetv2|orange" \
-    "colorimetric|hair color - colorimetric|green"
+    "mobilenetv2|mask - mobilenetv2|orange"
 set_additional_classification_models() {
     LIVENESS_MODEL=""
     GLASSES_MODEL=""
     MASK_MODEL=""
-    HAIR_COLOR_MODEL=""
     local model
     IFS=',' read -ra models <<< "$1"
     for model in "${models[@]:-}"; do
@@ -175,7 +173,6 @@ set_additional_classification_models() {
             mediapipe) LIVENESS_MODEL="mediapipe" ;;
             mobilenet) GLASSES_MODEL="mobilenet" ;;
             mobilenetv2) MASK_MODEL="mobilenetv2" ;;
-            colorimetric) HAIR_COLOR_MODEL="colorimetric" ;;
         esac
     done
 }
@@ -220,7 +217,6 @@ echo "  LIVENESS_MODEL=${LIVENESS_MODEL}" >&2
 echo "  RECOGNITION_MODEL=${RECOGNITION_MODEL}" >&2
 echo "  GLASSES_MODEL=${GLASSES_MODEL}" >&2
 echo "  MASK_MODEL=${MASK_MODEL}" >&2
-echo "  HAIR_COLOR_MODEL=${HAIR_COLOR_MODEL}" >&2
 echo "  COLORIZATION_MODEL=${COLORIZATION_MODEL}" >&2
 echo "  HAND_MODEL=${HAND_MODEL}" >&2
 echo "  RECONSTRUCTION_3D_MODEL=${RECONSTRUCTION_3D_MODEL}" >&2
@@ -257,14 +253,12 @@ docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
 
 if [[ "$dev_mount" =~ ^[Yy] ]]; then
     docker run -d -p "127.0.0.1:${PORT}:8501" --name "$CONTAINER_NAME" \
-        -e "HAIR_COLOR_MODEL=$HAIR_COLOR_MODEL" \
         -v "$PROJECT_ROOT/src:/app/src" \
         "$IMAGE_TAG"
     echo "" >&2
     echo "Dev mode: edit src/face_analyzer/*.py locally, Streamlit auto-reruns in the container." >&2
 else
-    docker run -d -p "127.0.0.1:${PORT}:8501" --name "$CONTAINER_NAME" \
-        -e "HAIR_COLOR_MODEL=$HAIR_COLOR_MODEL" "$IMAGE_TAG"
+    docker run -d -p "127.0.0.1:${PORT}:8501" --name "$CONTAINER_NAME" "$IMAGE_TAG"
 fi
 
 echo "" >&2

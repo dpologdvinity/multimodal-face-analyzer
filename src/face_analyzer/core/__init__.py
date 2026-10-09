@@ -45,7 +45,6 @@ from .constants import (
     SHARPEN_METHODS,
 )
 from .image_utils import (
-    _is_skin_hsv,
     apply_image_adjustments,
     face_crop_bounds,
     is_grayscale_frame,
@@ -57,7 +56,6 @@ __all__ = [
     "is_grayscale_frame",
     "face_crop_bounds",
     "apply_image_adjustments",
-    "_is_skin_hsv",
     "MODEL_MEAN_VALUES",
     "IMAGENET_MEAN",
     "IMAGENET_STD",

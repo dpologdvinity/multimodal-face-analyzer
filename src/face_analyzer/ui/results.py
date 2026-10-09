@@ -177,7 +177,7 @@ def process_and_display(
             ("age", sidebar.active_age), ("gender", sidebar.active_gender),
             ("emotion", sidebar.active_emotion), ("race", sidebar.active_race),
             ("recognition", sidebar.active_recognition), ("glasses", sidebar.active_glasses),
-            ("mask", sidebar.active_mask), ("hair color", sidebar.active_hair_color),
+            ("mask", sidebar.active_mask),
             ("eye color", sidebar.active_eye_color), ("gaze", sidebar.active_gaze),
             ("liveness", sidebar.active_liveness),
         ) if active

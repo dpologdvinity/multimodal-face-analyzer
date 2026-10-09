@@ -145,7 +145,7 @@ class SanitizeColumnNameTests(unittest.TestCase):
         self.assertEqual(_sanitize_column_name("age", "mivolo"), "age_mivolo")
 
     def test_lowercases_and_replaces_spaces(self):
-        self.assertEqual(_sanitize_column_name("Hair Color", "colorimetric"), "hair_color_colorimetric")
+        self.assertEqual(_sanitize_column_name("Eye Color", "colorimetric"), "eye_color_colorimetric")
 
     def test_replaces_hyphens(self):
         self.assertEqual(_sanitize_column_name("eye-color", "colorimetric"), "eye_color_colorimetric")

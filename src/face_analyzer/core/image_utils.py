@@ -150,10 +150,3 @@ def apply_image_adjustments(face_bgr: np.ndarray, adjustments: dict) -> np.ndarr
 
     return np.clip(img, 0, 255).astype(np.uint8)
 
-
-def _is_skin_hsv(hsv_pixels: np.ndarray) -> np.ndarray:
-    """Boolean mask for common skin-tone hue/sat/val ranges in OpenCV HSV (H:0-179).
-    Rough heuristic, not a trained model -- used only to exclude forehead skin bleeding
-    into the hair-color sample region, not for any skin-tone classification."""
-    h, s, v = hsv_pixels[..., 0], hsv_pixels[..., 1], hsv_pixels[..., 2]
-    return (h <= 25) & (s >= 30) & (s <= 180) & (v >= 40)

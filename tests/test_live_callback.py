@@ -49,7 +49,7 @@ def test_frame_skip_runs_classifiers_only_every_nth_frame():
     config = AnalysisConfig(
         face_detector="ssd", active_age={"caffe"}, active_gender={"caffe"},
         active_emotion={"hsemotion"}, active_race={"fairface"}, active_recognition={"x"},
-        active_glasses={"x"}, active_mask={"x"}, active_hair_color={"x"}, active_eye_color={"x"},
+        active_glasses={"x"}, active_mask={"x"}, active_eye_color={"x"},
         active_gaze={"mediapipe"}, active_face_landmarks={"mediapipe"}, active_hands={"mediapipe"},
         active_liveness={"mediapipe"},
     )
@@ -67,7 +67,7 @@ def test_frame_skip_runs_classifiers_only_every_nth_frame():
 
     skipped, ran = seen
     for field in ("active_age", "active_gender", "active_emotion", "active_race", "active_recognition",
-                  "active_glasses", "active_mask", "active_hair_color", "active_eye_color", "active_gaze"):
+                  "active_glasses", "active_mask", "active_eye_color", "active_gaze"):
         assert getattr(skipped, field) == set(), field
         assert getattr(ran, field) == getattr(config, field), field
     # Overlays and liveness stay on every frame; only the classifiers are throttled.

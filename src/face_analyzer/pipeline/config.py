@@ -18,7 +18,6 @@ class AnalysisConfig:
     gallery: dict[str, Any] = field(default_factory=dict)
     active_glasses: set[str] = field(default_factory=set)
     active_mask: set[str] = field(default_factory=set)
-    active_hair_color: set[str] = field(default_factory=set)
     active_eye_color: set[str] = field(default_factory=set)
     active_face_landmarks: set[str] = field(default_factory=set)
     active_hands: set[str] = field(default_factory=set)
