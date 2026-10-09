@@ -118,7 +118,7 @@ def _ort_session(path: Path):
     options = None
     threads = os.environ.get(ORT_THREADS_ENV_VAR, "").strip()
     if threads:
-        if not threads.isdigit() or int(threads) < 1:
+        if not threads.isdecimal() or int(threads) < 1:
             raise ValueError(f"{ORT_THREADS_ENV_VAR} must be an integer of at least 1, got {threads!r}")
         options = onnxruntime.SessionOptions()
         options.intra_op_num_threads = int(threads)
