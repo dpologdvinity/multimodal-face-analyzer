@@ -34,7 +34,7 @@ def _load_fetcher():
 fetch_models = _load_fetcher()
 
 
-@st.cache_resource(show_spinner="First start: downloading the demo model weights (about 255 MB)...")
+@st.cache_resource(show_spinner="First start: downloading the demo model weights (about 250 MB)...")
 def ensure_demo_weights() -> int:
     """Download and verify the demo's weight files once per process; return how many were checked.
 
