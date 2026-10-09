@@ -216,7 +216,7 @@ def _prepare_face(
     if fairface_landmarks is None and detector_landmarks is not None:
         # The FairFace forward reads crop_frame, which is the leveled region when the face was rotated.
         fairface_landmarks = fairface_landmarks_from_detector(
-            level_face_points(frame.shape, (x1, y1, x2, y2), angle, detector_landmarks)
+            level_face_points(frame.shape, (x1, y1, x2, y2), angle, detector_landmarks), x2 - x1,
         )
     texture_score = predict_texture_artifact_score(face) if run_liveness else 0.0
     blink_score = blink_score_from_landmarker(landmarker_result) if run_liveness else None

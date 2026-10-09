@@ -114,6 +114,12 @@ class FairFaceAlignmentTests(unittest.TestCase):
         self.assertIsNone(inference.fairface_landmarks_from_detector(np.full((5, 2), np.nan)))
         self.assertIsNone(inference.fairface_landmarks_from_detector(None))
 
+    def test_detector_near_profiles_are_rejected_relative_to_the_box(self):
+        """Reject eyes closer than 0.15 of the box width, as on a face turned nearly sideways."""
+        points = np.array([[100, 70], [112, 70], [120, 120], [100, 160], [115, 160]], dtype=np.float32)
+        self.assertIsNone(inference.fairface_landmarks_from_detector(points, box_width=100))
+        self.assertIsNotNone(inference.fairface_landmarks_from_detector(points, box_width=60))
+
     def test_level_face_points_follow_the_leveled_region(self):
         """Map a frame point to where level_face_region's rotated region shows it."""
         frame = np.zeros((300, 300, 3), np.uint8)
