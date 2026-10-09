@@ -256,9 +256,10 @@ clipped at 1e-6 before taking logs):
   age in years, its log1p and a one-hot of the FairFace bucket the displayed age falls in; and
   `dex`'s spread (40 features).
 
-Cross-attribute signals were tried during 5-fold CV on the fit half only (MiVOLO's age and
-`fairface`'s race probabilities for gender, MiVOLO's age and `fairface`'s P(Male) for race,
-`fairface`'s P(Male) for age) and did not raise CV accuracy, so they are not used. **C** (inverse L2 strength) was chosen from 13 values between 0.001 and 1000 by stratified
+Cross-attribute signals were tried ad hoc, in 5-fold CV on the fit half only (MiVOLO's age
+and `fairface`'s race probabilities for gender, MiVOLO's age and `fairface`'s P(Male) for race,
+`fairface`'s P(Male) for age), and did not raise CV accuracy, so they are not used. That check
+is not part of `tools/fit_stacker.py` and is not reproduced by it. **C** (inverse L2 strength) was chosen from 13 values between 0.001 and 1000 by stratified
 5-fold CV inside the fit half (995 detected faces), ties going to the stronger penalty.
 
 | Attribute | C | Fit-half CV | Stacked (test) | Shipped (test) | Stacked - shipped | Stacked - best single | Adopted |

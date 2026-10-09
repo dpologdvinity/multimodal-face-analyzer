@@ -22,7 +22,7 @@ import argparse
 import json
 import math
 import sys
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import date
 from pathlib import Path
 
@@ -72,7 +72,7 @@ def _feature_value(feature: Mapping, source) -> float:
     raise ValueError(f"unknown stacker feature op {op!r}")
 
 
-def stacker_features(spec: list[Mapping], raw: Mapping) -> np.ndarray | None:
+def stacker_features(spec: Sequence[Mapping], raw: Mapping) -> np.ndarray | None:
     """Build the feature vector from per-backend outputs; None if any source is missing."""
     values = []
     for feature in spec:
@@ -162,7 +162,7 @@ def single_answers(raw: dict, attribute: str) -> dict:
     return heldout.age_buckets(raw)
 
 
-def shipped_answer(raw: dict, attribute: str):
+def shipped_answer(raw: Mapping, attribute: str):
     """The app's currently shipped headline answer for an attribute (None when it shows none)."""
     if attribute == "gender":
         chosen = heldout.best_gender(raw)
@@ -282,6 +282,8 @@ def main() -> None:
                      for f, r in zip(test_x, test, strict=True)]
         assert sk_labels == np_labels, "numpy stacker disagrees with scikit-learn"
         for entry, r, f in zip(fixture, test, test_x, strict=False):
+            if f is None:  # a missing backend: this face falls back, so it has no stacker answer
+                continue
             entry["raw"].update({feature["source"]: r["raw"][feature["source"]] for feature in spec})
             entry["expected"][attribute] = {"label": _plain(model.predict(f[None])[0]),
                                             "probs": model.predict_proba(f[None])[0].tolist()}

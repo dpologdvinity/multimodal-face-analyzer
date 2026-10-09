@@ -25,7 +25,8 @@ their answers.
   model instead of fusing or stacking, each chosen by held-out evidence: every age fusion rule
   tried scored at or below MiVOLO alone, the race blend trailed `fairface` alone, the old gender
   fusion could only ever return MiVOLO's answer, and a learned stacker (logistic regression over
-  every backend's output) did not beat the best single model for any of the three, so none ships.
+  every backend's output) beat the best single model by no more than noise for any of the three
+  (the largest gain, +0.5 points for age, has an interval spanning zero), so none ships.
 - **Concurrent, cached inference.** Per-face attribute models run in parallel on a thread pool,
   outputs are memoized on a hash of the exact model input, and LIVE mode shows FPS and
   per-model latency.

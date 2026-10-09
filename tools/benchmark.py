@@ -240,7 +240,8 @@ def score_face(truth: dict, outputs: list[dict], tally: dict) -> None:
         model = row["Model"]
         value = str(row["Output"])
         if feature == "gender" and "gender" in truth:
-            correct = value.strip().lower() == truth["gender"].lower()
+            # A headline row reads "Male (mivolo)"; score only the label.
+            correct = value.split(" (")[0].strip().lower() == truth["gender"].lower()
         elif feature == "race" and "race" in truth:
             correct = bool(parse_race(value) & set(truth["race"]))
         elif feature == "emotion" and "emotion" in truth:
