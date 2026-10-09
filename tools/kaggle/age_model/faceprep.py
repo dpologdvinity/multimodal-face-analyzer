@@ -72,7 +72,8 @@ def face_record(models, frame: np.ndarray) -> tuple[dict, object] | None:
     from face_analyzer.pipeline import stages
 
     config = prep_config()
-    box = largest_in_frame(stages._detect(models, frame, config), *frame.shape[:2])
+    boxes, _ = stages._detect(models, frame, config)
+    box = largest_in_frame(boxes, *frame.shape[:2])
     if box is None:
         return None
     angle: dict = {}

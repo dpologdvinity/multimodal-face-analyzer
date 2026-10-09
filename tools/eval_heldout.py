@@ -409,6 +409,7 @@ def _instrument(sink: dict) -> None:
     original_predict = stages._cached_face_predict
     original_detect = stages._detect
     original_landmarks = stages.fairface_landmarks_from_mediapipe
+    original_detector_landmarks = stages.fairface_landmarks_from_detector
 
     def recording_predict(feature, model_key, face_bgr, predict_fn, *args):
         started = time.perf_counter()
@@ -419,20 +420,31 @@ def _instrument(sink: dict) -> None:
         return value
 
     def largest_detection(models, frame, config):
-        boxes = original_detect(models, frame, config)
+        boxes, landmarks = original_detect(models, frame, config)
         sink["detections"] = [[int(v) for v in box] for box in boxes]
         chosen = largest_in_frame(boxes, *frame.shape[:2])
-        return [] if chosen is None else [chosen]
+        if chosen is None:
+            return [], []
+        return [chosen], [landmarks[sink["detections"].index(chosen)]]
 
+    # The detector's landmarks are only tried when MediaPipe's are missing.
     def recording_landmarks(*args, **kwargs):
         result = original_landmarks(*args, **kwargs)
         sink["fairface_aligned"] = result is not None
+        sink["fairface_alignment"] = "mediapipe" if result is not None else None
+        return result
+
+    def recording_detector_landmarks(*args, **kwargs):
+        result = original_detector_landmarks(*args, **kwargs)
+        sink["fairface_aligned"] = result is not None
+        sink["fairface_alignment"] = "detector" if result is not None else None
         return result
 
     stages._cached_face_predict = recording_predict
     face_tasks._cached_face_predict = recording_predict
     analyzer._detect = largest_detection
     stages.fairface_landmarks_from_mediapipe = recording_landmarks
+    stages.fairface_landmarks_from_detector = recording_detector_landmarks
 
 
 def _versions() -> dict[str, str | None]:
@@ -518,7 +530,8 @@ def run_inference(rows: list[int], labels: dict, parquet: Path, cache: Path,
     with predictions.open("a") as handle:
         for count, row in enumerate(todo, 1):
             sink.clear()
-            sink.update(raw={}, latency_ms={}, detections=[], fairface_aligned=None)
+            sink.update(raw={}, latency_ms={}, detections=[], fairface_aligned=None,
+                        fairface_alignment=None)
             frame = cv2.imdecode(np.frombuffer(images[row].as_py(), np.uint8), cv2.IMREAD_COLOR)
             started = time.perf_counter()
             error = None
@@ -538,6 +551,7 @@ def run_inference(rows: list[int], labels: dict, parquet: Path, cache: Path,
                             for row_ in (faces[0]["model_results"] if faces else [])
                             if row_["Feature"] in ("AGE", "GENDER", "RACE", "EMOTION")},
                 "fairface_aligned": sink["fairface_aligned"],
+                "fairface_alignment": sink["fairface_alignment"],
                 "latency_ms": sink["latency_ms"],
                 "seconds": round(time.perf_counter() - started, 3), "error": error,
             }

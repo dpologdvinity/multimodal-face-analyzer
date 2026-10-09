@@ -55,7 +55,7 @@ def _crop_around_largest_face(models, frame: np.ndarray) -> np.ndarray:
     """Cut a FairFace-like single-face image (face plus generous context) out of the group photo."""
     from face_analyzer.pipeline import stages
 
-    boxes = stages._detect(models, frame, faceprep.prep_config())
+    boxes, _ = stages._detect(models, frame, faceprep.prep_config())
     x1, y1, x2, y2 = max(boxes, key=lambda b: (b[2] - b[0]) * (b[3] - b[1]))
     pad = int(1.25 * max(x2 - x1, y2 - y1))
     return frame[max(0, y1 - pad):y2 + pad, max(0, x1 - pad):x2 + pad].copy()
