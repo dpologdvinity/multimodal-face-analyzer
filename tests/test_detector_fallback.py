@@ -117,3 +117,11 @@ def test_ort_thread_cap_applies_only_when_set(monkeypatch, tmp_path):
     options = runtime.SessionOptions.return_value
     assert runtime.InferenceSession.call_args.kwargs["sess_options"] is options
     assert (options.intra_op_num_threads, options.inter_op_num_threads) == (2, 1)
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "two", "1.5"])
+def test_ort_thread_cap_rejects_values_below_one_or_not_integers(monkeypatch, tmp_path, value):
+    _fake_onnxruntime(monkeypatch)
+    monkeypatch.setenv("FACE_ANALYZER_ORT_THREADS", value)
+    with pytest.raises(ValueError, match="FACE_ANALYZER_ORT_THREADS"):
+        loader._ort_session(tmp_path / "model.onnx")

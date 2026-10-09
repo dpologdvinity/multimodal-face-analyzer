@@ -228,10 +228,20 @@ _FAIRFACE_REFERENCE_EYES_NOSE = np.array([
     FAIRFACE_REFERENCE_LANDMARKS[4],
 ])
 _FAIRFACE_REFERENCES = {5: FAIRFACE_REFERENCE_LANDMARKS, 3: _FAIRFACE_REFERENCE_EYES_NOSE}
+# A frontal face's eye centers sit about 0.45 of the detector box width apart (0.46-0.47 on the
+# crew photo's RetinaFace boxes), shrinking with the cosine of the yaw. Below 0.15 (beyond roughly
+# 70 degrees) the foreshortened eye distance sets the similarity scale, so the warp zooms into one
+# cheek; the box crop is the better input there.
+_MIN_EYE_DISTANCE_TO_BOX_WIDTH = 0.15
 
 
-def fairface_landmarks_from_detector(points: np.ndarray | None) -> np.ndarray | None:
-    """Convert detector five-point landmarks (image-left eye first) to FairFace's eyes-and-nose order."""
+def fairface_landmarks_from_detector(
+    points: np.ndarray | None, box_width: float | None = None,
+) -> np.ndarray | None:
+    """Convert detector five-point landmarks (image-left eye first) to FairFace's eyes-and-nose order.
+
+    Returns None for unusable points, and for near-profiles when box_width is given.
+    """
     if points is None:
         return None
     points = np.asarray(points, dtype=np.float32)
@@ -240,6 +250,8 @@ def fairface_landmarks_from_detector(points: np.ndarray | None) -> np.ndarray | 
     left_eye, right_eye, nose = points[0], points[1], points[2]
     # A similarity transform cannot mirror, so swapped eyes would align the face upside down.
     if right_eye[0] - left_eye[0] < 1:
+        return None
+    if box_width is not None and np.linalg.norm(right_eye - left_eye) < _MIN_EYE_DISTANCE_TO_BOX_WIDTH * box_width:
         return None
     return np.stack([right_eye, left_eye, nose])
 

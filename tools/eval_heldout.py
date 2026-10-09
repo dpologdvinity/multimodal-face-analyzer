@@ -4,7 +4,8 @@ Two phases, both run by default:
 
 1. **Inference.** Draws a race-stratified sample (fixed seed), runs the real analyze_frame()
    on each image with every loaded age/gender/race/emotion backend and one detector (SSD unless
-   --detector picks another; --no-mediapipe turns off MediaPipe landmark alignment), and appends each image's raw per-backend outputs (probabilities where the backend exposes them)
+   --detector picks another; --no-mediapipe turns off MediaPipe landmark alignment), and
+   appends each image's raw per-backend outputs (probabilities where the backend exposes them)
    to data/eval_cache/predictions.jsonl. Already-cached rows are skipped, so the run resumes.
 2. **Scoring.** Re-scores the cached outputs only (no model imports): per-backend accuracy,
    the app's headline answers via the shipped select_gender/select_race/select_age, the
@@ -486,7 +487,11 @@ def run_inference(rows: list[int], labels: dict, parquet: Path, cache: Path,
         import torch
 
         torch.set_num_threads(2)
-        torch.set_num_interop_threads(1)
+        # torch refuses this once parallel work has started, e.g. on a second run_inference call.
+        try:
+            torch.set_num_interop_threads(1)
+        except RuntimeError:
+            pass
     except ImportError:
         pass
 
@@ -849,6 +854,8 @@ def score(records: list[dict], fit_rows: list[int], test_rows: list[int], seed: 
     result["cache_vs_display_mismatches"] = mismatches
     result["fairface_landmark_alignment_share"] = round(float(np.mean(
         [bool(r["fairface_aligned"]) for r in test_faces + fit_faces])), 4)
+    result["fairface_landmark_alignment_share_test"] = round(float(np.mean(
+        [bool(r["fairface_aligned"]) for r in test_faces])), 4)
     result.update(gender=gender, race=race, age=age)
     return result
 

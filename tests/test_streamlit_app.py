@@ -1,7 +1,12 @@
 """The streamlit_app.py demo entrypoint boots in demo mode when the demo weights are present."""
 import importlib.util
 import json
+import os
+import sys
+import threading
+import types
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 import streamlit as st
@@ -13,6 +18,11 @@ from tests._models import require_model
 
 ROOT = Path(__file__).resolve().parents[1]
 ENTRYPOINT = str(ROOT / "streamlit_app.py")
+
+# Imported under another name, so its main() (which runs only as __main__) stays unexecuted.
+_SPEC = importlib.util.spec_from_file_location("streamlit_app_under_test", ENTRYPOINT)
+streamlit_app = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(streamlit_app)
 
 
 @pytest.fixture
@@ -48,3 +58,90 @@ def test_entrypoint_boots_in_demo_mode(demo_weights_present, fresh_caches):
     assert not at.get("button_group")
     labels = {checkbox.label for checkbox in at.sidebar.checkbox}
     assert {"FairFace", "FERPlus"} <= labels
+
+
+def _fresh_state() -> types.ModuleType:
+    state = types.ModuleType("reload_state_under_test")
+    state.lock = threading.Lock()
+    state.fingerprint = None
+    return state
+
+
+def test_a_source_change_reloads_exactly_once_across_concurrent_runs(tmp_path):
+    source = tmp_path / "face_analyzer"
+    source.mkdir()
+    module = source / "demo.py"
+    module.write_text("SLOT = 1\n")
+    state, purges = _fresh_state(), []
+
+    def purge():
+        purges.append(1)
+        return True
+
+    def run():
+        return streamlit_app.reload_if_source_changed(state, streamlit_app.source_fingerprint(source), purge)
+
+    assert [run(), run()] == [False, False]
+    stat = module.stat()
+    os.utime(module, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+    results: list[bool] = []
+    threads = [threading.Thread(target=lambda: results.append(run())) for _ in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert sorted(results) == [False] * 7 + [True]
+    assert len(purges) == 1
+    assert run() is False and len(purges) == 1
+
+
+def test_purge_waits_for_a_running_analysis():
+    import face_analyzer.demo as old_demo
+
+    slot = old_demo._ANALYSIS_SLOT
+    # patch.dict restores sys.modules afterwards, so the purge never leaks into other tests.
+    with patch.dict(sys.modules), patch.object(st.cache_resource, "clear") as clear_resource, \
+            patch.object(st.cache_data, "clear") as clear_data:
+        slot.acquire()
+        try:
+            assert streamlit_app.purge_package() is False
+            assert sys.modules["face_analyzer.demo"] is old_demo
+            clear_resource.assert_not_called()
+        finally:
+            slot.release()
+
+        assert streamlit_app.purge_package() is True
+        assert not any(name == "face_analyzer" or name.startswith("face_analyzer.") for name in sys.modules)
+        clear_resource.assert_called_once()
+        clear_data.assert_called_once()
+    assert sys.modules["face_analyzer.demo"] is old_demo
+
+
+@pytest.mark.parametrize("evict_first", [False, True], ids=["purge", "watcher-evicted-demo-first"])
+def test_one_analysis_semaphore_survives_a_reload(evict_first):
+    import face_analyzer.demo as old_demo
+
+    slot = old_demo._ANALYSIS_SLOT
+    with patch.dict(sys.modules), patch.object(st.cache_resource, "clear"), patch.object(st.cache_data, "clear"):
+        if evict_first:
+            # Streamlit's own file watcher can drop a changed module before the entry point runs.
+            del sys.modules["face_analyzer.demo"]
+        assert streamlit_app.purge_package() is True
+        new_demo = importlib.import_module("face_analyzer.demo")
+        assert new_demo is not old_demo
+        assert new_demo._ANALYSIS_SLOT is slot
+
+
+def test_one_analysis_semaphore_survives_a_failed_import():
+    import face_analyzer.demo as old_demo
+
+    slot = old_demo._ANALYSIS_SLOT
+    with patch.dict(sys.modules), patch.object(st.cache_resource, "clear"), patch.object(st.cache_data, "clear"):
+        assert streamlit_app.purge_package() is True
+        # A None entry makes the import fail, as a half-written file mid-pull would.
+        sys.modules["face_analyzer.demo"] = None
+        with pytest.raises(ImportError):
+            importlib.import_module("face_analyzer.demo")
+        del sys.modules["face_analyzer.demo"]
+        assert importlib.import_module("face_analyzer.demo")._ANALYSIS_SLOT is slot

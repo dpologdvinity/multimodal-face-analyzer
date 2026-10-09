@@ -114,6 +114,12 @@ class FairFaceAlignmentTests(unittest.TestCase):
         self.assertIsNone(inference.fairface_landmarks_from_detector(np.full((5, 2), np.nan)))
         self.assertIsNone(inference.fairface_landmarks_from_detector(None))
 
+    def test_detector_near_profiles_are_rejected_relative_to_the_box(self):
+        """Reject eyes closer than 0.15 of the box width, as on a face turned nearly sideways."""
+        points = np.array([[100, 70], [112, 70], [120, 120], [100, 160], [115, 160]], dtype=np.float32)
+        self.assertIsNone(inference.fairface_landmarks_from_detector(points, box_width=100))
+        self.assertIsNotNone(inference.fairface_landmarks_from_detector(points, box_width=60))
+
     def test_level_face_points_follow_the_leveled_region(self):
         """Map a frame point to where level_face_region's rotated region shows it."""
         frame = np.zeros((300, 300, 3), np.uint8)
@@ -142,6 +148,25 @@ class FairFaceAlignmentTests(unittest.TestCase):
             )
         detect.assert_called()
         np.testing.assert_array_equal(net.blob, expected)
+
+    def test_near_profile_check_gets_the_detector_box_width(self):
+        """Pass the box width (x2 - x1) to the near-profile check along with the landmarks."""
+        frame = np.tile(self.frame, (2, 2, 1))
+        box = (80, 90, 240, 280)
+        points = np.array([[130, 150], [190, 150], [160, 185], [135, 220], [185, 220]], dtype=np.float32)
+        models = inference.Models(face_net=None, retinaface_nets={"retinaface": object()},
+                                  age_nets={"fairface": RecordingNet()})
+        with patch("face_analyzer.pipeline.stages.detect_faces_retinaface_landmarks",
+                   return_value=([list(box)], [points])), \
+             patch("face_analyzer.pipeline.stages.fairface_landmarks_from_detector",
+                   wraps=inference.fairface_landmarks_from_detector) as convert:
+            inference.analyze_frame(
+                models, frame, inference.AnalysisConfig(active_age={"fairface"}, face_detector="retinaface"),
+            )
+        convert.assert_called_once()
+        landmarks, box_width = convert.call_args.args
+        np.testing.assert_array_equal(landmarks, points)
+        self.assertEqual(box_width, box[2] - box[0])
 
 
 if __name__ == "__main__":

@@ -50,14 +50,14 @@
       "mediapipe": "1.1.0",
       "ultralytics": "8.1.0",
       "timm": "0.8.13.dev0",
-      "git_commit": "7bb4639"
+      "git_commit": "15aeb68"
     },
     "date": "2026-10-09",
     "scored_on": "2026-10-09",
-    "scoring_git_commit": "dfa43ac",
-    "seconds_per_image_mean": 0.672,
-    "seconds_per_image_median": 0.752,
-    "total_inference_minutes": 22.4
+    "scoring_git_commit": "0239c5d",
+    "seconds_per_image_mean": 0.263,
+    "seconds_per_image_median": 0.262,
+    "total_inference_minutes": 8.8
   },
   "emotion": "not evaluated: FairFace has no emotion labels",
   "scores": {
@@ -87,10 +87,10 @@
           "fairface": 2.0
         },
         "fit_half_accuracy": {
-          "fairface": 0.9289
+          "fairface": 0.9359
         },
         "fitted_weights": {
-          "fairface": 2.569
+          "fairface": 2.681
         },
         "test_previous": {
           "value": 0.0,
@@ -138,10 +138,10 @@
           "fairface": 1.0
         },
         "fit_half_accuracy": {
-          "fairface": 0.7244
+          "fairface": 0.7325
         },
         "fitted_weights": {
-          "fairface": 2.576
+          "fairface": 2.617
         },
         "test_previous": {
           "value": 0.0,
@@ -192,14 +192,15 @@
       "previous_fused_gender": 0,
       "previous_fused_race": 0
     },
-    "fairface_landmark_alignment_share": 0.9935,
+    "fairface_landmark_alignment_share": 0.9495,
+    "fairface_landmark_alignment_share_test": 0.9561,
     "gender": {
       "backends": {
         "fairface": {
-          "value": 0.9232,
+          "value": 0.9222,
           "ci95": [
-            0.9062,
-            0.9401
+            0.9052,
+            0.9391
           ],
           "n": 1002
         }
@@ -246,10 +247,10 @@
     "race": {
       "backends": {
         "fairface": {
-          "value": 0.7535,
+          "value": 0.7605,
           "ci95": [
-            0.7285,
-            0.7815
+            0.7355,
+            0.7864
           ],
           "n": 1002
         }
@@ -257,19 +258,19 @@
       "per_class_recall": {
         "white": {
           "n": 191,
-          "fairface": 0.7382,
+          "fairface": 0.7435,
           "best_shipped": 0.0,
           "fused_previous": 0.0
         },
         "black": {
           "n": 142,
-          "fairface": 0.8732,
+          "fairface": 0.8803,
           "best_shipped": 0.0,
           "fused_previous": 0.0
         },
         "asian": {
           "n": 271,
-          "fairface": 0.8819,
+          "fairface": 0.9004,
           "best_shipped": 0.0,
           "fused_previous": 0.0
         },
@@ -281,22 +282,22 @@
         },
         "latino": {
           "n": 148,
-          "fairface": 0.5338,
+          "fairface": 0.5405,
           "best_shipped": 0.0,
           "fused_previous": 0.0
         },
         "middle_eastern": {
           "n": 111,
-          "fairface": 0.6847,
+          "fairface": 0.6757,
           "best_shipped": 0.0,
           "fused_previous": 0.0
         }
       },
       "fairface_7class": {
-        "value": 0.6966,
+        "value": 0.7006,
         "ci95": [
-          0.6677,
-          0.7265
+          0.6726,
+          0.7306
         ],
         "n": 1002
       },
@@ -341,23 +342,23 @@
       "backends": {
         "fairface": {
           "bucket_accuracy": {
-            "value": 0.5908,
+            "value": 0.5938,
             "ci95": [
-              0.5628,
-              0.6208
+              0.5639,
+              0.6238
             ],
             "n": 1002
           },
           "mean_bucket_offset": {
-            "value": 0.475,
+            "value": 0.4721,
             "ci95": [
               0.4351,
-              0.517
+              0.514
             ],
             "n": 1002
           },
           "within_one_bucket": {
-            "value": 0.9531,
+            "value": 0.9521,
             "ci95": [
               0.9371,
               0.9651
