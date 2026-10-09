@@ -8,11 +8,13 @@ import cv2
 import numpy as np
 
 from ..core.constants import EIGEN_DIR, FACES_DB_FILE, FACES_DIR
+from ..demo import refuse_in_demo_mode
 from .eigenfaces import _crop_and_resize_for_eigenfaces
 
 
 def save_face(face_bgr: np.ndarray, raw_columns: dict[str, str]) -> int:
     """Save one classified face into the database with sparse columns and image artifacts."""
+    refuse_in_demo_mode("Saving faces")
     # Read at call time (not bound as defaults) so the storage paths can be redirected
     # by patching this module's attributes.
     faces_dir, eigen_dir, db_file = FACES_DIR, EIGEN_DIR, FACES_DB_FILE

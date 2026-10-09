@@ -22,6 +22,7 @@ from ..core.constants import (
     MAX_UPLOAD_DIMENSION,
     RECOGNITION_COSINE_THRESHOLD,
 )
+from ..demo import refuse_in_demo_mode
 from ..detectors import detect_faces
 
 _LBPH_CACHE_LOCK = threading.Lock()
@@ -58,6 +59,7 @@ def load_gallery() -> dict[str, np.ndarray]:
 
 def save_gallery(gallery: dict) -> None:
     """Persist enrolled face embeddings to gallery/known_faces.json."""
+    refuse_in_demo_mode("Enrolling faces")
     GALLERY_FILE.parent.mkdir(parents=True, exist_ok=True)
     GALLERY_FILE.write_text(json.dumps({name: vec.tolist() for name, vec in gallery.items()}))
 
@@ -77,6 +79,7 @@ def validate_lbph_name(name: str) -> str:
 
 def enroll_lbph_face(name: str, face_bgr: np.ndarray) -> None:
     """Save preprocessed face crop under gallery/lbph/<name>/ for LBPH training."""
+    refuse_in_demo_mode("Enrolling faces")
     name = validate_lbph_name(name)
     person_dir = LBPH_GALLERY_DIR / name
     person_dir.mkdir(parents=True, exist_ok=True)
@@ -135,17 +138,24 @@ def train_lbph_recognizer():
         return _LBPH_CACHE_RESULT
 
 
-def _header_pixel_count(file_bytes: bytes | bytearray | np.ndarray) -> int | None:
-    """Return width * height from the image header without decoding pixels, or None if unreadable."""
+# Upload formats the demo accepts; anything else (e.g. a Radiance .hdr renamed to .png, which cv2
+# decodes as float32) could bypass the pixel cap's memory estimate.
+_CAPPED_IMAGE_FORMATS = {"JPEG", "PNG", "WEBP"}
+
+
+def _check_image_header(file_bytes: bytes | bytearray | np.ndarray, max_pixels: int) -> None:
+    """Raise ValueError unless the header is a readable JPEG/PNG/WebP within max_pixels."""
     try:
         with Image.open(io.BytesIO(bytes(file_bytes))) as image:
-            width, height = image.size
-    except Image.DecompressionBombError:
-        # Pillow refuses to open anything past twice its own limit (about 179 MP); report that size.
-        return 2 * Image.MAX_IMAGE_PIXELS + 1
-    except (OSError, ValueError):
-        return None
-    return width * height
+            image_format, (width, height) = image.format, image.size
+    except Image.DecompressionBombError as exc:
+        raise ValueError("The image is too large.") from exc
+    except (OSError, ValueError, SyntaxError) as exc:
+        raise ValueError("The uploaded file is not a valid supported image.") from exc
+    if image_format not in _CAPPED_IMAGE_FORMATS:
+        raise ValueError("The uploaded file is not a JPEG, PNG or WebP image.")
+    if width * height > max_pixels:
+        raise ValueError(f"The image is too large ({width * height / 1e6:.0f} MP; the limit is {max_pixels / 1e6:.0f} MP).")
 
 
 def decode_image_bytes(
@@ -155,15 +165,14 @@ def decode_image_bytes(
 ) -> np.ndarray:
     """Decode uploaded image bytes into BGR ndarray, downscaled if larger than max_dimension.
 
-    With max_pixels set, an image whose header declares more pixels is rejected before decoding.
+    With max_pixels set, only JPEG, PNG and WebP files whose header declares at most that many
+    pixels are decoded; anything else is rejected before decoding.
     """
     encoded = np.asarray(bytearray(file_bytes), dtype=np.uint8)
     if encoded.size == 0:
         raise ValueError("The uploaded file is empty or could not be read.")
     if max_pixels is not None:
-        pixel_count = _header_pixel_count(file_bytes)
-        if pixel_count is not None and pixel_count > max_pixels:
-            raise ValueError(f"The image is too large ({pixel_count / 1e6:.0f} MP; the limit is {max_pixels / 1e6:.0f} MP).")
+        _check_image_header(file_bytes, max_pixels)
     frame = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
     if frame is None or frame.size == 0:
         raise ValueError("The uploaded file is not a valid supported image.")

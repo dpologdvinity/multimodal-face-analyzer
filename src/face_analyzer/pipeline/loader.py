@@ -146,6 +146,12 @@ def load_models() -> Models:
         retinaface_nets["retinaface"] = onnxruntime.InferenceSession(str(RETINAFACE_MODEL), providers=["CPUExecutionProvider"])
 
     if face_net is None and not (yolo_face_nets or scrfd_face_nets or retinaface_nets):
+        if is_demo_mode():
+            raise FileNotFoundError(
+                f"Demo mode needs the RetinaFace detector: {RETINAFACE_MODEL.name} in {MODEL_DIR} and the "
+                "onnxruntime package. Run `pip install -r requirements.txt` and "
+                "`python tools/fetch_models.py --keys RETINAFACE_MODEL=retinaface`."
+            )
         raise FileNotFoundError(
             f"Missing face detector file(s) in {MODEL_DIR}: {FACE_PROTO.name}, {FACE_MODEL.name} (required). "
             "Run `python tools/fetch_models.py --keys` to download them."

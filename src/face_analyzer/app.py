@@ -11,12 +11,18 @@ from face_analyzer.demo import (
     DEMO_MAX_UPLOAD_MB,
     LIVE_MODE_NOTE,
     RESPONSIBLE_USE_NOTE,
+    demo_attribution,
     is_demo_mode,
 )
 from face_analyzer.ui.live import new_live_session, render_live_tab
 from face_analyzer.ui.results import process_and_display
 from face_analyzer.ui.sidebar import render_sidebar
 from face_analyzer.ui.theme import apply_theme, inject_css, select_theme
+
+demo = is_demo_mode()
+if demo:
+    # Visitors see a generic error instead of tracebacks with server paths; the log keeps details.
+    st.set_option("client.showErrorDetails", "none")
 
 # Live webcam state, guarded by locks for thread-safe access from streamlit-webrtc callbacks
 # running in separate threads. Streamlit re-executes this script per session and rerun, so it is
@@ -45,15 +51,15 @@ load_models = st.cache_resource(inference.load_models)
 # time. max_entries bounds memory since each cached entry holds a full decoded frame.
 _decode_image_bytes = st.cache_data(max_entries=16)(inference.decode_image_bytes)
 
-# Demo mode keeps a shared 2.7 GB host in bounds: smaller uploads, a smaller working image,
-# and no decompression bombs.
-demo = is_demo_mode()
-
 
 def decode_image_bytes(file_bytes: bytes):
-    """Decode an upload or snapshot with the demo-mode size limits when they apply."""
+    """Decode an upload or snapshot; demo mode bounds its size and keeps it out of the cache.
+
+    The demo shares one 2.7 GB process across visitors and promises that uploads are never
+    stored, so it decodes afresh on every run instead of caching decoded frames.
+    """
     if demo:
-        return _decode_image_bytes(file_bytes, DEMO_MAX_IMAGE_SIDE, DEMO_MAX_IMAGE_PIXELS)
+        return inference.decode_image_bytes(file_bytes, DEMO_MAX_IMAGE_SIDE, DEMO_MAX_IMAGE_PIXELS)
     return _decode_image_bytes(file_bytes)
 
 
@@ -142,3 +148,7 @@ with tab_webcam:
             models, sidebar, live_session,
             global_adjustments=global_adjustments, face_adjustments=face_adjustments,
         )
+
+if demo:
+    st.divider()
+    st.caption(demo_attribution(include_mediapipe=bool(models.face_landmarks_nets)))

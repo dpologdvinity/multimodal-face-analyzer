@@ -5,6 +5,7 @@ import base64
 import csv
 import io
 import json
+from contextlib import nullcontext
 from html import escape
 from typing import Any
 
@@ -15,7 +16,7 @@ from PIL import Image
 from streamlit_cropper import st_cropper
 
 from .. import inference
-from ..demo import is_demo_mode
+from ..demo import BUSY_NOTE, DemoBusyError, analysis_slot, is_demo_mode
 from .adjustments import adjustment_sliders
 from .sidebar import SidebarState
 from .theme import THEME_ACCENTS
@@ -170,7 +171,6 @@ def process_and_display(
 ) -> None:
     """Run detection/inference on frame and render result in Streamlit."""
     frame = _render_photo_editor(frame, identifier, "global_adj", "Source photo", theme=theme)
-    frame, was_colorized = inference.maybe_colorize(models, frame, sidebar.active_colorization)
 
     active_labels = [
         name for name, active in (
@@ -183,15 +183,26 @@ def process_and_display(
         ) if active
     ]
     spinner_text = f"Analyzing with {', '.join(active_labels)}..." if active_labels else "Detecting faces..."
-    with st.spinner(spinner_text):
-        annotated_frame, cropped_faces, has_faces, hands_detected = inference.analyze_frame(
-            models, frame,
-            sidebar.to_config(
-                gallery=st.session_state.get("gallery", {}),
-                global_adjustments={name: values[2] for name, values in inference.IMAGE_ADJUSTMENT_RANGES.items()},
-                face_adjustments=face_adjustments,
-            ),
-        )
+    demo = is_demo_mode()
+    # A demo host shares one process, so analyses queue for a single slot instead of stacking up
+    # their peak memory; other modes run them concurrently as before.
+    busy_notice = st.empty()
+    slot = analysis_slot(lambda: busy_notice.info(BUSY_NOTE)) if demo else nullcontext()
+    try:
+        with slot, st.spinner(spinner_text):
+            frame, was_colorized = inference.maybe_colorize(models, frame, sidebar.active_colorization)
+            annotated_frame, cropped_faces, has_faces, hands_detected = inference.analyze_frame(
+                models, frame,
+                sidebar.to_config(
+                    gallery=st.session_state.get("gallery", {}),
+                    global_adjustments={name: values[2] for name, values in inference.IMAGE_ADJUSTMENT_RANGES.items()},
+                    face_adjustments=face_adjustments,
+                ),
+            )
+    except DemoBusyError as exc:
+        busy_notice.warning(str(exc))
+        return
+    busy_notice.empty()
 
     if was_colorized:
         st.caption("Source converted from grayscale before analysis.")
@@ -271,7 +282,6 @@ def process_and_display(
 
     # Demo mode hides every action that reads or writes the saved-face database or galleries,
     # which a public deployment would share across visitors.
-    demo = is_demo_mode()
     if not demo and st.button("Scan all faces for recognition", key=f"scan_btn_{identifier}"):
         faces_bgr = [cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR) for face in cropped_faces]
         matches = inference.match_faces_eigenfaces_batch(faces_bgr)

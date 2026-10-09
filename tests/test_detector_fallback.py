@@ -80,7 +80,7 @@ def test_demo_mode_without_retinaface_raises(monkeypatch, tmp_path):
     loader.FACE_PROTO.write_bytes(b"not a model")
     loader.FACE_MODEL.write_bytes(b"not a model")
 
-    with pytest.raises(FileNotFoundError, match="Missing face detector"):
+    with pytest.raises(FileNotFoundError, match="Demo mode needs the RetinaFace detector.*onnxruntime"):
         loader.load_models()
 
 

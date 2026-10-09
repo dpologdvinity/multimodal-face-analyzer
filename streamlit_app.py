@@ -20,6 +20,9 @@ os.environ["FACE_ANALYZER_DEMO"] = "1"
 
 import streamlit as st  # noqa: E402
 
+# Visitors see a generic error instead of tracebacks with server paths; the log keeps details.
+st.set_option("client.showErrorDetails", "none")
+
 from face_analyzer.demo import demo_manifest_entries  # noqa: E402
 
 
@@ -50,8 +53,10 @@ def ensure_demo_weights() -> int:
 
 try:
     ensure_demo_weights()
-except fetch_models.FetchError as exc:
-    st.error(f"Could not download the demo model weights: {exc}. Reload the page to retry.")
+except (fetch_models.FetchError, OSError) as exc:
+    # Details (URLs, server paths) go to the log only, never to the visitor.
+    print(f"demo weight fetch failed: {exc!r}", file=sys.stderr)
+    st.error("Could not download the demo model weights. Reload the page in a minute to retry.")
     st.stop()
 
 runpy.run_path(str(ROOT / "src" / "face_analyzer" / "app.py"), run_name="__main__")

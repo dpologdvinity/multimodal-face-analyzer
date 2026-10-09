@@ -30,11 +30,13 @@ def fresh_caches(monkeypatch):
     """Isolate the entrypoint's demo-mode model cache and environment from the other app tests."""
     # The entrypoint sets FACE_ANALYZER_DEMO itself; registering it here lets monkeypatch undo it.
     monkeypatch.setenv("FACE_ANALYZER_DEMO", "1")
+    error_details = st.get_option("client.showErrorDetails")
     st.cache_resource.clear()
     st.cache_data.clear()
     yield
     st.cache_resource.clear()
     st.cache_data.clear()
+    st.set_option("client.showErrorDetails", error_details)
 
 
 def test_entrypoint_boots_in_demo_mode(demo_weights_present, fresh_caches):
