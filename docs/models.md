@@ -66,6 +66,12 @@ heuristic, not a confidence interval or proof that narrower predictions are corr
 
 `mivolo` (Apache 2.0, WildChlamydia/MiVOLO) shares its ~115MB checkpoint with the mivolo age backend -- one model, two feature outputs. Face-only mode (no body context).
 
+With two or more gender backends active the UI leads with a `best (<model>)` row: the label from
+the most accurate backend present, ranked `mivolo` > `fairface` > `deepface` > `caffe` by
+held-out FairFace accuracy. Gender is not fused: the previous weighted fusion could never
+overrule MiVOLO's hard label, and a learned stacker did no better than MiVOLO alone -- see
+[benchmark.md](benchmark.md#why-gender-is-not-fused).
+
 ## Race
 
 | Backend    | Framework        | Output                                                                                        |
@@ -134,7 +140,7 @@ SEARCH also independently checks **eigenfaces** (see below) against every previo
 
 Every detected face's card also has SAVE and (now dual-purpose) SEARCH buttons:
 
-- **SAVE** writes one row to a small SQLite database (`db/faces.db`), the face's color crop to `faces/{id}.jpg`, and a grayscale, tighter-cropped ("zoomed in") version to `eigen/{id}.jpg`. `id` is a random integer 1-999999, retried on collision. The database schema is **sparse and lazy**: there's no fixed column list -- a column (e.g. `age_caffe`) is only created the first time some SAVEd face actually has a value for that (feature, model) pair. A model that was never run, or never active, never gets a column. Every SAVE call independently extends the schema as needed (`ALTER TABLE ... ADD COLUMN`). A combined answer is saved under its row's key: `gender_fused`, `emotion_fused`, `age_best` and `race_best` (e.g. `White (fairface)`). Race used to be fused, so databases written before that change keep a `race_fused` column, which newer saves leave empty and fill `race_best` instead.
+- **SAVE** writes one row to a small SQLite database (`db/faces.db`), the face's color crop to `faces/{id}.jpg`, and a grayscale, tighter-cropped ("zoomed in") version to `eigen/{id}.jpg`. `id` is a random integer 1-999999, retried on collision. The database schema is **sparse and lazy**: there's no fixed column list -- a column (e.g. `age_caffe`) is only created the first time some SAVEd face actually has a value for that (feature, model) pair. A model that was never run, or never active, never gets a column. Every SAVE call independently extends the schema as needed (`ALTER TABLE ... ADD COLUMN`). A combined answer is saved under its row's key: `emotion_fused`, `age_best`, `gender_best` (e.g. `Male (mivolo)`) and `race_best` (e.g. `White (fairface)`). Gender and race used to be fused, so databases written before those changes keep `gender_fused` and `race_fused` columns, which newer saves leave empty and fill `gender_best` and `race_best` instead.
 - **SEARCH**'s eigenfaces half runs Turk & Pentland's PCA algorithm fresh against every image in `eigen/` -- there's no persisted/trained model file, it retrains on the fly each time (cheap at the scale this is meant for: a personal collection of previously-saved faces, not a large dataset). Faces are normalized to a fixed 100x100 grayscale size; the query face goes through the exact same crop/resize pipeline as SAVE's `eigen/` output so the two are comparable. A match is reported by saved-face **ID** (there's no name at this layer -- look up `db/faces.db` by ID for whatever attributes were saved with it).
 
 **`EIGENFACE_DISTANCE_THRESHOLD` is an untuned heuristic.** Unlike `RECOGNITION_COSINE_THRESHOLD` (deepface's own published default), there's no established reference value for raw-pixel eigenspace L2 distance at this face size -- it was verified to behave correctly (an unmodified saved face matches itself with near-zero distance; unrelated random images produce much larger distances) but the cutoff itself will need real-world tuning against your own saved faces. Per the algorithm's own known limitations: sensitive to lighting, pose, and scale -- front-facing, consistently-lit photos work best.
