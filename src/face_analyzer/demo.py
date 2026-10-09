@@ -23,6 +23,7 @@ DEMO_MODELS: dict[str, frozenset[str]] = {
 DEMO_FACE_DETECTOR = "retinaface"
 
 DEMO_MAX_UPLOAD_MB = 10
+DEMO_MAX_FILES = 3
 DEMO_MAX_IMAGE_SIDE = 1600
 # Rejects decompression bombs (a tiny PNG that decodes to gigabytes) before cv2 decodes them.
 DEMO_MAX_IMAGE_PIXELS = 50_000_000

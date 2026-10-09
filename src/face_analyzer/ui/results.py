@@ -15,6 +15,7 @@ from PIL import Image
 from streamlit_cropper import st_cropper
 
 from .. import inference
+from ..demo import is_demo_mode
 from .adjustments import adjustment_sliders
 from .sidebar import SidebarState
 from .theme import THEME_ACCENTS
@@ -137,6 +138,32 @@ def _render_photo_editor(
     return edited_bgr
 
 
+def _search_and_save_buttons(face: dict, identifier: str, sidebar: SidebarState) -> None:
+    """Render one face's SEARCH (photos and eigenfaces) and SAVE (saved-face database) buttons."""
+    col_search, col_save = st.columns(2)
+    if col_search.button("Search", key=f"search_btn_{identifier}_{face['idx']}"):
+        face_bgr = cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR)
+        found = False
+        if face["embedding"] is not None and sidebar.search_gallery:
+            match = inference.match_face_identity(
+                np.array(face["embedding"], dtype=np.float32), sidebar.search_gallery,
+            )
+            if match:
+                st.success(f"Photo match: {match[0]} ({match[1] * 100:.0f}%).")
+                found = True
+        eigen_match = inference.match_face_eigenfaces(face_bgr)
+        if eigen_match:
+            st.success(f"Eigenface match: saved face {eigen_match[0]} (distance {eigen_match[1]:.0f}).")
+            found = True
+        if not found:
+            st.warning("No match found in saved faces or local reference photos.")
+
+    if col_save.button("Save face", key=f"save_btn_{identifier}_{face['idx']}"):
+        face_bgr = cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR)
+        saved_id = inference.save_face(face_bgr, face["raw_columns"])
+        st.info(f"Face saved with ID {saved_id}.")
+
+
 def process_and_display(
     models: Any, sidebar: SidebarState, frame: np.ndarray, identifier: str, *,
     theme: str, face_adjustments: dict,
@@ -242,7 +269,10 @@ def process_and_display(
 
     st.markdown("### Face details")
 
-    if st.button("Scan all faces for recognition", key=f"scan_btn_{identifier}"):
+    # Demo mode hides every action that reads or writes the saved-face database or galleries,
+    # which a public deployment would share across visitors.
+    demo = is_demo_mode()
+    if not demo and st.button("Scan all faces for recognition", key=f"scan_btn_{identifier}"):
         faces_bgr = [cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR) for face in cropped_faces]
         matches = inference.match_faces_eigenfaces_batch(faces_bgr)
         scan_frame = frame.copy()
@@ -324,37 +354,15 @@ def process_and_display(
                                        key=f"image_op_dl_{identifier}_{face['idx']}")
             st.markdown(target_card_html(face), unsafe_allow_html=True)
 
-            col_search, col_save = st.columns(2)
-            if col_search.button("Search", key=f"search_btn_{identifier}_{face['idx']}"):
-                face_bgr = cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR)
-                found = False
-                if face["embedding"] is not None and sidebar.search_gallery:
-                    match = inference.match_face_identity(
-                        np.array(face["embedding"], dtype=np.float32), sidebar.search_gallery,
-                    )
-                    if match:
-                        st.success(f"Photo match: {match[0]} ({match[1] * 100:.0f}%).")
-                        found = True
-                eigen_match = inference.match_face_eigenfaces(face_bgr)
-                if eigen_match:
-                    st.success(f"Eigenface match: saved face {eigen_match[0]} (distance {eigen_match[1]:.0f}).")
-                    found = True
-                if not found:
-                    st.warning("No match found in saved faces or local reference photos.")
-
-            if col_save.button("Save face", key=f"save_btn_{identifier}_{face['idx']}"):
-                face_bgr = cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR)
-                saved_id = inference.save_face(face_bgr, face["raw_columns"])
-                st.info(f"Face saved with ID {saved_id}.")
+            if not demo:
+                _search_and_save_buttons(face, identifier, sidebar)
 
             lbph_available = models.recognition_nets.get("lbph") is not None
-            has_more_actions = (
-                face["embedding"] is not None or lbph_available
-                or models.reconstruction_3d_nets or models.age_progression_nets
-            )
+            can_enroll = not demo and (face["embedding"] is not None or lbph_available)
+            has_more_actions = can_enroll or models.reconstruction_3d_nets or models.age_progression_nets
             if has_more_actions:
                 with st.expander("More actions", expanded=False):
-                    if face["embedding"] is not None or lbph_available:
+                    if can_enroll:
                         enroll_name = st.text_input("Enroll as", key=f"enroll_name_{identifier}_{face['idx']}", placeholder="Enter a saved face name")
                         if st.button("Enroll", key=f"enroll_btn_{identifier}_{face['idx']}") and enroll_name:
                             try:

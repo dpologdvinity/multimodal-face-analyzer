@@ -4,6 +4,15 @@ import streamlit as st
 
 # Absolute imports: Streamlit runs this file as a script, so it has no parent package.
 from face_analyzer import inference
+from face_analyzer.demo import (
+    DEMO_MAX_FILES,
+    DEMO_MAX_IMAGE_PIXELS,
+    DEMO_MAX_IMAGE_SIDE,
+    DEMO_MAX_UPLOAD_MB,
+    LIVE_MODE_NOTE,
+    RESPONSIBLE_USE_NOTE,
+    is_demo_mode,
+)
 from face_analyzer.ui.live import new_live_session, render_live_tab
 from face_analyzer.ui.results import process_and_display
 from face_analyzer.ui.sidebar import render_sidebar
@@ -34,7 +43,19 @@ load_models = st.cache_resource(inference.load_models)
 # widget interaction (a model checkbox, an export button) reruns this whole script, which
 # would otherwise re-decode (and re-downscale) the same uploaded/captured image bytes every
 # time. max_entries bounds memory since each cached entry holds a full decoded frame.
-decode_image_bytes = st.cache_data(max_entries=16)(inference.decode_image_bytes)
+_decode_image_bytes = st.cache_data(max_entries=16)(inference.decode_image_bytes)
+
+# Demo mode keeps a shared 2.7 GB host in bounds: smaller uploads, a smaller working image,
+# and no decompression bombs.
+demo = is_demo_mode()
+
+
+def decode_image_bytes(file_bytes: bytes):
+    """Decode an upload or snapshot with the demo-mode size limits when they apply."""
+    if demo:
+        return _decode_image_bytes(file_bytes, DEMO_MAX_IMAGE_SIDE, DEMO_MAX_IMAGE_PIXELS)
+    return _decode_image_bytes(file_bytes)
+
 
 try:
     models = load_models()
@@ -52,6 +73,9 @@ st.markdown(
     '</div>',
     unsafe_allow_html=True,
 )
+
+if demo:
+    st.info(RESPONSIBLE_USE_NOTE, icon=":material/info:")
 
 sidebar = render_sidebar(models)
 
@@ -71,10 +95,17 @@ with tab_upload:
         "Choose images to analyze",
         type=["jpg", "jpeg", "png", "webp"],
         accept_multiple_files=True,
+        max_upload_size=DEMO_MAX_UPLOAD_MB if demo else None,
     )
 
     if uploaded_files:
+        if demo and len(uploaded_files) > DEMO_MAX_FILES:
+            st.warning(f"The demo analyzes the first {DEMO_MAX_FILES} images of each upload.")
+            uploaded_files = uploaded_files[:DEMO_MAX_FILES]
         for uploaded_file in uploaded_files:
+            if demo and uploaded_file.size > DEMO_MAX_UPLOAD_MB * 1024 * 1024:
+                st.error(f"{uploaded_file.name} is larger than the demo's {DEMO_MAX_UPLOAD_MB} MB limit.")
+                continue
             try:
                 frame = decode_image_bytes(uploaded_file.read())
             except ValueError as exc:
@@ -86,7 +117,11 @@ with tab_upload:
             )
 
 with tab_webcam:
-    capture_mode = st.segmented_control("Capture mode", ["Snapshot", "Live"], default="Snapshot")
+    if demo:
+        st.caption(LIVE_MODE_NOTE)
+        capture_mode = "Snapshot"
+    else:
+        capture_mode = st.segmented_control("Capture mode", ["Snapshot", "Live"], default="Snapshot")
 
     if capture_mode == "Snapshot":
         webcam_image = st.camera_input("Take a snapshot")

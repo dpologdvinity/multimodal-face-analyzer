@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import threading
 from pathlib import Path
@@ -9,6 +10,7 @@ from typing import Any
 
 import cv2
 import numpy as np
+from PIL import Image
 
 from ..attributes._lock import _lock_for
 from ..core.constants import (
@@ -133,18 +135,42 @@ def train_lbph_recognizer():
         return _LBPH_CACHE_RESULT
 
 
-def decode_image_bytes(file_bytes: bytes | bytearray | np.ndarray) -> np.ndarray:
-    """Decode uploaded image bytes into BGR ndarray, downscaled if larger than max dimension."""
+def _header_pixel_count(file_bytes: bytes | bytearray | np.ndarray) -> int | None:
+    """Return width * height from the image header without decoding pixels, or None if unreadable."""
+    try:
+        with Image.open(io.BytesIO(bytes(file_bytes))) as image:
+            width, height = image.size
+    except Image.DecompressionBombError:
+        # Pillow refuses to open anything past twice its own limit (about 179 MP); report that size.
+        return 2 * Image.MAX_IMAGE_PIXELS + 1
+    except (OSError, ValueError):
+        return None
+    return width * height
+
+
+def decode_image_bytes(
+    file_bytes: bytes | bytearray | np.ndarray,
+    max_dimension: int = MAX_UPLOAD_DIMENSION,
+    max_pixels: int | None = None,
+) -> np.ndarray:
+    """Decode uploaded image bytes into BGR ndarray, downscaled if larger than max_dimension.
+
+    With max_pixels set, an image whose header declares more pixels is rejected before decoding.
+    """
     encoded = np.asarray(bytearray(file_bytes), dtype=np.uint8)
     if encoded.size == 0:
         raise ValueError("The uploaded file is empty or could not be read.")
+    if max_pixels is not None:
+        pixel_count = _header_pixel_count(file_bytes)
+        if pixel_count is not None and pixel_count > max_pixels:
+            raise ValueError(f"The image is too large ({pixel_count / 1e6:.0f} MP; the limit is {max_pixels / 1e6:.0f} MP).")
     frame = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
     if frame is None or frame.size == 0:
         raise ValueError("The uploaded file is not a valid supported image.")
     height, width = frame.shape[:2]
     longer_side = max(height, width)
-    if longer_side > MAX_UPLOAD_DIMENSION:
-        scale = MAX_UPLOAD_DIMENSION / longer_side
+    if longer_side > max_dimension:
+        scale = max_dimension / longer_side
         frame = cv2.resize(frame, (round(width * scale), round(height * scale)), interpolation=cv2.INTER_AREA)
     return frame
 
