@@ -44,6 +44,7 @@ from ..core.constants import (
     YOLO_FACE_MODEL,
 )
 from ..core.types import Models
+from ..demo import is_demo_mode
 from ..model_selection import native_model_selected
 from .drawing import _silence_native_logs
 
@@ -123,13 +124,32 @@ def _present(*paths: Path) -> bool:
 
 
 def load_models() -> Models:
-    """Load every model whose file(s)/dependencies are present and return a Models container."""
-    if not _present(FACE_PROTO, FACE_MODEL):
+    """Load every model whose file(s)/dependencies are present and return a Models container.
+
+    At least one face detector must load; SSD is optional when another detector is present, and
+    demo mode never loads it because its weights carry no license statement.
+    """
+    face_net = None
+    if not is_demo_mode() and _present(FACE_PROTO, FACE_MODEL):
+        face_net = cv2.dnn.readNet(str(FACE_MODEL), str(FACE_PROTO))
+
+    yolo_face_nets = {}
+    if native_model_selected("YOLO_FACE_MODEL", "yolo") and ONNXRUNTIME_SUPPORTED and _present(YOLO_FACE_MODEL):
+        yolo_face_nets["yolo"] = onnxruntime.InferenceSession(str(YOLO_FACE_MODEL), providers=["CPUExecutionProvider"])
+
+    scrfd_face_nets = {}
+    if native_model_selected("SCRFD_FACE_MODEL", "scrfd") and ONNXRUNTIME_SUPPORTED and _present(SCRFD_FACE_MODEL):
+        scrfd_face_nets["scrfd"] = onnxruntime.InferenceSession(str(SCRFD_FACE_MODEL), providers=["CPUExecutionProvider"])
+
+    retinaface_nets = {}
+    if native_model_selected("RETINAFACE_MODEL", "retinaface") and ONNXRUNTIME_SUPPORTED and _present(RETINAFACE_MODEL):
+        retinaface_nets["retinaface"] = onnxruntime.InferenceSession(str(RETINAFACE_MODEL), providers=["CPUExecutionProvider"])
+
+    if face_net is None and not (yolo_face_nets or scrfd_face_nets or retinaface_nets):
         raise FileNotFoundError(
             f"Missing face detector file(s) in {MODEL_DIR}: {FACE_PROTO.name}, {FACE_MODEL.name} (required). "
             "Run `python tools/fetch_models.py --keys` to download them."
         )
-    face_net = cv2.dnn.readNet(str(FACE_MODEL), str(FACE_PROTO))
 
     age_nets = {}
     if native_model_selected("AGE_MODEL", "caffe") and _present(AGE_PROTO, AGE_MODEL):
@@ -270,18 +290,6 @@ def load_models() -> Models:
         bfm_model = ParametricFaceModel(str(BFM_MODEL_PATH))
         lm3d_template = load_lm3d_template(str(BFM_DIR))
         reconstruction_3d_nets["deep3d"] = (recon_net, bfm_model, lm3d_template)
-
-    yolo_face_nets = {}
-    if native_model_selected("YOLO_FACE_MODEL", "yolo") and ONNXRUNTIME_SUPPORTED and _present(YOLO_FACE_MODEL):
-        yolo_face_nets["yolo"] = onnxruntime.InferenceSession(str(YOLO_FACE_MODEL), providers=["CPUExecutionProvider"])
-
-    scrfd_face_nets = {}
-    if native_model_selected("SCRFD_FACE_MODEL", "scrfd") and ONNXRUNTIME_SUPPORTED and _present(SCRFD_FACE_MODEL):
-        scrfd_face_nets["scrfd"] = onnxruntime.InferenceSession(str(SCRFD_FACE_MODEL), providers=["CPUExecutionProvider"])
-
-    retinaface_nets = {}
-    if native_model_selected("RETINAFACE_MODEL", "retinaface") and ONNXRUNTIME_SUPPORTED and _present(RETINAFACE_MODEL):
-        retinaface_nets["retinaface"] = onnxruntime.InferenceSession(str(RETINAFACE_MODEL), providers=["CPUExecutionProvider"])
 
     age_progression_nets = {}
     if native_model_selected("AGE_PROGRESSION_MODEL", "franunet") and FACE_REAGING_SUPPORTED and _present(FACE_REAGING_MODEL):

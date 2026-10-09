@@ -31,6 +31,8 @@ from ..detectors import (
     detect_faces_retinaface,
     detect_faces_scrfd,
     detect_faces_yolo,
+    face_detector_net,
+    resolve_face_detector,
 )
 from ..fusion import (
     _format_results,
@@ -96,34 +98,25 @@ def _prepare_frame(frame: np.ndarray, config: AnalysisConfig) -> np.ndarray:
 
 
 def _detect(models: Models, frame: np.ndarray, config: AnalysisConfig) -> list:
-    """Run the one configured face detector; "yolo"/"scrfd"/"retinaface" fall back to SSD if not loaded.
+    """Run the one configured face detector, falling back to SSD (then any loaded detector) if absent.
 
     Unlike every other feature, exactly one detector runs per frame -- running two and merging
     their boxes would just produce duplicate/overlapping faces, not a meaningfully combined result.
     """
     conf_threshold = config.conf_threshold
-    face_detector = config.face_detector
-    yolo_net = models.yolo_face_nets.get("yolo")
-    scrfd_net = models.scrfd_face_nets.get("scrfd")
-    retinaface_net = models.retinaface_nets.get("retinaface")
-
-    if face_detector == "yolo" and yolo_net is not None:
-        face_boxes = _cached_face_predict(
-            "face_detection", f"yolo:{conf_threshold}", frame, detect_faces_yolo, yolo_net, frame, conf_threshold
-        )
-    elif face_detector == "scrfd" and scrfd_net is not None:
-        face_boxes = _cached_face_predict(
-            "face_detection", f"scrfd:{conf_threshold}", frame, detect_faces_scrfd, scrfd_net, frame, conf_threshold
-        )
-    elif face_detector == "retinaface" and retinaface_net is not None:
-        face_boxes = _cached_face_predict(
-            "face_detection", f"retinaface:{conf_threshold}", frame, detect_faces_retinaface, retinaface_net, frame, conf_threshold
-        )
-    else:
-        face_boxes = _cached_face_predict(
-            "face_detection", f"ssd:{conf_threshold}", frame, detect_faces, models.face_net, frame, conf_threshold
-        )
-    return face_boxes
+    # With no detector loaded, the SSD path's bare-net call returns no faces.
+    face_detector = resolve_face_detector(models, config.face_detector) or "ssd"
+    detect_fn = {
+        "yolo": detect_faces_yolo,
+        "scrfd": detect_faces_scrfd,
+        "retinaface": detect_faces_retinaface,
+        # SSD keeps going through the factory's legacy bare-net path, as it always has.
+        "ssd": detect_faces,
+    }[face_detector]
+    return _cached_face_predict(
+        "face_detection", f"{face_detector}:{conf_threshold}", frame, detect_fn,
+        face_detector_net(models, face_detector), frame, conf_threshold,
+    )
 
 
 def _run_whole_frame_features(

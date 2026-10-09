@@ -30,6 +30,15 @@ class NativeModelSelectionTests(unittest.TestCase):
         with patch.dict(os.environ, {"HAIR_COLOR_MODEL": ""}, clear=True):
             self.assertFalse(native_model_selected("HAIR_COLOR_MODEL", "colorimetric"))
 
+    def test_demo_mode_limits_backends_to_the_demo_allowlist(self):
+        """Allow only demo backends in demo mode, even when an explicit selection lists more."""
+        with patch.dict(os.environ, {"FACE_ANALYZER_DEMO": "1", "AGE_MODEL": "caffe,fairface"}, clear=True):
+            self.assertTrue(native_model_selected("AGE_MODEL", "fairface"))
+            self.assertFalse(native_model_selected("AGE_MODEL", "caffe"))
+            self.assertFalse(native_model_selected("RECOGNITION_MODEL", "lbph"))
+            self.assertFalse(native_model_selected("YOLO_FACE_MODEL", "yolo"))
+            self.assertTrue(native_model_selected("RETINAFACE_MODEL", "retinaface"))
+
 
 if __name__ == "__main__":
     unittest.main()

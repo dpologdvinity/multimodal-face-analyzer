@@ -7,6 +7,7 @@ from typing import Any
 import streamlit as st
 
 from .. import inference
+from ..demo import DEMO_FACE_DETECTOR, is_demo_mode
 
 MODEL_DISPLAY_NAMES = {
     "caffe": "Caffe",
@@ -122,18 +123,14 @@ def render_sidebar(models: Any) -> SidebarState:
         st.sidebar.caption(f"Unavailable: {', '.join(models.offline_features)}. Model file or dependency missing.")
 
     with st.sidebar.expander("Detection", expanded=True):
-        active_face_detector = "yolo" if models.yolo_face_nets else "ssd"
-        _face_detector_options = (
-            (["yolo"] if models.yolo_face_nets else [])
-            + ["ssd"]
-            + (["scrfd"] if models.scrfd_face_nets else [])
-            + (["retinaface"] if models.retinaface_nets else [])
-        )
+        preferred = DEMO_FACE_DETECTOR if is_demo_mode() else "yolo"
+        active_face_detector = inference.resolve_face_detector(models, preferred) or "ssd"
+        _face_detector_options = inference.available_face_detectors(models)
         if len(_face_detector_options) > 1:
             active_face_detector = st.selectbox(
                 "Face detector", _face_detector_options, index=_face_detector_options.index(active_face_detector),
                 format_func=_display_model_name,
-                help="One detector runs per frame. YOLO is preferred when loaded; SSD is the always-available fallback.",
+                help="One detector runs per frame. YOLO is preferred when loaded; SSD is the fallback when present.",
             )
 
     with st.sidebar.expander("Classification", expanded=True):

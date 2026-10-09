@@ -57,11 +57,13 @@ from .core import (
 
 # Detectors
 from .detectors import (
+    available_face_detectors,
     detect_faces,
     detect_faces_retinaface,
     detect_faces_scrfd,
     detect_faces_ssd,
     detect_faces_yolo,
+    resolve_face_detector,
 )
 
 # Fusion
@@ -128,11 +130,13 @@ __all__ = [
     "crop_face_dex",
     "decode_image_bytes",
     "DENOISE_METHODS",
+    "available_face_detectors",
     "detect_faces",
     "detect_faces_retinaface",
     "detect_faces_scrfd",
     "detect_faces_ssd",
     "detect_faces_yolo",
+    "resolve_face_detector",
     "dex_age_estimate",
     "DEX_MEAN_VALUES",
     "draw_recognition_scan",
