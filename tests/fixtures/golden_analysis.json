@@ -31,9 +31,6 @@
       "Male"
     ],
     "glasses": [],
-    "hair_color": [
-      "brown"
-    ],
     "head_pose": [],
     "headline": {
       "age": "64",
@@ -103,11 +100,6 @@
         "Output": "Male"
       },
       {
-        "Feature": "HAIR COLOR",
-        "Model": "colorimetric",
-        "Output": "brown"
-      },
-      {
         "Feature": "RACE",
         "Model": "fairface",
         "Output": "East Asian"
@@ -128,7 +120,6 @@
       "gender_best": "Male (fairface)",
       "gender_caffe": "Male",
       "gender_fairface": "Male",
-      "hair_color_colorimetric": "brown",
       "race_fairface": "East Asian"
     },
     "texture_artifact": null,
@@ -167,9 +158,6 @@
       "Male"
     ],
     "glasses": [],
-    "hair_color": [
-      "brown"
-    ],
     "head_pose": [],
     "headline": {
       "age": "44",
@@ -239,11 +227,6 @@
         "Output": "Male"
       },
       {
-        "Feature": "HAIR COLOR",
-        "Model": "colorimetric",
-        "Output": "brown"
-      },
-      {
         "Feature": "RACE",
         "Model": "fairface",
         "Output": "White"
@@ -264,7 +247,6 @@
       "gender_best": "Male (fairface)",
       "gender_caffe": "Male",
       "gender_fairface": "Male",
-      "hair_color_colorimetric": "brown",
       "race_fairface": "White"
     },
     "texture_artifact": null,
@@ -303,9 +285,6 @@
       "Male"
     ],
     "glasses": [],
-    "hair_color": [
-      "brown"
-    ],
     "head_pose": [],
     "headline": {
       "age": "44",
@@ -375,11 +354,6 @@
         "Output": "Male"
       },
       {
-        "Feature": "HAIR COLOR",
-        "Model": "colorimetric",
-        "Output": "brown"
-      },
-      {
         "Feature": "RACE",
         "Model": "fairface",
         "Output": "White (43%)/Latino_Hispanic (37%)"
@@ -400,7 +374,6 @@
       "gender_best": "Male (fairface)",
       "gender_caffe": "Male",
       "gender_fairface": "Male",
-      "hair_color_colorimetric": "brown",
       "race_fairface": "White (43%)/Latino_Hispanic (37%)"
     },
     "texture_artifact": null,
@@ -439,9 +412,6 @@
       "Male"
     ],
     "glasses": [],
-    "hair_color": [
-      "brown"
-    ],
     "head_pose": [],
     "headline": {
       "age": "54",
@@ -511,11 +481,6 @@
         "Output": "Male"
       },
       {
-        "Feature": "HAIR COLOR",
-        "Model": "colorimetric",
-        "Output": "brown"
-      },
-      {
         "Feature": "RACE",
         "Model": "fairface",
         "Output": "East Asian (36%)/White (27%)"
@@ -536,7 +501,6 @@
       "gender_best": "Male (fairface)",
       "gender_caffe": "Male",
       "gender_fairface": "Male",
-      "hair_color_colorimetric": "brown",
       "race_fairface": "East Asian (36%)/White (27%)"
     },
     "texture_artifact": null,
@@ -575,9 +539,6 @@
       "Male"
     ],
     "glasses": [],
-    "hair_color": [
-      "black"
-    ],
     "head_pose": [],
     "headline": {
       "age": "24",
@@ -647,11 +608,6 @@
         "Output": "Male"
       },
       {
-        "Feature": "HAIR COLOR",
-        "Model": "colorimetric",
-        "Output": "black"
-      },
-      {
         "Feature": "RACE",
         "Model": "fairface",
         "Output": "White"
@@ -672,7 +628,6 @@
       "gender_best": "Male (fairface)",
       "gender_caffe": "Male",
       "gender_fairface": "Male",
-      "hair_color_colorimetric": "black",
       "race_fairface": "White"
     },
     "texture_artifact": null,
@@ -711,9 +666,6 @@
       "Female"
     ],
     "glasses": [],
-    "hair_color": [
-      "black"
-    ],
     "head_pose": [],
     "headline": {
       "age": "24",
@@ -783,11 +735,6 @@
         "Output": "Female"
       },
       {
-        "Feature": "HAIR COLOR",
-        "Model": "colorimetric",
-        "Output": "black"
-      },
-      {
         "Feature": "RACE",
         "Model": "fairface",
         "Output": "White (46%)/East Asian (41%)"
@@ -808,7 +755,6 @@
       "gender_best": "Female (fairface)",
       "gender_caffe": "Female",
       "gender_fairface": "Female",
-      "hair_color_colorimetric": "black",
       "race_fairface": "White (46%)/East Asian (41%)"
     },
     "texture_artifact": null,

@@ -58,7 +58,7 @@ class BuildPromptFormattingTests(unittest.TestCase):
         self.assertIn("\033[1;32m* 1) hsemotion\033[0m", output)
         self.assertIn("\033[1;33m  3) mini_xception\033[0m", output)
         self.assertIn("\033[1;33m  3) 3d reconstruction - deep3d\033[0m", output)
-        self.assertIn("\033[1;32m  4) hair color - colorimetric\033[0m", output)
+        self.assertIn("\033[1;33m  3) mask - mobilenetv2\033[0m", output)
 
         self.assertIn("  0) none", output)
         self.assertIn("  9) all", output)

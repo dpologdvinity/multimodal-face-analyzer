@@ -17,7 +17,6 @@ class Models:
     recognition_nets: dict = field(default_factory=dict)
     glasses_nets: dict = field(default_factory=dict)
     mask_nets: dict = field(default_factory=dict)
-    hair_color_nets: dict = field(default_factory=dict)
     eye_color_nets: dict = field(default_factory=dict)
     colorization_nets: dict = field(default_factory=dict)
     face_landmarks_nets: dict = field(default_factory=dict)
@@ -40,7 +39,7 @@ class Models:
             ("GAZE", self.gaze_nets),
             ("RECOGNITION", self.recognition_nets),
             ("GLASSES", self.glasses_nets),
-            ("MASK", self.mask_nets), ("HAIR_COLOR", self.hair_color_nets),
+            ("MASK", self.mask_nets),
             ("EYE_COLOR", self.eye_color_nets), ("COLORIZATION", self.colorization_nets),
             ("FACE_LANDMARKS", self.face_landmarks_nets),
             ("HANDS", self.hand_nets), ("RECONSTRUCTION_3D", self.reconstruction_3d_nets),

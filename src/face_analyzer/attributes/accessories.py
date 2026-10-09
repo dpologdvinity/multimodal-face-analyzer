@@ -1,4 +1,4 @@
-"""Accessories, mask, glasses, hair color, eye color, and texture artifact prediction."""
+"""Accessories, mask, glasses, eye color, and texture artifact prediction."""
 from __future__ import annotations
 
 from typing import Any
@@ -6,7 +6,7 @@ from typing import Any
 import cv2
 import numpy as np
 
-from ..core import GLASSES_THRESHOLD, MASK_LABELS, _is_skin_hsv
+from ..core import GLASSES_THRESHOLD, MASK_LABELS
 from ..liveness import texture_artifact_score
 from ._lock import _lock_for
 
@@ -33,52 +33,6 @@ def predict_mask_mobilenetv2(net: Any, face_bgr: np.ndarray) -> str:
     with _lock_for(net):
         probs = net(face_norm[np.newaxis, ...], training=False).numpy().flatten()
     return MASK_LABELS[int(np.argmax(probs))]
-
-
-def predict_hair_color_colorimetric(frame_bgr: np.ndarray, box: tuple[int, int, int, int]) -> str:
-    """Predict hair color from hair ROI using calibrated HSV rules."""
-    x1, y1, x2, y2 = box
-    fh, fw = frame_bgr.shape[:2]
-    w = x2 - x1
-    h = y2 - y1
-
-    cy1 = max(0, int(y1 - 0.3 * h))
-    cy2 = max(cy1 + 1, min(fh, int(y1 + 0.05 * h)))
-    cx1 = max(0, int(x1 + 0.05 * w))
-    cx2 = min(fw, max(cx1 + 1, int(x2 - 0.05 * w)))
-    crown = frame_bgr[cy1:cy2, cx1:cx2]
-
-    sy1 = max(0, int(y1))
-    sy2 = min(fh, max(sy1 + 1, int(y2 + 0.4 * h)))
-    sx1 = max(0, min(fw - 1, int(x2)))
-    sx2 = min(fw, max(sx1 + 1, int(x2 + 0.4 * w)))
-    side = frame_bgr[sy1:sy2, sx1:sx2]
-
-    if crown.size == 0:
-        return "unknown"
-
-    c_hsv = cv2.cvtColor(crown, cv2.COLOR_BGR2HSV)
-    skin_mask = _is_skin_hsv(c_hsv)
-    non_skin = c_hsv[~skin_mask]
-    sample = non_skin if non_skin.size > 0 else c_hsv.reshape(-1, 3)
-    med_h, med_s, med_v = (float(np.median(sample[..., i])) for i in range(3))
-
-    side_h, side_s, side_v = 0.0, 0.0, 0.0
-    if side.size > 0:
-        s_hsv = cv2.cvtColor(side, cv2.COLOR_BGR2HSV)
-        side_h, side_s, side_v = (float(np.median(s_hsv[..., i])) for i in range(3))
-
-    if med_v < 60 and (8 <= side_h <= 30 and 20 <= side_s <= 80 and side_v >= 70):
-        return "blonde"
-    if med_v < 60:
-        return "black"
-    if med_s < 35:
-        return "white" if med_v >= 65 else "grey"
-    if 8 < med_h < 35 and med_v > 120 and 20 <= med_s <= 140:
-        return "blonde"
-    if (med_h <= 8 or med_h >= 170) and med_s > 90:
-        return "red"
-    return "brown"
 
 
 def predict_eye_color_colorimetric(

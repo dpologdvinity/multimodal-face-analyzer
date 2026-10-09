@@ -31,7 +31,7 @@ from .sidebar import SidebarState
 # overlays, and liveness are cheap enough to keep running every frame.
 _THROTTLED_FIELDS = (
     "active_age", "active_gender", "active_emotion", "active_race", "active_recognition",
-    "active_glasses", "active_mask", "active_hair_color", "active_eye_color", "active_gaze",
+    "active_glasses", "active_mask", "active_eye_color", "active_gaze",
 )
 
 

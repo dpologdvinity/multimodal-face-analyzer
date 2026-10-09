@@ -23,7 +23,6 @@ from .attributes import (
     predict_emotion_hsemotion,
     predict_emotion_mini_xception,
     predict_eye_color_colorimetric,
-    predict_hair_color_colorimetric,
     run_3d_reconstruction,
     run_age_progression,
 )
@@ -175,7 +174,6 @@ __all__ = [
     "predict_emotion_mini_xception",
     "predict_eye_color_colorimetric",
     "predict_face_landmarks_mediapipe",
-    "predict_hair_color_colorimetric",
     "RACE_CANONICAL_LABELS",
     "RACE_LABELS_DEEPFACE",
     "RACE_LABELS_FAIRFACE",

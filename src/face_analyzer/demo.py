@@ -23,7 +23,6 @@ DEMO_MODELS: dict[str, frozenset[str]] = {
     "EMOTION_MODEL": frozenset({"ferplus"}),
     "FACE_LANDMARKS_MODEL": frozenset({"mediapipe"}),
     "COLORIZATION_MODEL": frozenset({"eccv16"}),
-    "HAIR_COLOR_MODEL": frozenset({"colorimetric"}),
 }
 DEMO_FACE_DETECTOR = "retinaface"
 

@@ -67,7 +67,6 @@ from .face_tasks import (
     _gaze_task,
     _gender_task,
     _glasses_task,
-    _hair_color_task,
     _head_pose_task,
     _liveness_task,
     _mask_task,
@@ -270,7 +269,6 @@ def _analyze_face(
         "recognition": submit(_recognition_task, models, config, inputs, shared.lbph_trained),
         "glasses": submit(_glasses_task, models, config, inputs),
         "mask": submit(_mask_task, models, config, inputs),
-        "hair_color": submit(_hair_color_task, models, config, inputs),
         "eye_color": submit(_eye_color_task, models, config, inputs),
         "liveness": submit(_liveness_task, config, inputs),
     }
@@ -319,7 +317,6 @@ def _face_record(idx: int, analysis: dict) -> dict:
     recognition_pairs, face_embedding = analysis["recognition"]
     glasses_pairs = analysis["glasses"]
     mask_pairs = analysis["mask"]
-    hair_color_pairs = analysis["hair_color"]
     eye_color_pairs = analysis["eye_color"]
     liveness_pairs, liveness_result = analysis["liveness"]
 
@@ -347,7 +344,7 @@ def _face_record(idx: int, analysis: dict) -> dict:
         "gaze": gaze_pairs, "identity": recognition_pairs,
         "eye_contact": [("derived", value) for value in eye_contact], "head_pose": head_pose_pairs,
         "glasses": glasses_pairs, "mask": mask_pairs,
-        "hair_color": hair_color_pairs, "eye_color": eye_color_pairs,
+        "eye_color": eye_color_pairs,
         "liveness": liveness_pairs,
     })
     model_results = [
@@ -359,7 +356,7 @@ def _face_record(idx: int, analysis: dict) -> dict:
             "eye contact": [("derived", value) for value in eye_contact],
             "head pose": head_pose_pairs,
             "glasses": glasses_pairs,
-            "mask": mask_pairs, "hair color": hair_color_pairs, "eye color": eye_color_pairs,
+            "mask": mask_pairs, "eye color": eye_color_pairs,
             "liveness": liveness_pairs,
         }.items()
         for model, value in pairs
@@ -386,7 +383,6 @@ def _face_record(idx: int, analysis: dict) -> dict:
         "identity": _format_results(recognition_pairs),
         "glasses": _format_results(glasses_pairs),
         "mask": _format_results(mask_pairs),
-        "hair_color": _format_results(hair_color_pairs),
         "eye_color": _format_results(eye_color_pairs),
         "liveness": [liveness_result.summary] if liveness_result is not None else [],
         "liveness_status": liveness_result.status if liveness_result is not None else None,

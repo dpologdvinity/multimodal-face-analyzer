@@ -24,7 +24,6 @@ from ..attributes import (
     predict_emotion_mini_xception,
     predict_eye_color_colorimetric,
     predict_glasses_mobilenet,
-    predict_hair_color_colorimetric,
     predict_mask_mobilenetv2,
 )
 from ..core.constants import (
@@ -290,19 +289,6 @@ def _mask_task(models: Models, config: AnalysisConfig, inputs: _FaceInputs) -> l
     return pairs
 
 
-def _hair_color_task(models: Models, config: AnalysisConfig, inputs: _FaceInputs) -> list:
-    """Classify hair color from the region above the (roll-aligned) face box."""
-    pairs = []
-    for key in config.active_hair_color:
-        if key not in models.hair_color_nets:
-            continue
-        started = time.perf_counter()
-        value = predict_hair_color_colorimetric(inputs.crop_frame, inputs.crop_box)
-        pairs.append((key, value))
-        _record_model_latency(config.metrics, "hair_color", key, started)
-    return pairs
-
-
 def _eye_color_task(models: Models, config: AnalysisConfig, inputs: _FaceInputs) -> list:
     """Classify eye color, using the face-mesh points when the landmarker found any."""
     face, points = inputs.face, inputs.points
@@ -345,7 +331,6 @@ __all__ = [
     "_recognition_task",
     "_glasses_task",
     "_mask_task",
-    "_hair_color_task",
     "_eye_color_task",
     "_liveness_task",
 ]

@@ -3,7 +3,6 @@ from ._lock import _lock_for
 from .accessories import (
     predict_eye_color_colorimetric,
     predict_glasses_mobilenet,
-    predict_hair_color_colorimetric,
     predict_mask_mobilenetv2,
     predict_texture_artifact_score,
 )
@@ -87,6 +86,5 @@ __all__ = [
     "predict_texture_artifact_score",
     "predict_glasses_mobilenet",
     "predict_mask_mobilenetv2",
-    "predict_hair_color_colorimetric",
     "predict_eye_color_colorimetric",
 ]

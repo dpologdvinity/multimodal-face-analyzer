@@ -89,7 +89,6 @@ class SidebarState:
     active_emotion: set[str] = field(default_factory=set)
     active_glasses: set[str] = field(default_factory=set)
     active_mask: set[str] = field(default_factory=set)
-    active_hair_color: set[str] = field(default_factory=set)
     active_eye_color: set[str] = field(default_factory=set)
     active_recognition: set[str] = field(default_factory=set)
     active_liveness: set[str] = field(default_factory=set)
@@ -107,7 +106,7 @@ class SidebarState:
             active_age=self.active_age, active_gender=self.active_gender, active_emotion=self.active_emotion,
             active_race=self.active_race, active_recognition=self.active_recognition,
             active_glasses=self.active_glasses, active_mask=self.active_mask,
-            active_hair_color=self.active_hair_color, active_eye_color=self.active_eye_color,
+            active_eye_color=self.active_eye_color,
             active_face_landmarks=self.active_face_landmarks, active_hands=self.active_hands,
             active_gaze=self.active_gaze,
             face_detector=self.face_detector,
@@ -145,7 +144,6 @@ def render_sidebar(models: Any) -> SidebarState:
         active_emotion = _model_checkboxes("EMOTION", models.emotion_nets, st, help="Estimated facial expression across seven categories.")
         active_glasses = _model_checkboxes("GLASSES", models.glasses_nets, st, help="Detects whether the face appears to wear glasses.")
         active_mask = _model_checkboxes("MASK", models.mask_nets, st, help="Detects whether the face appears to wear a mask.")
-        active_hair_color = _model_checkboxes("HAIR COLOR", models.hair_color_nets, st, help="Estimates dominant hair color.")
         active_eye_color = _model_checkboxes("EYE COLOR", models.eye_color_nets, st, help="Estimates dominant eye color.")
 
     with st.sidebar.expander("Identity and biometrics", expanded=False):
@@ -221,7 +219,7 @@ def render_sidebar(models: Any) -> SidebarState:
         conf_threshold=conf_threshold, face_detector=active_face_detector,
         active_age=active_age, active_gender=active_gender, active_race=active_race,
         active_emotion=active_emotion, active_glasses=active_glasses, active_mask=active_mask,
-        active_hair_color=active_hair_color, active_eye_color=active_eye_color,
+        active_eye_color=active_eye_color,
         active_recognition=active_recognition, active_liveness=active_liveness, active_gaze=active_gaze,
         active_colorization=active_colorization, active_face_landmarks=active_face_landmarks,
         active_hands=active_hands, search_gallery=search_gallery, enable_crowd_count=enable_crowd_count,

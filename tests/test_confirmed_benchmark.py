@@ -14,8 +14,8 @@ _SPEC.loader.exec_module(benchmark)
 
 class ConfirmedBenchmarkTests(unittest.TestCase):
     def test_reads_exact_labels_without_widening_age(self):
-        labels = benchmark.parse_confirmed("### portrait.jpg\n* Age = 77\n* Hair = White\n* Eyes = Dark brown / Black\n* Race = White\n")
-        self.assertEqual(labels, {"portrait.jpg": {"age": 77, "hair color": ["white"], "eye color": ["brown", "black"]}})
+        labels = benchmark.parse_confirmed("### portrait.jpg\n* Age = 77\n* Eyes = Dark brown / Black\n* Race = White\n")
+        self.assertEqual(labels, {"portrait.jpg": {"age": 77, "eye color": ["brown", "black"]}})
 
     def test_rejects_duplicate_or_unsafe_image_names(self):
         for text in ("### ../portrait.jpg\n* Age = 77", "### p.jpg\n* Age = 3\n### p.jpg\n* Age = 4"):

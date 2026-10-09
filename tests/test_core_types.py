@@ -11,7 +11,6 @@ from face_analyzer.core.constants import (
     RACE_CANONICAL_LABELS,
 )
 from face_analyzer.core.image_utils import (
-    _is_skin_hsv,
     apply_image_adjustments,
     crop_region,
     face_crop_bounds,
@@ -59,16 +58,6 @@ def test_apply_image_adjustments():
     assert brightened.shape == img.shape
     assert brightened.dtype == np.uint8
     assert np.all(brightened > img)
-
-
-def test_is_skin_hsv():
-    # HSV pixel: H=15, S=80, V=100 is typically skin
-    skin_pixel = np.array([[[15, 80, 100]]], dtype=np.uint8)
-    assert _is_skin_hsv(skin_pixel)[0, 0]
-
-    # Blue pixel: H=120, S=200, V=200 is not skin
-    blue_pixel = np.array([[[120, 200, 200]]], dtype=np.uint8)
-    assert not _is_skin_hsv(blue_pixel)[0, 0]
 
 
 def test_crop_helpers():

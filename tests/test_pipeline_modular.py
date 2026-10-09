@@ -196,7 +196,7 @@ class TestRaceHeadline(unittest.TestCase):
         e = ([], None)
         rec = _face_record(0, {"inputs": inputs, "age": e, "gender": e, "emotion": e, "race": race,
                                "gaze": [], "head_pose": [], "recognition": e, "glasses": [], "mask": [],
-                               "hair_color": [], "eye_color": [], "liveness": e})
+                               "eye_color": [], "liveness": e})
         self.assertEqual(rec["headline"]["race"], "White")
         self.assertEqual(rec["raw_columns"]["race_best"], "White (fairface)")
         self.assertNotIn("race_fused", rec["raw_columns"])
@@ -223,7 +223,7 @@ class TestGenderHeadline(unittest.TestCase):
         e = ([], None)
         rec = _face_record(0, {"inputs": inputs, "age": e, "gender": gender, "emotion": e, "race": e,
                                "gaze": [], "head_pose": [], "recognition": e, "glasses": [], "mask": [],
-                               "hair_color": [], "eye_color": [], "liveness": e})
+                               "eye_color": [], "liveness": e})
         self.assertEqual(rec["headline"]["gender"], "Female")
         self.assertEqual(rec["raw_columns"]["gender_best"], "Female (mivolo)")
         self.assertNotIn("gender_fused", rec["raw_columns"])

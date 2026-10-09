@@ -25,11 +25,6 @@ class NativeModelSelectionTests(unittest.TestCase):
         with patch.dict(os.environ, {"AGE_MODEL": ""}, clear=True):
             self.assertFalse(native_model_selected("AGE_MODEL", "caffe"))
 
-    def test_hair_color_selection_can_disable_colorimetric_backend(self):
-        """Confirm empty HAIR_COLOR_MODEL env var blocks colorimetric backend."""
-        with patch.dict(os.environ, {"HAIR_COLOR_MODEL": ""}, clear=True):
-            self.assertFalse(native_model_selected("HAIR_COLOR_MODEL", "colorimetric"))
-
     def test_demo_mode_limits_backends_to_the_demo_allowlist(self):
         """Allow only demo backends in demo mode, even when an explicit selection lists more."""
         with patch.dict(os.environ, {"FACE_ANALYZER_DEMO": "1", "AGE_MODEL": "caffe,fairface"}, clear=True):

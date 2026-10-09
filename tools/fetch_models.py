@@ -85,7 +85,7 @@ def select_entries(entries: list[dict], tokens: list[str] | None, select_all: bo
     known_keys = {key for _, key in known_pairs}
     unknown = sorted(f"{arg}={key}" for arg, key in pairs - known_pairs) + sorted(bare - known_keys)
     for name in unknown:
-        # Keys without weight files (lbph, colorimetric) are valid selections with nothing to fetch.
+        # Keys without weight files (such as lbph) are valid selections with nothing to fetch.
         print(f"note: no weight files for {name}", file=sys.stderr)
     return [
         entry
