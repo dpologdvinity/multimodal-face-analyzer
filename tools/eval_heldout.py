@@ -4,7 +4,8 @@ Two phases, both run by default:
 
 1. **Inference.** Draws a race-stratified sample (fixed seed), runs the real analyze_frame()
    on each image with every loaded age/gender/race/emotion backend and one detector (SSD unless
-   --detector picks another; --no-mediapipe turns off MediaPipe landmark alignment), and appends each image's raw per-backend outputs (probabilities where the backend exposes them)
+   --detector picks another; --no-mediapipe turns off MediaPipe landmark alignment), and
+   appends each image's raw per-backend outputs (probabilities where the backend exposes them)
    to data/eval_cache/predictions.jsonl. Already-cached rows are skipped, so the run resumes.
 2. **Scoring.** Re-scores the cached outputs only (no model imports): per-backend accuracy,
    the app's headline answers via the shipped select_gender/select_race/select_age, the
