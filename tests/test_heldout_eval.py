@@ -267,5 +267,77 @@ class ExtraAgeTests(unittest.TestCase):
         self.assertEqual(report["cache_vs_display_mismatches"]["best_age"], 0)
 
 
+class RunInferenceFlagTests(unittest.TestCase):
+    """--detector and --no-mediapipe, checked with a stub loader: no data and no models."""
+
+    def setUp(self):
+        from face_analyzer import inference
+
+        self.inference = inference
+        names = [*eval_heldout.UNUSED_FEATURE_ENV, "FACE_LANDMARKS_MODEL", "FACE_ANALYZER_ORT_THREADS"]
+        saved = {name: os.environ.get(name) for name in names}
+        for name in names:
+            os.environ[name] = "set"
+        self.addCleanup(self._restore, saved)
+        self.seen_env: dict = {}
+
+    @staticmethod
+    def _restore(saved):
+        for name, value in saved.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+
+    def _run(self, models, detector="ssd", mediapipe=True):
+        """Call run_inference with load_models stubbed to record the environment it saw."""
+        import tempfile
+        from unittest.mock import MagicMock, patch
+
+        def load_models():
+            self.seen_env = dict(os.environ)
+            return models
+
+        # pyarrow is an eval-only dependency, absent from CI; nothing reaches the parquet here.
+        pyarrow = MagicMock()
+        with tempfile.TemporaryDirectory() as cache, \
+                patch.dict(sys.modules, {"pyarrow": pyarrow, "pyarrow.parquet": pyarrow.parquet}), \
+                patch.object(self.inference, "load_models", load_models):
+            eval_heldout.run_inference([0], {"race": [0]}, Path(cache) / "none.parquet", Path(cache),
+                                       set(), 0.5, 0, detector, mediapipe)
+
+    def _loaded(self, detector, landmarks=False):
+        """A Models stub with one detector and, optionally, the MediaPipe face landmarker."""
+        slot = {"ssd": "face_net", "yolo": "yolo_face_nets", "scrfd": "scrfd_face_nets",
+                "retinaface": "retinaface_nets"}[detector]
+        net = object() if detector == "ssd" else {detector: object()}
+        return self.inference.Models(**{"face_net": None, slot: net,
+                                        "face_landmarks_nets": {"mediapipe": object()} if landmarks else {}})
+
+    def test_keeps_the_selected_detector_and_blanks_the_others(self):
+        # A Models stub without the requested detector stops the run right after loading.
+        with self.assertRaises(SystemExit):
+            self._run(self._loaded("ssd"), detector="retinaface")
+        self.assertEqual(self.seen_env["RETINAFACE_MODEL"], "set")
+        for other in ("YOLO_FACE_MODEL", "SCRFD_FACE_MODEL"):
+            self.assertEqual(self.seen_env[other], "")
+        self.assertEqual(self.seen_env["FACE_ANALYZER_ORT_THREADS"], "set")
+
+    def test_no_mediapipe_blanks_the_face_landmarker_selection(self):
+        for mediapipe, expected in ((False, ""), (True, "set")):
+            os.environ["FACE_LANDMARKS_MODEL"] = "set"
+            with self.subTest(mediapipe=mediapipe), self.assertRaises(SystemExit):
+                self._run(self._loaded("ssd"), detector="retinaface", mediapipe=mediapipe)
+            self.assertEqual(self.seen_env["FACE_LANDMARKS_MODEL"], expected)
+
+    def test_exits_when_the_requested_detector_is_not_loaded(self):
+        with self.assertRaisesRegex(SystemExit, "detector 'retinaface' is not loaded"):
+            self._run(self._loaded("ssd"), detector="retinaface")
+
+    def test_exits_when_mediapipe_loads_despite_no_mediapipe(self):
+        with self.assertRaisesRegex(SystemExit, "MediaPipe face landmarker loaded"):
+            self._run(self._loaded("retinaface", landmarks=True), detector="retinaface", mediapipe=False)
+
+
 if __name__ == "__main__":
     unittest.main()
