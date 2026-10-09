@@ -9,7 +9,7 @@ import subprocess
 import sys
 
 REPO = "https://github.com/dpologdvinity/multimodal-face-analyzer.git"
-COMMIT = "fbdfb383cda8aad4d38bce2c9118c0e1930753ba"
+COMMIT = "ecb8e824b6a42751ad1ae88c75359b9c58d66460"
 SRC = "/tmp/age/src"
 EXTRA_ARGS = []
 
