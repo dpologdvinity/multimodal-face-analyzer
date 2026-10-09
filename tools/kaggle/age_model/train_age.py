@@ -255,6 +255,8 @@ def main() -> None:
     parser.add_argument("--aux-weight", type=float, default=0.0, help="gender+race loss weight; 0 = off")
     parser.add_argument("--ema", type=float, default=0.9995)
     parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--time-budget-min", type=float, default=170.0,
+                        help="wall-clock budget for setup plus training; the schedule shrinks to fit")
     parser.add_argument("--smoke", action="store_true", help="tiny CPU-safe run to check the plumbing")
     args = parser.parse_args()
 
@@ -331,7 +333,10 @@ def main() -> None:
     best_state = None
     stale = 0
     step = 0
-    for epoch in range(1, args.epochs + 1):
+    epoch = 0
+    loop_started = time.time()
+    while epoch < args.epochs:
+        epoch += 1
         model.train()
         running, seen = 0.0, 0
         for x, age, gender, race in train_loader:
@@ -366,10 +371,21 @@ def main() -> None:
             probs, truth = predict(net, select_loader, device)
             scores[name] = metrics(probs, truth)
         emit({"event": "epoch", "epoch": epoch, "train_loss": round(running / max(seen, 1), 4), **scores})
+        if epoch == 1:
+            # Shorten the cosine schedule up front if the planned epochs would overrun the GPU budget.
+            per_epoch = time.time() - loop_started
+            remaining = args.time_budget_min * 60 - (time.time() - started)
+            fits = max(2, 1 + int(remaining // per_epoch))
+            if fits < args.epochs:
+                emit({"event": "schedule_shortened", "epochs": fits, "planned": args.epochs,
+                      "epoch_minutes": round(per_epoch / 60, 1)})
+                args.epochs = fits
+                total_steps = steps_per_epoch * args.epochs
         name = max(scores, key=lambda key: (scores[key]["accuracy"], scores[key]["within_one"]))
         if scores[name]["accuracy"] > best["accuracy"]:
             best = {**scores[name], "epoch": epoch, "weights": name}
             best_state = copy.deepcopy((model if name == "raw" else ema.module).state_dict())
+            torch.save(best_state, args.out / "age_model_best.pt")
             stale = 0
         else:
             stale += 1
