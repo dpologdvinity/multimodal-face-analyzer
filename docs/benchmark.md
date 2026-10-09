@@ -26,9 +26,15 @@ not labelled in FairFace and is not evaluated; MiVOLO's training data is not pub
 overlap with FairFace cannot be ruled out. The race headline used to be an equal-weight fusion,
 which scored 63.3% (60.5-66.3) here: `deepface`'s near one-hot probabilities dominated the blend,
 and weights fitted on the fit half only reached 70.1%. It now names its most reliable model
-(`fairface`), 13.3 points (10.2 to 16.4) above the previous fusion. Full tables, mappings, the fitted
-weights and every caveat: [eval/heldout_fairface.md](eval/heldout_fairface.md); raw numbers:
-[eval/heldout_fairface.json](eval/heldout_fairface.json).
+(`fairface`), 13.3 points (10.2 to 16.4) above the previous fusion. The gender headline used to
+be a weighted fusion that always returned MiVOLO's answer; it now names MiVOLO as its best model,
+with identical results. A learned stacker (one logistic regression per attribute over every
+backend's output, fitted on the fit half) did not beat the shipped answer for any attribute:
++0.0 points for gender (interval +0.0 to +0.0), -1.4 for race (-3.4 to +0.7) and +0.5 for age
+(-1.8 to +2.8), so none ships. Full tables, mappings, the fitted weights, the stacker and every
+caveat: [eval/heldout_fairface.md](eval/heldout_fairface.md); raw numbers:
+[eval/heldout_fairface.json](eval/heldout_fairface.json) and
+[eval/stacker_fairface.json](eval/stacker_fairface.json).
 
 ## In-sample 75-face set
 
@@ -60,7 +66,7 @@ Detection recall was 100% on all 75 faces.
 
 | Feature | Combined | Best single model | Weakest active model |
 | ------- | -------- | ----------------- | -------------------- |
-| Gender  | **100%** | `mivolo` 100% | `caffe` / `deepface` 86.7% |
+| Gender  | **100%** (previous fusion, = `mivolo`) | `mivolo` 100% | `caffe` / `deepface` 86.7% |
 | Emotion | **100%** | `dan` / `hsemotion` / `ferplus` 100% | `mini_xception` 95.2% |
 | Race    | **96.0%** (previous fusion) | `deepface` 94.7% | `fairface` 93.3% |
 | Age     | **93.3%** (= `mivolo`) | `mivolo` 93.3% | `caffe` 62.7% |
@@ -94,32 +100,31 @@ far lower there (for example `deepface` race, 94.7% here and 63.0% on FairFace).
 ## Combined answers
 
 With more than one model active for a feature, the per-face card leads with a single combined
-answer and lists every individual model underneath. Gender and emotion are fused; age and race
-instead name their best available model.
+answer and lists every individual model underneath. Emotion is fused; age, gender and race
+instead name their best available model. No attribute is stacked: a learned stacker was tested
+on held-out data and did not beat the best model (see [Why no learned stacker](#why-no-learned-stacker)).
 
 | Feature | Combined row | How |
 | ------- | ------------ | --- |
-| Gender  | `fused` | Weighted mean of each model's P(Male) |
 | Emotion | `fused` | Weighted vote over canonical emotion names (`happy` and `happiness` are one vote, not two) |
 | Age     | `best (<model>)` | The most reliable backend present: `mivolo` > `fairface` > `dex` > `caffe` |
+| Gender  | `best (<model>)` | The most reliable backend present: `mivolo` > `fairface` > `deepface` > `caffe`, by held-out FairFace accuracy |
 | Race    | `best (<model>)` | The most reliable backend present: `fairface` > `deepface`, by held-out FairFace accuracy |
 
-The weights live in `src/face_analyzer/core/constants.py`:
+The weights and orders live in `src/face_analyzer/core/constants.py`:
 
 | Feature | Weights |
 | ------- | ------- |
-| Gender  | `mivolo` 3.0, `fairface` 2.0, `caffe` 0.5, `deepface` 0.5 |
 | Emotion | `dan` 3.0, `hsemotion` 3.0, `ferplus` 2.0, `mini_xception` 1.0 |
 | Age order | `mivolo`, `fairface`, `dex`, `caffe` (`AGE_MODEL_RELIABILITY`) |
+| Gender order | `mivolo`, `fairface`, `deepface`, `caffe` (`GENDER_MODEL_RELIABILITY`) |
 | Race order | `fairface`, `deepface` (`RACE_MODEL_RELIABILITY`) |
 
-The weights are hand-set, not fitted. They are ordered by each model's accuracy on the 75-face
-set, so a weaker backend contributes less to the combined answer. They
-were chosen on the same set they are scored on, with no held-out split, which is why the
-75-face combined figures are in-sample. The held-out evaluation tests them against weights fitted
-on a separate half; see [eval/heldout_fairface.md](eval/heldout_fairface.md#fusion-weights) for
-that comparison (the shipped gender weights are unchanged). Re-run `tools/benchmark.py` after changing any model
-or its preprocessing, and revisit the weights if the ordering moves.
+The emotion weights are hand-set, not fitted. They are ordered by each model's accuracy on the
+75-face set, so a weaker backend contributes less to the combined answer. They were chosen on
+the same set they are scored on, with no held-out split, which is why the 75-face combined
+figures are in-sample. Re-run `tools/benchmark.py` after changing any model or its
+preprocessing, and revisit the weights if the ordering moves.
 
 ### Why age is not fused
 
@@ -129,6 +134,16 @@ MiVOLO only when both other backends disagreed with it. The age backends fail on
 (elderly faces read young in all of them), so averaging moves the answer without correcting it.
 The headline therefore names the most reliable model present instead of blending.
 
+### Why gender is not fused
+
+Gender used to be a weighted mean of each model's P(Male), with hand-set weights (`mivolo` 3.0,
+`fairface` 2.0, `caffe` 0.5, `deepface` 0.5). MiVOLO only gives a hard label, so its P(Male) is 0
+or 1 and carries half the total weight: the fusion could never overrule it, and on the held-out
+test half it gave MiVOLO's answer on every face. Weights fitted on the held-out fit half scored
+0.4 points lower (interval -0.9 to 0.0; see
+[eval/heldout_fairface.md](eval/heldout_fairface.md#fusion-weights)). The headline therefore names
+the most reliable model present, which gives the same answers without calling them a fusion.
+
 ### Why race is not fused
 
 Race used to be an equal-weight blend of the two backends' canonical class probabilities. On the
@@ -137,6 +152,16 @@ probabilities are near one-hot (mean top probability 0.999), so the blend follow
 whenever the two disagreed, and fitted weights only reached 70.1%. The race headline therefore
 names the most reliable model present, ordered by that held-out accuracy. Both race backends were
 trained on FairFace, so the ordering rests on in-distribution evidence.
+
+### Why no learned stacker
+
+`tools/fit_stacker.py` fitted one L2-regularised logistic regression per attribute on every
+backend's cached output (C chosen by 5-fold CV inside the held-out fit half) and scored it once
+on the test half. It was to ship only where the paired-bootstrap interval against the shipped
+answer lay above zero. None did: gender +0.0 points (+0.0 to +0.0; it learned to follow MiVOLO),
+race -1.4 (-3.4 to +0.7) and age +0.5 (-1.8 to +2.8). It was fitted on FairFace, so even a pass
+would have been in-distribution evidence only. Details:
+[eval/heldout_fairface.md](eval/heldout_fairface.md#learned-stacker).
 
 ## Confirmed-age development set
 

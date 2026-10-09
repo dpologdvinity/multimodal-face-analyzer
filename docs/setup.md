@@ -337,10 +337,10 @@ multimodal-face-analyzer/
 ├── src/face_analyzer/             # the installable face_analyzer package
 │   ├── app.py                     # Streamlit entry point: page setup, model load, sidebar -> tabs wiring
 │   ├── inference.py               # facade re-exporting the modules below
-│   ├── core/                      # constants (paths, fusion weights), types (Models), image utils
+│   ├── core/                      # constants (paths, fusion weights, model rankings), types (Models), image utils
 │   ├── detectors/                 # factory + backends: SSD, YOLO, SCRFD, RetinaFace
 │   ├── attributes/                # per-face predictors: age, gender, emotion, race, accessories, ...
-│   ├── fusion/                    # combined answers: fuse_gender/emotion, select_age/race
+│   ├── fusion/                    # combined answers: fuse_emotion, select_age/gender/race
 │   ├── pipeline/                  # loader (load_models), analyzer (analyze_frame), config (AnalysisConfig),
 │   │                              #   stages, face_tasks, cache, landmarks, drawing, tracker
 │   ├── ui/                        # Streamlit views: theme (+ theme.css), sidebar, adjustments, results, live webcam tab
@@ -349,7 +349,8 @@ multimodal-face-analyzer/
 │   └── nets/                      # vendored third-party model architectures
 ├── tests/                         # pytest suite
 ├── tools/                         # fetch_models.py, benchmark.py, dump_predictions.py, score_fusion.py, ground_truth.json,
-│                                  #   fetch_fairface.py + eval_heldout.py (held-out FairFace eval)
+│                                  #   fetch_fairface.py + eval_heldout.py (held-out FairFace eval),
+│                                  #   fit_stacker.py (learned stacker, tested on that eval's cache)
 └── docs/                          # this documentation
 ```
 

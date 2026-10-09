@@ -20,8 +20,8 @@ from face_analyzer.fusion import (
     _sanitize_column_name,
     canonical_race_probabilities,
     fuse_emotion,
-    fuse_gender,
     select_age,
+    select_gender,
     select_race,
     with_headline,
 )
@@ -54,21 +54,23 @@ class SelectAgeTests(unittest.TestCase):
         )
 
 
-class FuseGenderTests(unittest.TestCase):
-    """fuse_gender: majority rule by weighted mean of P(Male)."""
+class SelectGenderTests(unittest.TestCase):
+    """select_gender: picks the most reliable gender model rather than blending."""
 
-    def test_weights_more_accurate_model_higher(self):
-        # mivolo (weight 3.0) confidently says Male; caffe (weight 0.5) says Female.
-        self.assertEqual(fuse_gender({"mivolo": 1.0, "caffe": 0.0}), "Male")
-        self.assertEqual(fuse_gender({"mivolo": 0.0, "caffe": 1.0}), "Female")
+    def test_picks_mivolo_over_every_other_model(self):
+        self.assertEqual(
+            select_gender({"caffe": "Female", "deepface": "Female", "fairface": "Female", "mivolo": "Male"}),
+            ("Male", "mivolo"),
+        )
+
+    def test_falls_back_down_the_ranking(self):
+        self.assertEqual(select_gender({"caffe": "Male", "fairface": "Female"}), ("Female", "fairface"))
+        self.assertEqual(select_gender({"caffe": "Male", "deepface": "Female"}), ("Female", "deepface"))
 
     def test_needs_at_least_two_models(self):
-        self.assertIsNone(fuse_gender({"mivolo": 1.0}))
-
-    def test_tie_resolved_to_male_at_boundary(self):
-        # Exactly 0.5 maps to Male.
-        result = fuse_gender({"fairface": 0.5, "caffe": 0.5})
-        self.assertEqual(result, "Male")
+        self.assertIsNone(select_gender({"mivolo": "Male"}))
+        self.assertIsNone(select_gender({"mivolo": "Male", "caffe": ""}))
+        self.assertIsNone(select_gender({}))
 
 
 class SelectRaceTests(unittest.TestCase):

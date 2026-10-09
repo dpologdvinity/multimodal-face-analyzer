@@ -7,9 +7,10 @@ Two phases, both run by default:
    appends each image's raw per-backend outputs (probabilities where the backend exposes them)
    to data/eval_cache/predictions.jsonl. Already-cached rows are skipped, so the run resumes.
 2. **Scoring.** Re-scores the cached outputs only (no model imports): per-backend accuracy,
-   the app's combined answers via the shipped fuse_gender/select_race/select_age, the
-   equal-weight race fusion the app shipped before select_race, fusion weights fitted on the
-   fit half, and 95% bootstrap CIs on the test half.
+   the app's headline answers via the shipped select_gender/select_race/select_age, the
+   weighted gender and equal-weight race fusions the app shipped before them, fusion weights
+   fitted on the fit half, and 95% bootstrap CIs on the test half. tools/fit_stacker.py fits
+   and tests a learned stacker on the same cache and split.
 
     python tools/fetch_fairface.py
     FACE_ANALYZER_MODEL_DIR=/path/to/models python tools/eval_heldout.py [--n 2000] [--score-only]
@@ -28,14 +29,12 @@ import time
 from collections.abc import Sequence
 from datetime import date
 from pathlib import Path
-from unittest import mock
 
 import numpy as np
 
 from face_analyzer.core.constants import (
     AGE_LIST_RANGES,
     FAIRFACE_AGE_RANGES,
-    GENDER_FUSION_WEIGHTS,
     MODEL_DIR,
     RACE_CANONICAL_LABELS,
     RACE_LABEL_TO_CANONICAL,
@@ -44,8 +43,8 @@ from face_analyzer.core.constants import (
 )
 from face_analyzer.fusion import (
     canonical_race_probabilities,
-    fuse_gender,
     select_age,
+    select_gender,
     select_race,
 )
 from face_analyzer.fusion.ensembles import _format_race_label
@@ -64,8 +63,10 @@ AGE_BACKENDS = ("mivolo", "fairface", "dex", "caffe")
 GENDER_BACKENDS = ("mivolo", "fairface", "caffe", "deepface")
 RACE_BACKENDS = ("fairface", "deepface")
 CANONICAL_RACES = tuple(RACE_CANONICAL_LABELS)
-# The equal-weight race blend the app shipped before select_race; reproduced here (the app no
-# longer has it) so the cached run can still be compared against it.
+# The weighted gender and equal-weight race blends the app shipped before select_gender and
+# select_race; reproduced here (the app no longer has them) so the cached run, recorded while
+# they shipped, can still be checked and compared against them.
+PREVIOUS_GENDER_FUSION_WEIGHTS = {"mivolo": 3.0, "fairface": 2.0, "caffe": 0.5, "deepface": 0.5}
 PREVIOUS_RACE_FUSION_WEIGHTS = {"fairface": 1.0, "deepface": 1.0}
 # The previous fusion displayed canonical names ("Latino"), not all backend label spellings.
 CANONICAL_BY_DISPLAY = {label: key for key, label in RACE_CANONICAL_LABELS.items()}
@@ -168,7 +169,7 @@ def shown_top1(label: str) -> str:
 
 
 def gender_male_probabilities(raw: dict) -> dict[str, float]:
-    """Rebuild the per-backend P(Male) that _gender_task feeds to fuse_gender."""
+    """Rebuild the per-backend P(Male) that the previous gender fusion blended."""
     out: dict[str, float] = {}
     if "gender_probs/caffe" in raw:
         probs = np.asarray(raw["gender_probs/caffe"], dtype=float)
@@ -263,12 +264,15 @@ def best_age_bucket(raw: dict) -> tuple[int, str] | None:
     return None if chosen is None else (age_to_bucket(float(chosen[0])), chosen[1])
 
 
-def fused_gender(raw: dict, weights: dict[str, float] | None = None) -> str | None:
-    """Run the shipped fuse_gender, optionally under substitute weights."""
-    if weights is None:
-        return fuse_gender(gender_male_probabilities(raw))
-    with mock.patch.dict(GENDER_FUSION_WEIGHTS, weights, clear=True):
-        return fuse_gender(gender_male_probabilities(raw))
+def previous_fused_gender(raw: dict, weights: dict[str, float] | None = None) -> str | None:
+    """Reproduce the previous app's gender fusion (weighted mean of P(Male)), optionally re-weighted."""
+    usable = {key: value for key, value in gender_male_probabilities(raw).items() if np.isfinite(value)}
+    if len(usable) < 2:
+        return None
+    weights = PREVIOUS_GENDER_FUSION_WEIGHTS if weights is None else weights
+    used = np.array([weights.get(key, 1.0) for key in usable])
+    probability = float(np.array(list(usable.values())) @ used / used.sum())
+    return "Male" if probability >= 0.5 else "Female"
 
 
 def previous_fused_race_label(raw: dict, weights: dict[str, float] | None = None) -> str | None:
@@ -293,6 +297,11 @@ def previous_fused_race(raw: dict, weights: dict[str, float] | None = None) -> s
     """The previous race fusion's strict top-1 canonical key, optionally under substitute weights."""
     label = previous_fused_race_label(raw, weights)
     return None if label is None else CANONICAL_BY_DISPLAY.get(shown_top1(label))
+
+
+def best_gender(raw: dict) -> tuple[str, str] | None:
+    """The app's headline gender (select_gender) as (label, chosen backend)."""
+    return select_gender(gender_labels(raw))
 
 
 def best_race(raw: dict) -> tuple[str, str] | None:
@@ -556,14 +565,25 @@ def score(records: list[dict], fit_rows: list[int], test_rows: list[int], seed: 
     test_faces = [r for r in test if _detected(r)]
     fit_faces = [r for r in fit if _detected(r)]
 
-    # Gender: every backend's displayed label, the shipped fusion, fitted fusion.
+    # Gender: every backend's displayed label, the shipped best-model headline, and the previous
+    # weighted fusion it replaced (plus fitted weights, below).
     gender: dict = {"backends": {}}
     for key in GENDER_BACKENDS:
         if any(key in gender_labels(r["raw"]) for r in test_faces):
             gender["backends"][key] = summary(
                 [gender_labels(r["raw"]).get(key) == _truth(r)["gender"] for r in test_faces])
-    shipped_gender = [fused_gender(r["raw"]) == _truth(r)["gender"] for r in test_faces]
-    gender["fused_shipped"] = summary(shipped_gender)
+    best_genders = [best_gender(r["raw"]) for r in test_faces]
+    shipped_gender = [chosen is not None and chosen[0] == _truth(r)["gender"]
+                      for chosen, r in zip(best_genders, test_faces, strict=True)]
+    previous_gender = [previous_fused_gender(r["raw"]) == _truth(r)["gender"] for r in test_faces]
+    gender["best_shipped"] = {
+        **summary(shipped_gender),
+        "chosen_backend": {key: sum(1 for chosen in best_genders if chosen and chosen[1] == key)
+                           for key in GENDER_BACKENDS},
+    }
+    gender["fused_previous"] = summary(previous_gender)
+    gender["best_minus_fused_previous"] = summary(
+        np.asarray(shipped_gender, float) - np.asarray(previous_gender, float))
 
     # Race: canonical top-1 per backend (+ FairFace's native 7 classes), the shipped best-model
     # headline, and the previous equal-weight fusion it replaced (plus fitted weights, below).
@@ -636,7 +656,7 @@ def score(records: list[dict], fit_rows: list[int], test_rows: list[int], seed: 
                                         for r in fit_faces])) for key in race["backends"]}
     fitted_gender_weights = log_odds_weights(fit_gender_acc, 2)
     fitted_race_weights = log_odds_weights(fit_race_acc, len(CANONICAL_RACES))
-    fitted_gender = [fused_gender(r["raw"], fitted_gender_weights) == _truth(r)["gender"]
+    fitted_gender = [previous_fused_gender(r["raw"], fitted_gender_weights) == _truth(r)["gender"]
                      for r in test_faces]
     fitted_race = [previous_fused_race(r["raw"], fitted_race_weights) == _truth(r)["race"]
                    for r in test_faces]
@@ -645,12 +665,16 @@ def score(records: list[dict], fit_rows: list[int], test_rows: list[int], seed: 
     result["fusion"] = {
         "method": "log((K-1)*acc/(1-acc)) of each backend's fit-half top-1 accuracy, clipped at 0",
         "gender": {
-            "shipped_weights": {key: GENDER_FUSION_WEIGHTS.get(key, 1.0) for key in gender["backends"]},
+            "previous_weights": {key: PREVIOUS_GENDER_FUSION_WEIGHTS.get(key, 1.0)
+                                 for key in gender["backends"]},
             "fit_half_accuracy": {key: round(value, 4) for key, value in fit_gender_acc.items()},
             "fitted_weights": fitted_gender_weights,
-            "test_shipped": gender["fused_shipped"], "test_fitted": gender["fused_fitted"],
-            "test_fitted_minus_shipped": summary(
-                np.asarray(fitted_gender, float) - np.asarray(shipped_gender, float)),
+            "test_previous": gender["fused_previous"], "test_fitted": gender["fused_fitted"],
+            "test_fitted_minus_previous": summary(
+                np.asarray(fitted_gender, float) - np.asarray(previous_gender, float)),
+            "test_best_shipped": summary(shipped_gender),
+            "test_best_minus_fitted": summary(
+                np.asarray(shipped_gender, float) - np.asarray(fitted_gender, float)),
         },
         # The app no longer fuses race; this compares the previous equal weights with fitted ones.
         "race": {
@@ -668,8 +692,9 @@ def score(records: list[dict], fit_rows: list[int], test_rows: list[int], seed: 
     }
 
     # The cache must reproduce what analyze_frame displayed; count any disagreement. The cache
-    # predates select_race, so its race headline is the previous fusion ("race/fused").
-    mismatches = {"gender": 0, "race": 0, "best_age": 0, "fused_gender": 0,
+    # predates select_gender and select_race, so its gender and race headlines are the previous
+    # fusions ("gender/fused", "race/fused").
+    mismatches = {"gender": 0, "race": 0, "best_age": 0, "previous_fused_gender": 0,
                   "previous_fused_race": 0}
     for r in test_faces + fit_faces:
         out = r["outputs"]
@@ -681,7 +706,7 @@ def score(records: list[dict], fit_rows: list[int], test_rows: list[int], seed: 
                 mismatches["race"] += shown_top1(out.get(f"race/{key}", "")) != labels[int(np.argmax(probs))]
         chosen = select_age(age_estimates(r["raw"]))
         mismatches["best_age"] += out.get("age/best") != (f"{chosen[0]} ({chosen[1]})" if chosen else None)
-        mismatches["fused_gender"] += out.get("gender/fused") != fused_gender(r["raw"])
+        mismatches["previous_fused_gender"] += out.get("gender/fused") != previous_fused_gender(r["raw"])
         mismatches["previous_fused_race"] += (out.get("race/fused")
                                               != previous_fused_race_label(r["raw"]))
     result["cache_vs_display_mismatches"] = mismatches
@@ -716,7 +741,7 @@ def markdown_tables(report: dict) -> str:
             f"{_pct(age['bucket_accuracy']) if age else '-'} | "
             f"{offset_text(age['mean_bucket_offset']) if age else '-'} |")
     best = s["age"]["best_shipped"]
-    lines.append(f"| **App (shipped)** | **{_pct(s['gender']['fused_shipped'])}** | "
+    lines.append(f"| **App (shipped)** | **{_pct(s['gender']['best_shipped'])}** | "
                  f"**{_pct(s['race']['best_shipped'])}** | **{_pct(best['bucket_accuracy'])}** | "
                  f"{offset_text(best['mean_bucket_offset'])} |")
 
@@ -725,19 +750,20 @@ def markdown_tables(report: dict) -> str:
         return f"{100 * summary_['value']:+.1f} pp ({100 * low:+.1f} to {100 * high:+.1f})"
 
     gender_fusion, race_fusion = s["fusion"]["gender"], s["fusion"]["race"]
-    lines += ["", "| Fusion | Shipped (gender) / previous (race) weights | Fitted weights | Difference |",
-              "| ------ | ------------------------------------------ | -------------- | ---------- |",
-              f"| gender | {_pct(gender_fusion['test_shipped'])} | {_pct(gender_fusion['test_fitted'])} | "
-              f"{diff_text(gender_fusion['test_fitted_minus_shipped'])} |",
-              f"| race | {_pct(race_fusion['test_previous'])} | {_pct(race_fusion['test_fitted'])} | "
-              f"{diff_text(race_fusion['test_fitted_minus_previous'])} |"]
-    lines += ["", "| Race headline | Accuracy | Shipped best-model - this |",
-              "| ------------- | -------- | ------------------------- |",
-              f"| Best model (shipped) | {_pct(s['race']['best_shipped'])} | - |",
-              f"| Previous fusion, equal weights | {_pct(s['race']['fused_previous'])} | "
-              f"{diff_text(s['race']['best_minus_fused_previous'])} |",
-              f"| Fusion, fitted weights | {_pct(race_fusion['test_fitted'])} | "
-              f"{diff_text(race_fusion['test_best_minus_fitted'])} |"]
+    lines += ["", "| Fusion | Previous weights | Fitted weights | Difference |",
+              "| ------ | ---------------- | -------------- | ---------- |"]
+    for feature, fusion in (("gender", gender_fusion), ("race", race_fusion)):
+        lines.append(f"| {feature} | {_pct(fusion['test_previous'])} | {_pct(fusion['test_fitted'])} | "
+                     f"{diff_text(fusion['test_fitted_minus_previous'])} |")
+    for feature, fusion, previous in (("Gender", gender_fusion, "hand-set weights"),
+                                      ("Race", race_fusion, "equal weights")):
+        lines += ["", f"| {feature} headline | Accuracy | Shipped best-model - this |",
+                  "| --------------- | -------- | ------------------------- |",
+                  f"| Best model (shipped) | {_pct(s[feature.lower()]['best_shipped'])} | - |",
+                  f"| Previous fusion, {previous} | {_pct(s[feature.lower()]['fused_previous'])} | "
+                  f"{diff_text(s[feature.lower()]['best_minus_fused_previous'])} |",
+                  f"| Fusion, fitted weights | {_pct(fusion['test_fitted'])} | "
+                  f"{diff_text(fusion['test_best_minus_fitted'])} |"]
     lines += ["", "| Canonical race | n | " + " | ".join(f"`{k}`" for k in s["race"]["backends"])
               + " | App (shipped) | Previous fusion |",
               "| --- | --- | " + " | ".join("---" for _ in s["race"]["backends"]) + " | --- | --- |"]

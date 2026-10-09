@@ -12,7 +12,7 @@ The older 75-face benchmark is in [../benchmark.md](../benchmark.md).
 2,000 FairFace validation images (seed 0), stratified by race and split into a 998-image fit
 half and a 1,002-image test half. Every figure is on the test half, with a 95% bootstrap interval
 in brackets. Run on 2026-10-08 against package commit `e99c6da` (re-scored from the cache, with
-no model re-run, after the race headline change below), SSD detector, two CPU cores
+no model re-run, after the race and gender headline changes below), SSD detector, two CPU cores
 (4.7 s per image with every age, gender, race and emotion backend active, 156 minutes in total;
 `mivolo` alone takes a median 2.7 s per face, and the two `deepface` models about 1.7 s each).
 
@@ -28,13 +28,20 @@ no model re-run, after the race headline change below), SSD detector, two CPU co
 | `dex` | - | - | 39.1% (36.2-41.9) | 0.79 (0.75-0.84) |
 | **App (shipped)** | **96.7% (95.5-97.7)** | **76.5% (74.0-79.2)** | **62.3% (59.2-65.1)** | 0.42 (0.38-0.45) |
 
-"App (shipped)" is what the app shows as its headline: the `fused` gender row and the `best` age
-and race rows. `select_age` picked `mivolo` for 1,001 of the 1,002 test faces, so the app's age
-is MiVOLO's; `select_race` picked `fairface` for all 1,002, so the app's race is FairFace's. The
-shipped gender fusion is MiVOLO's answer by construction: MiVOLO's P(Male) is a hard 0 or 1
-carrying weight 3 of the 6 total, so the weighted mean is at least 0.5 whenever MiVOLO says Male
-and at most 0.5 whenever it says Female, and the other three backends can never overrule it
-(short of an exact 0.5 tie).
+"App (shipped)" is what the app shows as its headline: the `best` age, gender and race rows.
+`select_age` picked `mivolo` for 1,001 of the 1,002 test faces, so the app's age is MiVOLO's;
+`select_gender` picked `mivolo` for all 1,002, so the app's gender is MiVOLO's; `select_race`
+picked `fairface` for all 1,002, so the app's race is FairFace's. No headline is stacked: a
+learned stacker over every backend did not beat these on the test half (see
+[Learned stacker](#learned-stacker)).
+
+The gender headline used to be a weighted fusion (`fused`), but it was MiVOLO's answer by
+construction: MiVOLO's P(Male) is a hard 0 or 1 carrying weight 3 of the 6 total, so the weighted
+mean is at least 0.5 whenever MiVOLO says Male and at most 0.5 whenever it says Female, and the
+other three backends can never overrule it (short of an exact 0.5 tie). It now names its most
+reliable backend (`select_gender`, ordered `mivolo` > `fairface` > `deepface` > `caffe` by
+held-out accuracy, the same order on both halves), which gives the same answer on every test
+face (paired difference +0.0 pp, interval +0.0 to +0.0) without calling it a fusion.
 
 `fairface`'s native seven-class race accuracy (East and Southeast Asian kept apart) is 70.6%
 (67.9-73.5). Within one age bucket: `mivolo` 97.0%, `fairface` 95.4%, `dex` 84.9%, `caffe` 62.0%.
@@ -134,9 +141,10 @@ photos rather than a general guarantee; the in-sample 75-face set ranked `deepfa
    `data/eval_cache/<config>/predictions.jsonl`, so re-scoring never re-runs a model. As a check,
    the labels and combined answers rebuilt from the cache are compared with what `analyze_frame()`
    displayed for every face; the JSON's `cache_vs_display_mismatches` are all zero. The cache was
-   recorded before the race headline change, so its race headline is the previous fusion, which
-   the reproduction matches (`previous_fused_race`); the new race headline is `select_race` over
-   the per-backend labels, which are themselves checked.
+   recorded before the race and gender headline changes, so its race and gender headlines are
+   the previous fusions, which the reproductions match (`previous_fused_race`,
+   `previous_fused_gender`); the new headlines are `select_race` and `select_gender` over the
+   per-backend labels, which are themselves checked.
 5. **Scoring.** Accuracy is over test faces the detector found. A backend that gives no answer for
    a found face counts as wrong. A detection miss is reported through detection recall, not in the
    attribute accuracies. Every figure has a 95% percentile bootstrap interval (1,000 resamples,
@@ -146,7 +154,7 @@ photos rather than a general guarantee; the in-sample 75-face set ranked `deepfa
 ## Label mappings
 
 **Gender.** Every backend is binary; its displayed label (argmax) is compared with FairFace's
-`Male`/`Female`.
+`Male`/`Female`. The app's gender headline is the label of the backend `select_gender` picks.
 
 **Race.** Everything is scored on the app's six canonical classes (`RACE_LABEL_TO_CANONICAL` in
 `core/constants.py`): White, Black, Asian, Indian, Latino, Middle Eastern. FairFace's East Asian
@@ -187,19 +195,18 @@ backend answered.
 
 ## Fusion weights
 
-The shipped gender weights in `core/constants.py`, and the equal race weights the app used
-before the race headline change, were hand-set on the 75-face set. To test them, weights were
+The gender weights and the equal race weights the app used before the gender and race headline
+changes were hand-set on the 75-face set. To test them, weights were
 fitted on the fit half and both sets were scored on the test half. The fitting rule is the
 weighted-majority-vote optimum for independent voters with symmetric errors (Nitzan & Paroush,
 1982): each backend gets `log((K - 1) * acc / (1 - acc))`, where `acc` is its fit-half top-1
 accuracy and `K` the number of classes (2 for gender, 6 for race), clipped at 0. It uses one
 number per backend, so it has little room to overfit the fit half. The weights then go through
-the shipped `fuse_gender` and the reproduced previous race fusion unchanged.
+the reproduced previous gender and race fusions unchanged.
 
-Fit-half top-1 accuracy and the resulting weights, next to the shipped (gender) and previous
-(race) ones:
+Fit-half top-1 accuracy and the resulting weights, next to the previous ones:
 
-| Backend | Fit-half accuracy | Shipped / previous weight | Fitted weight |
+| Backend | Fit-half accuracy | Previous weight | Fitted weight |
 | ------- | ----------------- | -------------- | ------------- |
 | gender `mivolo` | 97.0% | 3.0 | 3.47 |
 | gender `fairface` | 93.6% | 2.0 | 2.68 |
@@ -211,14 +218,15 @@ Fit-half top-1 accuracy and the resulting weights, next to the shipped (gender) 
 Test-half accuracy of each fusion under each weight set; the last column is the paired per-face
 difference:
 
-| Fusion | Shipped (gender) / previous (race) weights | Fitted weights | Difference |
-| ------ | ------------------------------------------ | -------------- | ---------- |
+| Fusion | Previous weights | Fitted weights | Difference |
+| ------ | ---------------- | -------------- | ---------- |
 | gender | 96.7% (95.5-97.7) | 96.3% (95.1-97.4) | -0.4 pp (-0.9 to +0.0) |
 | race | 63.3% (60.5-66.3) | 70.1% (67.4-72.8) | +6.8 pp (+5.1 to +8.5) |
 
-- **Gender (not applied; the shipped weights are unchanged):** keep the shipped weights, or drop
-  the fusion: the fitted ones are no better (-0.4 points, interval -0.9 to 0.0), and the shipped
-  ones reproduce MiVOLO alone by construction.
+- **Gender (fusion dropped: the headline now names `mivolo`):** the fitted weights are no better
+  than the previous ones (-0.4 points, interval -0.9 to 0.0), and the previous ones reproduce
+  MiVOLO alone by construction, so the fusion was replaced by `select_gender`, which gives the
+  same answers under an honest name.
 - **Race (applied: the headline now names `fairface`):** the fitted weights beat the previous
   equal weights by 6.8 points (5.1 to 8.5), but `fairface` alone (76.5%) beats both, by 6.5
   points (3.8 to 9.3) over the fitted weights. Because `deepface`'s probabilities are saturated,
@@ -228,12 +236,67 @@ difference:
   in-distribution here, so this ranking may not carry over to other photos; the 75-face set
   (in-sample) ranked `deepface` first.
 
+## Learned stacker
+
+A learned stacker was tried as the last way to beat the best single backend: one L2-regularised
+logistic regression per attribute, fitted by `tools/fit_stacker.py` on the cached outputs of the
+same fit half and scored once on the same test half, with the same seeded bootstrap. The rule
+set in advance: ship an attribute's stacker only if the paired-bootstrap 95% interval of
+(stacked - shipped) on the test half lies above zero. **No attribute passed, so none ships**;
+the fitted models are kept as plain JSON in [stacker_fairface.json](stacker_fairface.json).
+
+**Features** (every backend output for the attribute, standardised on the fit half; probabilities
+clipped at 1e-6 before taking logs):
+
+- Gender: the log-odds of P(Male) from `fairface`, `caffe` and `deepface`, and MiVOLO's hard
+  label as 0/1 (MiVOLO exposes no probability).
+- Race: the log-probability of each of the six canonical classes from `fairface` (East and
+  Southeast Asian summed) and from `deepface` (12 features).
+- Age bucket: `fairface`'s nine and `caffe`'s eight log-probabilities; for `mivolo` and `dex`, the
+  age in years, its log1p and a one-hot of the FairFace bucket the displayed age falls in; and
+  `dex`'s spread (40 features).
+
+Cross-attribute signals were tried ad hoc, in 5-fold CV on the fit half only (MiVOLO's age
+and `fairface`'s race probabilities for gender, MiVOLO's age and `fairface`'s P(Male) for race,
+`fairface`'s P(Male) for age), and did not raise CV accuracy, so they are not used. That check
+is not part of `tools/fit_stacker.py` and is not reproduced by it. **C** (inverse L2 strength) was chosen from 13 values between 0.001 and 1000 by stratified
+5-fold CV inside the fit half (995 detected faces), ties going to the stronger penalty.
+
+| Attribute | C | Fit-half CV | Stacked (test) | Shipped (test) | Stacked - shipped | Stacked - best single | Adopted |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| gender | 0.0316 | 97.1% | 96.7% (95.5-97.7) | 96.7% (95.5-97.7) | +0.0 pp (+0.0 to +0.0) | +0.0 pp (+0.0 to +0.0) (`mivolo`) | no |
+| race | 0.316 | 74.3% | 75.1% (72.5-77.8) | 76.5% (74.0-79.2) | -1.4 pp (-3.4 to +0.7) | -1.4 pp (-3.4 to +0.7) (`fairface`) | no |
+| age | 0.0316 | 60.5% | 62.8% (59.7-65.7) | 62.3% (59.2-65.1) | +0.5 pp (-1.8 to +2.8) | +0.5 pp (-1.8 to +2.8) (`mivolo`) | no |
+
+The best single backend (chosen on the fit half) is the shipped headline for all three, so both
+comparisons coincide. Within one age bucket the stacker scores 96.5% (95.2-97.5) against 97.0%
+(95.9-98.0) for the shipped `mivolo` answer.
+
+- **Gender:** the stacker learned to follow MiVOLO and gave its answer on every test face.
+- **Race:** it disagreed with `fairface` on 128 test faces and was right on 42 of them against
+  56 for `fairface`; `deepface`'s saturated probabilities again add more noise than signal.
+- **Age:** it disagreed with `mivolo` on 166 faces (right on 74 against 69), a gain well inside
+  the noise, and slightly worse within one bucket.
+
+**Headroom.** A face where at least one backend's top-1 answer is right bounds what any rule
+that selects among these backends could reach: 98.6% for gender, 83.9% for race and 86.8% for
+age (test half), against 96.7%, 76.5% and 62.3% shipped. The bound is loose for age: with four
+backends spread over neighbouring buckets, one of them often lands in the right bucket, and
+nothing in their outputs tells the stacker which one.
+
+**Caveat.** The stacker is fitted on FairFace data, so its FairFace numbers are in-distribution
+for it (on top of `fairface` and `deepface` race already being in-distribution), and it may not
+transfer to other photo sources. A stacker that cleared the bar here would still need checking on
+another dataset before it could be called better in general.
+
 ## Reproduce
 
 ```bash
 uv venv --python 3.11 .venv-eval   # then install the pins listed in docs/setup.md
 .venv-eval/bin/python tools/fetch_fairface.py
 FACE_ANALYZER_MODEL_DIR=$PWD/models .venv-eval/bin/python tools/eval_heldout.py --n 2000
+uv pip install --python .venv-eval/bin/python scikit-learn   # the eval venv only
+.venv-eval/bin/python tools/fit_stacker.py   # learned stacker, from the cache only
 ```
 
 The second command resumes from its cache if interrupted; `--score-only` re-scores the cache

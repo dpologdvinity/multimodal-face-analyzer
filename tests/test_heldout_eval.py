@@ -9,7 +9,6 @@ from pathlib import Path
 
 from face_analyzer.core.constants import (
     AGE_LIST,
-    GENDER_FUSION_WEIGHTS,
     RACE_CANONICAL_LABELS,
     RACE_LABELS_DEEPFACE,
     RACE_LABELS_FAIRFACE,
@@ -138,13 +137,13 @@ class FusionWeightTests(unittest.TestCase):
     def test_all_at_chance_falls_back_to_equal_weights(self):
         self.assertEqual(eval_heldout.log_odds_weights({"a": 0.5, "b": 0.4}, 2), {"a": 1.0, "b": 1.0})
 
-    def test_substitute_weights_change_the_answer_without_touching_shipped_ones(self):
-        shipped_gender = dict(GENDER_FUSION_WEIGHTS)
+    def test_substitute_weights_change_the_answer_without_touching_previous_ones(self):
         raw = {"mivolo/face": [30.0, "Male"], "gender_probs/fairface": [0.2, 0.8],
                "gender_probs/caffe": [0.1, 0.9], "gender_probs/deepface": [0.9, 0.1]}
-        self.assertEqual(eval_heldout.fused_gender(raw), "Male")
+        self.assertEqual(eval_heldout.previous_fused_gender(raw), "Male")
         without_mivolo = {"mivolo": 0.0, "fairface": 1.0, "caffe": 1.0, "deepface": 1.0}
-        self.assertEqual(eval_heldout.fused_gender(raw, without_mivolo), "Female")
+        self.assertEqual(eval_heldout.previous_fused_gender(raw, without_mivolo), "Female")
+        self.assertIsNone(eval_heldout.previous_fused_gender({"mivolo/face": [30.0, "Male"]}))
         race_raw = {"race_probs/fairface": [0.9, 0.1, 0, 0, 0, 0, 0],
                     "race_probs/deepface": [0, 0, 1.0, 0, 0, 0]}
         self.assertEqual(eval_heldout.previous_fused_race(race_raw), "black")
@@ -154,7 +153,8 @@ class FusionWeightTests(unittest.TestCase):
             deepface_only = {"race_probs/fairface": [1 / 7] * 7,
                              "race_probs/deepface": [float(i == index) for i in range(6)]}
             self.assertEqual(eval_heldout.previous_fused_race(deepface_only), key)
-        self.assertEqual(GENDER_FUSION_WEIGHTS, shipped_gender)
+        self.assertEqual(eval_heldout.PREVIOUS_GENDER_FUSION_WEIGHTS,
+                         {"mivolo": 3.0, "fairface": 2.0, "caffe": 0.5, "deepface": 0.5})
         self.assertEqual(eval_heldout.PREVIOUS_RACE_FUSION_WEIGHTS, {"fairface": 1.0, "deepface": 1.0})
 
     def test_previous_fusion_label_keeps_the_close_runner_up(self):
@@ -162,6 +162,17 @@ class FusionWeightTests(unittest.TestCase):
                "race_probs/deepface": [0, 0, 0.5, 0.5, 0, 0]}
         self.assertEqual(eval_heldout.previous_fused_race_label(raw), "White (51%)/Black (49%)")
         self.assertIsNone(eval_heldout.previous_fused_race_label({"race_probs/fairface": [1, 0, 0, 0, 0, 0, 0]}))
+
+
+class BestGenderTests(unittest.TestCase):
+    def test_headline_gender_is_mivolo_even_when_every_other_backend_disagrees(self):
+        raw = {"mivolo/face": [30.0, "Female"], "gender_probs/fairface": [0.9, 0.1],
+               "gender_probs/caffe": [0.9, 0.1], "gender_probs/deepface": [0.1, 0.9]}
+        self.assertEqual(eval_heldout.best_gender(raw), ("Female", "mivolo"))
+        self.assertEqual(eval_heldout.previous_fused_gender(raw), "Female")
+
+    def test_one_backend_gives_no_headline(self):
+        self.assertIsNone(eval_heldout.best_gender({"gender_probs/fairface": [0.9, 0.1]}))
 
 
 class BestRaceTests(unittest.TestCase):
@@ -206,6 +217,10 @@ class ScoreTests(unittest.TestCase):
         self.assertEqual(report["race"]["fused_previous"]["value"], 0.0)
         self.assertEqual(report["race"]["best_minus_fused_previous"]["value"], 1.0)
         self.assertEqual(report["race"]["per_class_recall"]["white"]["best_shipped"], 1.0)
+        # Gender: mivolo (right) heads every test row, and the previous fusion followed it.
+        self.assertEqual(report["gender"]["best_shipped"]["value"], 1.0)
+        self.assertEqual(report["gender"]["best_shipped"]["chosen_backend"]["mivolo"], 2)
+        self.assertEqual(report["gender"]["best_minus_fused_previous"]["value"], 0.0)
 
 
 if __name__ == "__main__":

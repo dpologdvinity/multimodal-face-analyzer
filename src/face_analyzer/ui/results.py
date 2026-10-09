@@ -23,7 +23,7 @@ IMAGE_DISPLAY_WIDTH = 900
 
 
 def _model_result_order(row: dict) -> tuple:
-    """Sort key grouping rows by feature, with a fused answer ahead of its component models."""
+    """Sort key grouping rows by feature, with a headline (fused or best) answer ahead of its component models."""
     return (row["Feature"], row["Model"] not in inference.HEADLINE_MODEL_KEYS, row["Model"])
 
 

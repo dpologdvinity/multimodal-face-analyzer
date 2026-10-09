@@ -43,8 +43,8 @@ from ..core.types import (
 )
 from ..fusion import (
     fuse_emotion,
-    fuse_gender,
     select_age,
+    select_gender,
     select_race,
 )
 from ..gallery import (
@@ -131,9 +131,9 @@ def _age_task(models: Models, config: AnalysisConfig, inputs: _FaceInputs) -> tu
 
 
 def _gender_task(models: Models, config: AnalysisConfig, inputs: _FaceInputs) -> tuple[list, Any]:
-    """Run every active gender backend; return (per-model pairs, fused answer)."""
+    """Run every active gender backend; return (per-model pairs, most reliable model's answer)."""
     face, metrics = inputs.face, config.metrics
-    pairs, male_probabilities = [], {}
+    pairs = []
     for key in config.active_gender:
         net = models.gender_nets.get(key)
         if net is None:
@@ -142,26 +142,22 @@ def _gender_task(models: Models, config: AnalysisConfig, inputs: _FaceInputs) ->
         if key == "caffe":
             probs = _cached_face_predict("gender_probs", key, face, caffe_probabilities, net, inputs.blob227)
             value = GENDER_LIST[int(np.argmax(probs))]
-            male_probabilities[key] = float(probs[0] / (probs.sum() or 1.0))
         elif key == "deepface":
             probs = _cached_face_predict("gender_probs", key, face, deepface_probabilities, net, face)
             value = "Male" if np.argmax(probs) == 1 else "Female"
-            male_probabilities[key] = float(probs[1] / (probs.sum() or 1.0))
         elif key == "fairface":
             probs = _cached_face_predict(
                 "gender_probs", key, face, fairface_probabilities,
                 net, inputs.crop_frame, inputs.crop_box, "gender_output", inputs.fairface_landmarks,
             )
             value = fairface_gender_label(probs)
-            male_probabilities[key] = float(probs[0])
         elif key == "mivolo":
             if inputs.mivolo_result is None:
                 continue
             value = inputs.mivolo_result[1]
-            male_probabilities[key] = 1.0 if value == "Male" else 0.0
         pairs.append((key, value))
         _record_model_latency(metrics, "gender", key, started)
-    return pairs, fuse_gender(male_probabilities)
+    return pairs, select_gender(dict(pairs))
 
 
 def _emotion_task(models: Models, config: AnalysisConfig, inputs: _FaceInputs) -> tuple[list, Any]:

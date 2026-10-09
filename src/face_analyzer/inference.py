@@ -68,8 +68,8 @@ from .detectors import (
 from .fusion import (
     canonical_race_probabilities,
     fuse_emotion,
-    fuse_gender,
     select_age,
+    select_gender,
     select_race,
     with_headline,
 )
@@ -144,7 +144,6 @@ __all__ = [
     "fairface_landmarks_from_mediapipe",
     "format_dex_age",
     "fuse_emotion",
-    "fuse_gender",
     "fuse_voice_and_emotion",
     "GENDER_LIST",
     "HEADLINE_MODEL_KEYS",
@@ -179,6 +178,7 @@ __all__ = [
     "save_face",
     "save_gallery",
     "select_age",
+    "select_gender",
     "select_race",
     "SHARPEN_METHODS",
     "validate_lbph_name",

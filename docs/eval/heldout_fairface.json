@@ -62,7 +62,7 @@
     },
     "date": "2026-10-08",
     "scored_on": "2026-10-08",
-    "scoring_git_commit": "3711744",
+    "scoring_git_commit": "4e1e96d",
     "seconds_per_image_mean": 4.686,
     "seconds_per_image_median": 4.741,
     "total_inference_minutes": 156.2
@@ -91,7 +91,7 @@
     "fusion": {
       "method": "log((K-1)*acc/(1-acc)) of each backend's fit-half top-1 accuracy, clipped at 0",
       "gender": {
-        "shipped_weights": {
+        "previous_weights": {
           "mivolo": 3.0,
           "fairface": 2.0,
           "caffe": 0.5,
@@ -109,7 +109,7 @@
           "caffe": 0.933,
           "deepface": 1.236
         },
-        "test_shipped": {
+        "test_previous": {
           "value": 0.9671,
           "ci95": [
             0.9551,
@@ -125,11 +125,27 @@
           ],
           "n": 1002
         },
-        "test_fitted_minus_shipped": {
+        "test_fitted_minus_previous": {
           "value": -0.004,
           "ci95": [
             -0.009,
             0.0
+          ],
+          "n": 1002
+        },
+        "test_best_shipped": {
+          "value": 0.9671,
+          "ci95": [
+            0.9551,
+            0.9771
+          ],
+          "n": 1002
+        },
+        "test_best_minus_fitted": {
+          "value": 0.004,
+          "ci95": [
+            0.0,
+            0.009
           ],
           "n": 1002
         }
@@ -193,7 +209,7 @@
       "gender": 0,
       "race": 0,
       "best_age": 0,
-      "fused_gender": 0,
+      "previous_fused_gender": 0,
       "previous_fused_race": 0
     },
     "fairface_landmark_alignment_share": 0.8993,
@@ -232,11 +248,33 @@
           "n": 1002
         }
       },
-      "fused_shipped": {
+      "best_shipped": {
         "value": 0.9671,
         "ci95": [
           0.9551,
           0.9771
+        ],
+        "n": 1002,
+        "chosen_backend": {
+          "mivolo": 1002,
+          "fairface": 0,
+          "caffe": 0,
+          "deepface": 0
+        }
+      },
+      "fused_previous": {
+        "value": 0.9671,
+        "ci95": [
+          0.9551,
+          0.9771
+        ],
+        "n": 1002
+      },
+      "best_minus_fused_previous": {
+        "value": 0.0,
+        "ci95": [
+          0.0,
+          0.0
         ],
         "n": 1002
       },
