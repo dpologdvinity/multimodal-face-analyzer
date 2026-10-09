@@ -47,7 +47,6 @@ Demo mode changes the following:
   | Age, gender, race | `fairface` | `fairface_7class.onnx` | CC BY 4.0 |
   | Emotion | `ferplus` | `emotion_ferplus.onnx` | MIT |
   | Eye color, roll alignment | `colorimetric` | `haarcascade_eye.xml` | Intel (BSD-style) |
-  | Hair color | `colorimetric` | none | - |
   | Colorization (grayscale input) | `eccv16` | `colorization_*`, `pts_in_hull.npy` | BSD-2-Clause |
   | Face landmarks, gaze | `mediapipe` | `face_landmarker.task` | Apache-2.0 |
 

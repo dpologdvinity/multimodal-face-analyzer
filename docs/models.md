@@ -231,21 +231,13 @@ Sorour190/Glasses-Detector, `models/glasses_detector.onnx` (MobileNetV3-Large, 2
 
 chandrikadeb7/Face-Mask-Detection (MIT), MobileNetV2 backbone + AveragePooling2D/Flatten/Dense(128)/Dropout/Dense(2, softmax) head, 224x224 RGB, `mobilenet_v2.preprocess_input` scaling ([-1, 1]). Needs TensorFlow, like deepface/mini_xception/recognition.
 
-## Hair Color (heuristic, not ML)
-
-| Backend         | Framework | Output                                              |
-| ---------------- | --------- | ---------------------------------------------------- |
-| `colorimetric`  | OpenCV    | `black` / `brown` / `blonde` / `red` / `grey` / `white` |
-
-No model file, no dependency, always available. Samples the region above the detected face box, excludes likely-skin pixels (rough HSV skin-color range), takes the median HSV of what's left, and buckets by hue/saturation/value against fixed thresholds. **This is a plain colorimetric heuristic, not a trained classifier** -- accuracy is meaningfully lower than the model-backed attributes and is sensitive to lighting, hats, camera white-balance, and hairstyle framing. Treat results as a rough guess, not a benchmark-grade prediction.
-
 ## Eye Color (heuristic, not ML)
 
 | Backend         | Framework | Output                                                  |
 | ---------------- | --------- | --------------------------------------------------------- |
 | `colorimetric`  | OpenCV    | `brown` / `blue` / `green` / `hazel` / `grey` / `amber`  |
 
-No model file. Reuses `haarcascade_eye.xml` when that file is present. Locates the largest detected eye box, samples its center 40% (avoiding sclera/eyelid), and buckets the median HSV against fixed thresholds. **Also a plain colorimetric heuristic, not a trained classifier** -- same lighting/pose-sensitivity caveats as Hair Color, generally the least reliable attribute in the app.
+No model file. Reuses `haarcascade_eye.xml` when that file is present. Locates the largest detected eye box, samples its center 40% (avoiding sclera/eyelid), and buckets the median HSV against fixed thresholds. **This is a plain colorimetric heuristic, not a trained classifier** -- sensitive to lighting, pose, and camera white-balance, and generally the least reliable attribute in the app.
 
 ## Colorization (whole frame, not a face attribute)
 
@@ -253,7 +245,7 @@ No model file. Reuses `haarcascade_eye.xml` when that file is present. Locates t
 | ---------- | --------------- | ------------------------------------ |
 | `eccv16`   | Caffe (cv2.dnn) | Colorized BGR frame, or unchanged   |
 
-Zhang et al.'s ECCV16 colorization model (`models/colorization_deploy_v2.prototxt` / `_release_v2.caffemodel` / `pts_in_hull.npy`, BSD-2-Clause, richzhang/colorization). Unlike every other feature above, this isn't a per-face attribute -- it's a whole-frame preprocessing step applied *before* face detection. If the uploaded/captured frame is auto-detected as grayscale (near-zero difference between its B/G/R channels), it's colorized in Lab space (predict `ab` from `L`) before the rest of the pipeline runs, so downstream color-dependent attributes (hair color, eye color) see the colorized version too. On by default; toggle off in the sidebar (`AUTO-COLORIZE B&W`) to leave grayscale images untouched. Already-color images are left alone regardless of the toggle (the grayscale check skips them).
+Zhang et al.'s ECCV16 colorization model (`models/colorization_deploy_v2.prototxt` / `_release_v2.caffemodel` / `pts_in_hull.npy`, BSD-2-Clause, richzhang/colorization). Unlike every other feature above, this isn't a per-face attribute -- it's a whole-frame preprocessing step applied *before* face detection. If the uploaded/captured frame is auto-detected as grayscale (near-zero difference between its B/G/R channels), it's colorized in Lab space (predict `ab` from `L`) before the rest of the pipeline runs, so downstream color-dependent attributes (eye color) see the colorized version too. On by default; toggle off in the sidebar (`AUTO-COLORIZE B&W`) to leave grayscale images untouched. Already-color images are left alone regardless of the toggle (the grayscale check skips them).
 
 ## Face Landmarks
 

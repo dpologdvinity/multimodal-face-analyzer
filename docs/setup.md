@@ -294,9 +294,9 @@ docker build \
 | `RETINAFACE_MODEL` | `retinaface` (additive -- SSD stays required/always on) |
 | `AGE_PROGRESSION_MODEL` | `franunet` (non-commercial use only, see [Age Progression](models.md#age-progression--regression-non-commercial-use-only)) |
 
-Hair Color and Eye Color are colorimetric heuristics with no model file and thus no build ARG
-either -- they're always available in the web app (Eye Color additionally needs
-`haarcascade_eye.xml`). Face Landmarks uses `FACE_LANDMARKS_MODEL=mediapipe`; Liveness uses its own
+Eye Color is a colorimetric heuristic with no model file of its own and thus no build ARG
+either -- it's available in the web app whenever `haarcascade_eye.xml` is present. Face
+Landmarks uses `FACE_LANDMARKS_MODEL=mediapipe`; Liveness uses its own
 `LIVENESS_MODEL=mediapipe` ARG while reusing the same model file.
 
 Multiple models per feature (e.g. `AGE_MODEL=fairface,caffe`) can be built in together -- the web

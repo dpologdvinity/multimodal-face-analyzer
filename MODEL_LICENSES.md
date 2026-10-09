@@ -59,4 +59,4 @@ not mean the file is unrestricted.
 | ------- | ---- | --------------------- | ------- | -------------- | ------------- |
 | 3D reconstruction | `models/BFM/BFM_model_front.mat` (converted from BFM09) | [Basel Face Model](https://faces.dmi.unibas.ch/bfm/main.php?nav=1-2&id=downloads) | Registration required; "internal, non-commercial research, evaluation or testing purposes only" | Prohibited; each user must obtain it directly | Bring your own (registration) |
 
-`lbph` recognition, hair color, eye color, eigenfaces, and the image tools have no weight files.
+`lbph` recognition, eye color, eigenfaces, and the image tools have no weight files.
