@@ -93,8 +93,8 @@ validation split (race-stratified sample, seed 0; 95% bootstrap intervals; detec
   76.5%): `deepface`'s overconfident probabilities dominated the blend. `fairface` and `deepface`
   race were both trained on FairFace's training split, so these numbers are in-distribution and
   the ranking may not carry over to other photos.
-- Age: FairFace labels age in nine ranges (mostly decades), so this is bucket accuracy, not
-  error in years.
+- Age: FairFace labels age in nine ranges (mostly decades), so this is bucket accuracy; error in
+  years is reported for UTKFace below, which has exact ages.
 - Emotion is not evaluated (FairFace has no emotion labels).
 
 Fusion weights fitted on the other half of the sample did no better than the previous gender
@@ -102,6 +102,22 @@ ones; for race, fitted weights (70.1%) still trailed `fairface` alone. Full tabl
 caveats: [docs/eval/heldout_fairface.md](docs/eval/heldout_fairface.md). The earlier 75-face,
 in-sample benchmark (the set the weights were hand-set on) is kept in
 [docs/benchmark.md](docs/benchmark.md).
+
+**Age out of distribution: UTKFace** (1,498 faces, age-decade-stratified, seed 0; exact ages, so
+error in years too; [docs/eval/age_model.md](docs/eval/age_model.md)):
+
+| Age backend | Bucket accuracy | MAE (years) |
+| ----------- | --------------- | ----------- |
+| `mivolo` (shipped headline) | **67.5%** (65.1-69.8) | 3.7 (3.5-3.9) |
+| `convnext`, fine-tuned on FairFace (not shipped) | 58.8%; -8.7 pp vs `mivolo` (-11.2 to -6.3) | - |
+| `fairface` | 57.5% | - |
+| `dex` | 40.0% | 8.4 |
+| `caffe` | 35.9% | - |
+
+- The ConvNeXt-Tiny also trailed MiVOLO on the FairFace test half (60.0%, -2.3 pp, -5.6 to
+  +1.2), its own training distribution, so it is not shipped.
+- Caveats: UTKFace only ships tight face crops, so each is padded with black to let the detector
+  find it; MiVOLO's training data is unknown, so it may have seen UTKFace.
 
 ## Quick start
 

@@ -61,8 +61,8 @@
       "git_commit": "e99c6da"
     },
     "date": "2026-10-08",
-    "scored_on": "2026-10-08",
-    "scoring_git_commit": "4e1e96d",
+    "scored_on": "2026-10-09",
+    "scoring_git_commit": "5b72dee",
     "seconds_per_image_mean": 4.686,
     "seconds_per_image_median": 4.741,
     "total_inference_minutes": 156.2
@@ -397,6 +397,32 @@
     },
     "age": {
       "backends": {
+        "convnext": {
+          "bucket_accuracy": {
+            "value": 0.5998,
+            "ci95": [
+              0.5669,
+              0.6307
+            ],
+            "n": 1002
+          },
+          "mean_bucket_offset": {
+            "value": 0.4371,
+            "ci95": [
+              0.4032,
+              0.475
+            ],
+            "n": 1002
+          },
+          "within_one_bucket": {
+            "value": 0.9661,
+            "ci95": [
+              0.9541,
+              0.977
+            ],
+            "n": 1002
+          }
+        },
         "mivolo": {
           "bucket_accuracy": {
             "value": 0.6228,
@@ -502,6 +528,80 @@
           }
         }
       },
+      "minus_mivolo": {
+        "convnext": {
+          "bucket_accuracy": {
+            "value": -0.023,
+            "ci95": [
+              -0.0559,
+              0.012
+            ],
+            "n": 1002
+          },
+          "within_one_bucket": {
+            "value": -0.004,
+            "ci95": [
+              -0.016,
+              0.008
+            ],
+            "n": 1002
+          }
+        },
+        "fairface": {
+          "bucket_accuracy": {
+            "value": -0.02,
+            "ci95": [
+              -0.0519,
+              0.017
+            ],
+            "n": 1002
+          },
+          "within_one_bucket": {
+            "value": -0.016,
+            "ci95": [
+              -0.0299,
+              -0.001
+            ],
+            "n": 1002
+          }
+        },
+        "dex": {
+          "bucket_accuracy": {
+            "value": -0.2315,
+            "ci95": [
+              -0.2725,
+              -0.1926
+            ],
+            "n": 1002
+          },
+          "within_one_bucket": {
+            "value": -0.1208,
+            "ci95": [
+              -0.1427,
+              -0.0998
+            ],
+            "n": 1002
+          }
+        },
+        "caffe": {
+          "bucket_accuracy": {
+            "value": -0.3553,
+            "ci95": [
+              -0.3912,
+              -0.3134
+            ],
+            "n": 1002
+          },
+          "within_one_bucket": {
+            "value": -0.3503,
+            "ci95": [
+              -0.3833,
+              -0.3204
+            ],
+            "n": 1002
+          }
+        }
+      },
       "best_shipped": {
         "bucket_accuracy": {
           "value": 0.6228,
@@ -528,6 +628,7 @@
           "n": 1002
         },
         "chosen_backend": {
+          "convnext": 0,
           "mivolo": 1001,
           "fairface": 1,
           "dex": 0,
@@ -536,5 +637,14 @@
       },
       "dex_uncertain_share": 0.8723
     }
+  },
+  "extra_age": {
+    "backends": [
+      "convnext"
+    ],
+    "crop_mismatches": {
+      "convnext": 0
+    },
+    "note": "run by run_extra_age on the same detections and crops"
   }
 }

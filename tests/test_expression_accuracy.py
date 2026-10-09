@@ -17,7 +17,7 @@ class ExpressionCropTests(unittest.TestCase):
         box = (30, 20, 70, 70)
         with (patch("face_analyzer.pipeline.stages.detect_faces", return_value=[box]) as detect,
               patch("face_analyzer.pipeline.stages._estimate_roll_angle", return_value=12) as roll,
-              patch("face_analyzer.pipeline.stages._rotate_region", return_value=(255 - frame, box)) as rotate,
+              patch("face_analyzer.attributes.transformers._rotate_region", return_value=(255 - frame, box)) as rotate,
               patch("face_analyzer.pipeline.face_tasks.predict_emotion_ferplus", return_value="happiness") as ferplus,
               patch("face_analyzer.pipeline.face_tasks.predict_emotion_hsemotion", return_value="happiness") as hse):
             _, faces, _, _ = inference.analyze_frame(

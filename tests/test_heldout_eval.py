@@ -223,5 +223,49 @@ class ScoreTests(unittest.TestCase):
         self.assertEqual(report["gender"]["best_minus_fused_previous"]["value"], 0.0)
 
 
+class ExtraAgeTests(unittest.TestCase):
+    def test_bucket_backends_answer_by_argmax_and_rank_after_shipped_ones(self):
+        raw = {"age_probs/convnext": [0, 0, 0, 0, 0.1, 0.9, 0, 0, 0], "mivolo/face": [34.0, "Male"]}
+        self.assertEqual(eval_heldout.age_buckets(raw), {"convnext": 5, "mivolo": 4})
+        self.assertEqual(eval_heldout.age_estimates(raw)["convnext"], 44.5)
+
+    def test_merge_adds_outputs_and_counts_crop_mismatches(self):
+        import json
+        import tempfile
+
+        records = [_record(0, 3, 0, 3, {}), _record(1, 3, 0, 4, {})]
+        with tempfile.TemporaryDirectory() as tmp:
+            lines = [{"row": 0, "box": [0, 0, 10, 10], "fairface_aligned": True,
+                      "raw": {"age_probs/convnext": [1.0] + [0.0] * 8}},
+                     {"row": 1, "box": [1, 0, 10, 10], "fairface_aligned": True,
+                      "raw": {"age_probs/convnext": [0.0] * 8 + [1.0]}}]
+            Path(tmp, "extra_age_convnext.jsonl").write_text("\n".join(json.dumps(x) for x in lines))
+            mismatches = eval_heldout.merge_extra_age(records, Path(tmp), ["convnext"])
+        self.assertEqual(mismatches, {"convnext": 1})
+        self.assertEqual(eval_heldout.age_buckets(records[1]["raw"])["convnext"], 8)
+
+    def test_paired_difference_against_mivolo(self):
+        raw_right = {"age_probs/convnext": [0, 0, 0, 1.0, 0, 0, 0, 0, 0], "mivolo/face": [45.0, "Male"],
+                     "age_probs/fairface": [0, 0, 0, 0, 0, 1.0, 0, 0, 0]}
+        records = [_record(row, 3, 0, 3, dict(raw_right)) for row in range(4)]
+        report = eval_heldout.score(records, fit_rows=[0, 1], test_rows=[2, 3], seed=0, n_resamples=50,
+                                    extra_age=["convnext"])
+        self.assertEqual(report["age"]["minus_mivolo"]["convnext"]["bucket_accuracy"]["value"], 1.0)
+        # Extra models never reach select_age, so the headline stays the app's (mivolo's).
+        self.assertEqual(report["age"]["best_shipped"]["chosen_backend"]["mivolo"], 2)
+        self.assertEqual(report["age"]["best_shipped"]["chosen_backend"]["convnext"], 0)
+
+    def test_extra_model_cannot_supply_the_second_estimate_a_headline_needs(self):
+        raw = {"age_probs/convnext": [0, 0, 0, 1.0, 0, 0, 0, 0, 0],
+               "age_probs/fairface": [0, 0, 0, 1.0, 0, 0, 0, 0, 0]}
+        self.assertIsNone(eval_heldout.best_age_bucket(raw, ["convnext"]))
+        records = [_record(row, 3, 0, 3, dict(raw)) for row in range(4)]
+        report = eval_heldout.score(records, fit_rows=[0, 1], test_rows=[2, 3], seed=0, n_resamples=50,
+                                    extra_age=["convnext"])
+        self.assertEqual(report["age"]["best_shipped"]["bucket_accuracy"]["value"], 0.0)
+        self.assertEqual(sum(report["age"]["best_shipped"]["chosen_backend"].values()), 0)
+        self.assertEqual(report["cache_vs_display_mismatches"]["best_age"], 0)
+
+
 if __name__ == "__main__":
     unittest.main()
