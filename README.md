@@ -7,6 +7,8 @@ detectors, and held-out-tested ways of combining interchangeable backends.
 ![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
+<!-- LIVE DEMO: add the Streamlit Community Cloud URL here once deployed (docs/deploy.md). -->
+
 <!-- DEMO: record 5-10s of LIVE mode (age/gender/emotion/landmarks on, change expression once),
      export ≤5 MB, ~800px wide → docs/media/demo.gif; full-UI screenshot → docs/media/screenshot.png -->
 
@@ -157,11 +159,15 @@ fetch weights with `python tools/fetch_models.py --keys AGE_MODEL=fairface EMOTI
 arguments, manual setup, and the remote-access notes (the app has no authentication) are in
 [docs/setup.md](docs/setup.md).
 
+A public, stateless demo mode (`FACE_ANALYZER_DEMO=1`, or the `streamlit_app.py` entry point)
+runs only permissively licensed, lightweight models and drops every feature that stores faces;
+[docs/deploy.md](docs/deploy.md) covers it and the Streamlit Community Cloud deployment.
+
 ## Features
 
 | Feature | Backends | Notes |
 | ------- | -------- | ----- |
-| Face detection | `ssd` (required), `yolo`, `scrfd`, `retinaface` | One detector per frame |
+| Face detection | `ssd` (default fallback), `yolo`, `scrfd`, `retinaface` | One detector per frame; at least one is needed |
 | Age | `mivolo`, `fairface`, `dex`, `caffe` | Headline names the most reliable model present |
 | Gender | `mivolo`, `fairface`, `caffe`, `deepface` | Headline names the most reliable model present |
 | Race | `fairface`, `deepface` | Headline names the most reliable model present; close runner-up shown |
