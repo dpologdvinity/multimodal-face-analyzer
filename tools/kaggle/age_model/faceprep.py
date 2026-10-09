@@ -120,3 +120,11 @@ def input_blob(frame: np.ndarray, record: dict) -> np.ndarray:
 def app_aligned_face(inputs) -> np.ndarray:
     """Return the aligned face the app itself builds from a _FaceInputs (the parity reference)."""
     return fairface_aligned_face(inputs.crop_frame, inputs.crop_box, inputs.fairface_landmarks)
+
+
+def age_probabilities(net, inputs) -> np.ndarray:
+    """Run a cv2.dnn age model on the app's aligned face for a _FaceInputs; return bucket probabilities."""
+    net.setInput(imagenet_blob(app_aligned_face(inputs)))
+    logits = net.forward().reshape(-1).astype(np.float64)
+    exp = np.exp(logits - logits.max())
+    return exp / exp.sum()

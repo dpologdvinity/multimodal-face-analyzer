@@ -59,7 +59,9 @@ DATASET_RACES = ["East Asian", "Indian", "Black", "White", "Middle Eastern",
                  "Latino_Hispanic", "Southeast Asian"]
 DATASET_GENDERS = ["Male", "Female"]
 
-AGE_BACKENDS = ("mivolo", "fairface", "dex", "caffe")
+AGE_BACKENDS = ("convnext", "mivolo", "fairface", "dex", "caffe")
+# Age backends that output FairFace's nine buckets as probabilities ("age_probs/<key>").
+BUCKET_AGE_BACKENDS = ("convnext", "fairface")
 GENDER_BACKENDS = ("mivolo", "fairface", "caffe", "deepface")
 RACE_BACKENDS = ("fairface", "deepface")
 CANONICAL_RACES = tuple(RACE_CANONICAL_LABELS)
@@ -235,8 +237,9 @@ def age_estimates(raw: dict) -> dict[str, float]:
     out: dict[str, float] = {}
     if "age_probs/caffe" in raw:
         out["caffe"] = float(np.mean(AGE_LIST_RANGES[int(np.argmax(raw["age_probs/caffe"]))]))
-    if "age_probs/fairface" in raw:
-        out["fairface"] = float(np.mean(FAIRFACE_AGE_RANGES[int(np.argmax(raw["age_probs/fairface"]))]))
+    for key in BUCKET_AGE_BACKENDS:
+        if f"age_probs/{key}" in raw:
+            out[key] = float(np.mean(FAIRFACE_AGE_RANGES[int(np.argmax(raw[f"age_probs/{key}"]))]))
     if raw.get("age_estimate/dex") is not None:
         out["dex"] = float(raw["age_estimate/dex"][0])
     if raw.get("mivolo/face") is not None:
@@ -249,8 +252,9 @@ def age_buckets(raw: dict) -> dict[str, int]:
     out: dict[str, int] = {}
     if "age_probs/caffe" in raw:
         out["caffe"] = caffe_to_fairface_bucket(int(np.argmax(raw["age_probs/caffe"])))
-    if "age_probs/fairface" in raw:
-        out["fairface"] = int(np.argmax(raw["age_probs/fairface"]))
+    for key in BUCKET_AGE_BACKENDS:
+        if f"age_probs/{key}" in raw:
+            out[key] = int(np.argmax(raw[f"age_probs/{key}"]))
     if raw.get("age_estimate/dex") is not None:
         out["dex"] = age_to_bucket(raw["age_estimate/dex"][0])
     if raw.get("mivolo/face") is not None:
@@ -522,6 +526,84 @@ def run_inference(rows: list[int], labels: dict, parquet: Path, cache: Path,
                       f"ETA {eta / 60:.0f} min", flush=True)
 
 
+def run_extra_age(ids: Sequence, load_frame, cache: Path, key: str, onnx: Path, id_field: str = "row") -> None:
+    """Run one age model that is not (yet) an app backend on every sampled image not cached yet.
+
+    The model gets exactly what the app gives its FairFace-style backends: analyze_frame runs
+    with the eval's detection (largest in-frame SSD box), roll leveling and landmarks, and the
+    age task is wrapped to feed the same aligned 224x224 face to this model. Outputs go to
+    extra_age_<key>.jsonl next to the main cache and are merged in when scoring.
+    """
+    import sys
+
+    import cv2
+
+    cv2.setNumThreads(2)
+    sys.path.insert(0, str(ROOT / "tools" / "kaggle" / "age_model"))
+    import faceprep
+
+    from face_analyzer.pipeline import analyzer, stages
+
+    out = cache / f"extra_age_{key}.jsonl"
+    done = {record[id_field] for record in read_cache(out)}
+    todo = [item for item in ids if item not in done]
+    print(f"{len(ids) - len(todo)} of {len(ids)} images already scored by {key}", flush=True)
+    if not todo:
+        return
+    models = faceprep.load_prep_models()
+    net = cv2.dnn.readNetFromONNX(str(onnx))
+    sink: dict = {}
+    _instrument(sink)
+    original_age_task = stages._age_task
+
+    def age_task(models_, config_, inputs):
+        result = original_age_task(models_, config_, inputs)
+        sink["raw"][f"age_probs/{key}"] = _jsonable(faceprep.age_probabilities(net, inputs))
+        return result
+
+    stages._age_task = age_task
+    config = faceprep.prep_config()
+    started_all = time.perf_counter()
+    with out.open("a") as handle:
+        for count, item in enumerate(todo, 1):
+            sink.clear()
+            sink.update(raw={}, latency_ms={}, detections=[], fairface_aligned=None)
+            frame = load_frame(item)
+            started = time.perf_counter()
+            _, faces, _, _ = analyzer.analyze_frame(models, frame, config)
+            record = {id_field: item, "box": [int(v) for v in faces[0]["box"]] if faces else None,
+                      "raw": {k: v for k, v in sink["raw"].items() if k == f"age_probs/{key}"},
+                      "fairface_aligned": sink["fairface_aligned"],
+                      "seconds": round(time.perf_counter() - started, 3)}
+            handle.write(json.dumps(record) + "\n")
+            handle.flush()
+            if count % 100 == 0 or count == len(todo):
+                elapsed = time.perf_counter() - started_all
+                print(f"{count}/{len(todo)} images, {elapsed / count:.2f} s/image", flush=True)
+
+
+def merge_extra_age(records: list[dict], cache: Path, keys: Sequence[str], id_field: str = "row") -> dict[str, int]:
+    """Add each extra age model's cached outputs to the records; count box/alignment mismatches.
+
+    A mismatch means the extra run saw a different face crop than the cached run, which would
+    make the comparison unpaired; the JSON reports the counts and they should be zero.
+    """
+    mismatches = {}
+    for key in keys:
+        extra = {r[id_field]: r for r in read_cache(cache / f"extra_age_{key}.jsonl")}
+        missing = [r[id_field] for r in records if r[id_field] not in extra]
+        if missing:
+            raise SystemExit(f"{len(missing)} sampled rows have no {key} output; run with --extra-age")
+        mismatches[key] = 0
+        for record in records:
+            other = extra[record[id_field]]
+            if other["box"] != record["box"] or (
+                    record["box"] is not None and other["fairface_aligned"] != record["fairface_aligned"]):
+                mismatches[key] += 1
+            record["raw"].update(other["raw"])
+    return mismatches
+
+
 def read_cache(path: Path) -> list[dict]:
     """Load cached per-image records (empty when the cache does not exist yet)."""
     if not path.exists():
@@ -546,7 +628,7 @@ def _detected(record: dict) -> bool:
 
 
 def score(records: list[dict], fit_rows: list[int], test_rows: list[int], seed: int,
-          n_resamples: int = 1000) -> dict:
+          n_resamples: int = 1000, extra_age: Sequence[str] = ()) -> dict:
     """Score the cached outputs: per-backend and combined metrics on the test half."""
     by_row = {record["row"]: record for record in records}
     fit = [by_row[row] for row in fit_rows]
@@ -636,6 +718,21 @@ def score(records: list[dict], fit_rows: list[int], test_rows: list[int], seed: 
             "mean_bucket_offset": summary(offsets),
             "within_one_bucket": summary([offset <= 1 for offset in offsets]),
         }
+    # Paired per-face differences against mivolo, the best age backend before the new model.
+    if "mivolo" in age["backends"]:
+        mivolo_right = np.asarray([age_buckets(r["raw"]).get("mivolo") == _truth(r)["age"]
+                                   for r in test_faces], float)
+        mivolo_near = np.asarray([abs(age_buckets(r["raw"]).get("mivolo", -9) - _truth(r)["age"]) <= 1
+                                  for r in test_faces], float)
+        age["minus_mivolo"] = {}
+        for key in age["backends"]:
+            if key == "mivolo":
+                continue
+            right = np.asarray([age_buckets(r["raw"]).get(key) == _truth(r)["age"] for r in test_faces], float)
+            near = np.asarray([abs(age_buckets(r["raw"]).get(key, -9) - _truth(r)["age"]) <= 1
+                               for r in test_faces], float)
+            age["minus_mivolo"][key] = {"bucket_accuracy": summary(right - mivolo_right),
+                                        "within_one_bucket": summary(near - mivolo_near)}
     best = [(best_age_bucket(r["raw"]), _truth(r)["age"]) for r in test_faces]
     best_offsets = [abs(chosen[0] - truth) for chosen, truth in best if chosen is not None]
     age["best_shipped"] = {
@@ -704,7 +801,8 @@ def score(records: list[dict], fit_rows: list[int], test_rows: list[int], seed: 
             probs = r["raw"].get(f"race_probs/{key}")
             if probs is not None:
                 mismatches["race"] += shown_top1(out.get(f"race/{key}", "")) != labels[int(np.argmax(probs))]
-        chosen = select_age(age_estimates(r["raw"]))
+        chosen = select_age({key: value for key, value in age_estimates(r["raw"]).items()
+                             if key not in extra_age})
         mismatches["best_age"] += out.get("age/best") != (f"{chosen[0]} ({chosen[1]})" if chosen else None)
         mismatches["previous_fused_gender"] += out.get("gender/fused") != previous_fused_gender(r["raw"])
         mismatches["previous_fused_race"] += (out.get("race/fused")
@@ -736,6 +834,8 @@ def markdown_tables(report: dict) -> str:
         gender = s["gender"]["backends"].get(key)
         race = s["race"]["backends"].get(key)
         age = s["age"]["backends"].get(key)
+        if not (gender or race or age):
+            continue
         lines.append(
             f"| `{key}` | {_pct(gender) if gender else '-'} | {_pct(race) if race else '-'} | "
             f"{_pct(age['bucket_accuracy']) if age else '-'} | "
@@ -787,6 +887,9 @@ def main() -> None:
     parser.add_argument("--exclude", default="", help="comma-separated feature:backend to skip, "
                         "e.g. age:dex (recorded in the output)")
     parser.add_argument("--score-only", action="store_true", help="re-score the cache; run no models")
+    parser.add_argument("--extra-age", action="append", default=[], metavar="KEY=MODEL.onnx",
+                        help="also run an age model that is not an app backend (cached separately); "
+                             "with --score-only, just KEY merges its cached outputs")
     args = parser.parse_args()
 
     data = args.data / args.config
@@ -798,13 +901,26 @@ def main() -> None:
     fit_rows, test_rows = stratified_split(rows, labels["race"], args.seed)
     exclude = {item for item in args.exclude.split(",") if item}
 
+    extra = dict(item.split("=", 1) if "=" in item else (item, "") for item in args.extra_age)
     if not args.score_only:
         run_inference(rows, labels, parquet, args.cache, exclude, args.conf, args.seed)
+        if extra:
+            import cv2
+            import pyarrow.parquet as pq
+
+            images = pq.read_table(parquet, columns=["image"]).column("image").combine_chunks().field("bytes")
+
+            def load_frame(row: int) -> np.ndarray:
+                return cv2.imdecode(np.frombuffer(images[row].as_py(), np.uint8), cv2.IMREAD_COLOR)
+
+            for key, onnx in extra.items():
+                run_extra_age(rows, load_frame, args.cache, key, Path(onnx))
 
     records = [r for r in read_cache(args.cache / "predictions.jsonl") if r["row"] in set(rows)]
     missing = set(rows) - {r["row"] for r in records}
     if missing:
         raise SystemExit(f"{len(missing)} sampled rows are not cached yet; run without --score-only")
+    extra_mismatches = merge_extra_age(records, args.cache, list(extra))
     meta = json.loads((args.cache / "meta.json").read_text())
     seconds = [r["seconds"] for r in records]
     report = {
@@ -818,8 +934,11 @@ def main() -> None:
                 "seconds_per_image_median": round(float(np.median(seconds)), 3),
                 "total_inference_minutes": round(sum(seconds) / 60, 1)},
         "emotion": "not evaluated: FairFace has no emotion labels",
-        "scores": score(records, fit_rows, test_rows, args.seed, args.resamples),
+        "scores": score(records, fit_rows, test_rows, args.seed, args.resamples, list(extra)),
     }
+    if extra:
+        report["extra_age"] = {"backends": sorted(extra), "crop_mismatches": extra_mismatches,
+                               "note": "run by run_extra_age on the same detections and crops"}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + "\n")
     print(markdown_tables(report))
