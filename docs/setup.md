@@ -46,9 +46,11 @@ A few small, permissively licensed files stay in git: `opencv_face_detector.pbtx
 `haarcascade_eye.xml`, `colorization_deploy_v2.prototxt`, `pts_in_hull.npy`,
 `mivolo_v2_config.json`, and `BFM/similarity_Lm3D_all.mat` (the manifest's `"in_git": true`
 entries). Every other file in `models/` is gitignored, including the required SSD weights
-(`opencv_face_detector_uint8.pb`, 2.7 MB, no license stated upstream). The app cannot start
-without them, so run `python tools/fetch_models.py --keys` (with no keys it fetches only the
-required files) before the first start; the guided scripts and the Docker build do this for you.
+(`opencv_face_detector_uint8.pb`, 2.7 MB, no license stated upstream). The app needs at least one
+face detector and SSD is the default one, so run `python tools/fetch_models.py --keys` (with no
+keys it fetches only the required files) before the first start; the guided scripts and the
+Docker build do this for you. Without SSD the app still starts if another detector loads (the
+public demo uses RetinaFace only; see [deploy.md](deploy.md)).
 
 Older checkouts stored the weights in git-lfs. The loader still treats an unpulled LFS pointer
 file like a missing model.
@@ -341,6 +343,7 @@ multimodal-face-analyzer/
 ├── Dockerfile, build-and-run.sh   # per-feature Docker build + guided wrapper
 ├── install-and-run.sh             # guided native install
 ├── requirements*.txt, pyproject.toml
+├── streamlit_app.py               # public demo entry point (demo mode + demo weights; see deploy.md)
 ├── models/                        # manifest.json + small configs; weights fetched on demand
 ├── src/face_analyzer/             # the installable face_analyzer package
 │   ├── app.py                     # Streamlit entry point: page setup, model load, sidebar -> tabs wiring
@@ -353,7 +356,7 @@ multimodal-face-analyzer/
 │   │                              #   stages, face_tasks, cache, landmarks, drawing, tracker
 │   ├── ui/                        # Streamlit views: theme (+ theme.css), sidebar, adjustments, results, live webcam tab
 │   ├── gallery/                   # SQLite saved faces, eigenfaces, identity search
-│   ├── liveness.py, model_selection.py
+│   ├── liveness.py, model_selection.py, demo.py (demo-mode allowlist and limits)
 │   └── nets/                      # vendored third-party model architectures
 ├── tests/                         # pytest suite
 ├── tools/                         # fetch_models.py, benchmark.py, dump_predictions.py, score_fusion.py, ground_truth.json,

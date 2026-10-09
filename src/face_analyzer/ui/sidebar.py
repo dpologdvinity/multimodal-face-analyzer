@@ -7,6 +7,7 @@ from typing import Any
 import streamlit as st
 
 from .. import inference
+from ..demo import DEMO_FACE_DETECTOR, is_demo_mode
 
 MODEL_DISPLAY_NAMES = {
     "caffe": "Caffe",
@@ -117,23 +118,24 @@ class SidebarState:
 
 def render_sidebar(models: Any) -> SidebarState:
     """Render the model-selection, gallery, identity-search and control-panel sidebar sections."""
+    demo = is_demo_mode()
     st.sidebar.markdown("### Model selection")
     if models.offline_features:
-        st.sidebar.caption(f"Unavailable: {', '.join(models.offline_features)}. Model file or dependency missing.")
+        reason = (
+            "Not part of the public demo; run the app locally for every feature."
+            if demo else "Model file or dependency missing."
+        )
+        st.sidebar.caption(f"Unavailable: {', '.join(models.offline_features)}. {reason}")
 
     with st.sidebar.expander("Detection", expanded=True):
-        active_face_detector = "yolo" if models.yolo_face_nets else "ssd"
-        _face_detector_options = (
-            (["yolo"] if models.yolo_face_nets else [])
-            + ["ssd"]
-            + (["scrfd"] if models.scrfd_face_nets else [])
-            + (["retinaface"] if models.retinaface_nets else [])
-        )
+        preferred = DEMO_FACE_DETECTOR if demo else "yolo"
+        active_face_detector = inference.resolve_face_detector(models, preferred) or "ssd"
+        _face_detector_options = inference.available_face_detectors(models)
         if len(_face_detector_options) > 1:
             active_face_detector = st.selectbox(
                 "Face detector", _face_detector_options, index=_face_detector_options.index(active_face_detector),
                 format_func=_display_model_name,
-                help="One detector runs per frame. YOLO is preferred when loaded; SSD is the always-available fallback.",
+                help="One detector runs per frame. YOLO is preferred when loaded; SSD is the fallback when present.",
             )
 
     with st.sidebar.expander("Classification", expanded=True):
@@ -167,10 +169,11 @@ def render_sidebar(models: Any) -> SidebarState:
             help="Overlays hand keypoints on the whole frame, independent of face detection.",
         )
 
-    st.session_state.setdefault("gallery", inference.load_gallery())
+    # A public demo must never show one visitor's enrolled faces to another.
+    st.session_state.setdefault("gallery", {} if demo else inference.load_gallery())
 
     search_gallery = {}
-    if models.recognition_nets:
+    if models.recognition_nets and not demo:
         st.sidebar.markdown("### Gallery")
         gallery = st.session_state["gallery"]
         if not gallery:
