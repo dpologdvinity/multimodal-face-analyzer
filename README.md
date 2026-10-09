@@ -162,8 +162,8 @@ arguments, manual setup, and the remote-access notes (the app has no authenticat
 A public, stateless demo mode (`FACE_ANALYZER_DEMO=1`, or the `streamlit_app.py` entry point)
 runs only permissively licensed, lightweight models and drops every feature that stores faces;
 [docs/deploy.md](docs/deploy.md) covers it and the Streamlit Community Cloud deployment. Its
-answers are `fairface`'s alone: on the same held-out test faces, gender 92.3% (90.6-94.0), race
-75.3% (72.9-78.1) and age bucket 59.1% (56.3-62.1)
+answers are `fairface`'s alone: on the same held-out test faces, gender 92.2% (90.5-93.9), race
+76.0% (73.6-78.6) and age bucket 59.4% (56.4-62.4)
 ([demo configuration](docs/eval/heldout_fairface.md#demo-configuration)).
 
 ## Features

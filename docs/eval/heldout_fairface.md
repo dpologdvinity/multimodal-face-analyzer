@@ -101,32 +101,37 @@ RetinaFace and has no MediaPipe, so it shows `fairface`'s own answer (with one b
 | Configuration | Gender | Race (6 canonical) | Age bucket | Aligned crops (test half) |
 | ------------- | ------ | ------------------ | ---------- | ------------------------- |
 | Demo before `7bb4639`: RetinaFace, unaligned box crop | 88.1% (86.1-90.0) | 61.1% (58.0-64.2) | 46.3% (43.1-49.5) | 0% |
-| **Demo (shipped): RetinaFace, aligned on its landmarks** | **92.3% (90.6-94.0)** | **75.3% (72.9-78.1)** | **59.1% (56.3-62.1)** | 99.5% |
+| Demo at `7bb4639`: RetinaFace, aligned on its landmarks | 92.3% (90.6-94.0) | 75.3% (72.9-78.1) | 59.1% (56.3-62.1) | 99.5% |
+| **Demo (shipped): as above, near-profiles on the box crop** | **92.2% (90.5-93.9)** | **76.0% (73.6-78.6)** | **59.4% (56.4-62.4)** | 95.6% |
 | Full app: SSD, aligned on MediaPipe landmarks (table above) | 93.1% (91.5-94.6) | 76.5% (74.0-79.2) | 60.3% (57.2-63.3) | 91.2% |
 
 Paired per-face differences on the 1,002 test faces (RetinaFace and SSD both found all of them):
-aligning on RetinaFace's landmarks gained +4.2 pp gender (+1.9 to +6.3), +14.3 pp race (+11.2 to
-+17.5) and +12.8 pp age (+9.4 to +16.4) over the unaligned demo. Against the full app's
-MediaPipe-aligned `fairface` it is -0.8 pp gender (-2.3 to +0.6), -1.2 pp race (-3.3 to +0.9)
-and -1.2 pp age (-3.7 to +1.0), within the noise. The demo still trails the full app's headline
-gender and age (96.7% and 62.3%), which are MiVOLO's, a model too heavy for the demo host.
+aligning on RetinaFace's landmarks (`7bb4639`) gained +4.2 pp gender (+1.9 to +6.3), +14.3 pp
+race (+11.2 to +17.5) and +12.8 pp age (+9.4 to +16.4) over the unaligned demo. Keeping
+near-profiles on the box crop (`d838a8c`) changed the input of 39 test faces and moved the
+results by -0.1 pp gender (-0.7 to +0.5), +0.7 pp race (+0.0 to +1.4) and +0.3 pp age (-0.6 to
++1.2), so it is not worse. Against the full app's MediaPipe-aligned `fairface`, the shipped demo
+is -0.9 pp gender (-2.3 to +0.4), -0.5 pp race (-2.5 to +1.5) and -0.9 pp age (-3.3 to +1.2),
+within the noise. The demo still trails the full app's headline gender and age (96.7% and
+62.3%), which are MiVOLO's, a model too heavy for the demo host.
 
 RetinaFace predicts the eye centers and nose tip, while FairFace was trained on crops aligned to
 dlib's four eye corners and nose. The demo aligns on the eyes and nose only, with each pair of
-reference corners merged into its center, and falls back to the box crop only when the eyes come
-out swapped or nearly on top of each other, as on near-profiles (the remaining 0.5%). Before
+reference corners merged into its center. It falls back to the box crop when the eyes come out
+swapped, or closer than 0.15 of the box width as on near-profiles (the remaining 4.4%). Before
 this, a face without MediaPipe landmarks got a 1.5x box crop with only the Haar-cascade roll
 leveling, so its position and scale followed the detector's box rather than the face, which is
 why the unaligned row is so much lower.
 The shipped row is [heldout_fairface_demo.json](heldout_fairface_demo.json); its "App (shipped)"
 fields read 0% only because the app picks no headline from a single backend. The unaligned row
-was run the same way at `a932ca9`, and the paired differences were computed from the three runs'
-caches with the tool's seeded bootstrap; that run's cache and the paired script are not kept.
+was run the same way at `a932ca9`, and the paired differences were computed from the runs'
+caches with the tool's seeded bootstrap; the unaligned run's cache and the paired script are not
+kept.
 Command for the shipped row:
 
 ```bash
 FACE_ANALYZER_DEMO=1 FACE_ANALYZER_MODEL_DIR=$PWD/models .venv-eval/bin/python tools/eval_heldout.py \
-    --n 2000 --detector retinaface --no-mediapipe --cache data/eval_cache/demo \
+    --n 2000 --detector retinaface --no-mediapipe --cache data/eval_cache/demo-profile015 \
     --output docs/eval/heldout_fairface_demo.json
 ```
 

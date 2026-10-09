@@ -57,8 +57,8 @@ Demo mode changes the following:
   weights have no stated license.
 
   Without MediaPipe, FairFace aligns each face on RetinaFace's own eye and nose landmarks, which
-  holds the demo within noise of the full app's `fairface` on held-out FairFace (gender 92.3%,
-  race 75.3%, age bucket 59.1%; see [the demo row](eval/heldout_fairface.md#demo-configuration)).
+  holds the demo within noise of the full app's `fairface` on held-out FairFace (gender 92.2%,
+  race 76.0%, age bucket 59.4%; see [the demo row](eval/heldout_fairface.md#demo-configuration)).
 
 ## Streamlit Community Cloud
 
@@ -92,6 +92,14 @@ What happens on first boot:
 - Community Cloud puts apps to sleep after a period without traffic, and a container restart
   starts again from a fresh checkout, so the next visitor after a restart waits for the
   download again.
+- A push to `master` updates the checkout of the running process, but Streamlit re-executes only
+  `streamlit_app.py`, and the already imported `face_analyzer` modules would keep the old code.
+  On each run the entry point therefore compares the modification times of
+  `src/face_analyzer/**/*.py` with those at import. When they differ, it drops the package's
+  modules and clears `st.cache_resource` and `st.cache_data`, so the code and the models reload
+  once. While an analysis is running it leaves the reload to a later page run, and the reloaded
+  code keeps the same one-analysis slot. If the demo still behaves like the old code after a
+  deploy, use **Reboot app** in the app's Community Cloud menu.
 
 ### Measured memory
 
