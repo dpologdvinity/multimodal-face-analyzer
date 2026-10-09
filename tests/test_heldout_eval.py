@@ -245,13 +245,26 @@ class ExtraAgeTests(unittest.TestCase):
         self.assertEqual(eval_heldout.age_buckets(records[1]["raw"])["convnext"], 8)
 
     def test_paired_difference_against_mivolo(self):
-        raw_right = {"age_probs/convnext": [0, 0, 0, 1.0, 0, 0, 0, 0, 0], "mivolo/face": [45.0, "Male"]}
+        raw_right = {"age_probs/convnext": [0, 0, 0, 1.0, 0, 0, 0, 0, 0], "mivolo/face": [45.0, "Male"],
+                     "age_probs/fairface": [0, 0, 0, 0, 0, 1.0, 0, 0, 0]}
         records = [_record(row, 3, 0, 3, dict(raw_right)) for row in range(4)]
         report = eval_heldout.score(records, fit_rows=[0, 1], test_rows=[2, 3], seed=0, n_resamples=50,
                                     extra_age=["convnext"])
         self.assertEqual(report["age"]["minus_mivolo"]["convnext"]["bucket_accuracy"]["value"], 1.0)
-        # The cached headline is rebuilt without the extra model, so it still matches the display.
+        # Extra models never reach select_age, so the headline stays the app's (mivolo's).
         self.assertEqual(report["age"]["best_shipped"]["chosen_backend"]["mivolo"], 2)
+        self.assertEqual(report["age"]["best_shipped"]["chosen_backend"]["convnext"], 0)
+
+    def test_extra_model_cannot_supply_the_second_estimate_a_headline_needs(self):
+        raw = {"age_probs/convnext": [0, 0, 0, 1.0, 0, 0, 0, 0, 0],
+               "age_probs/fairface": [0, 0, 0, 1.0, 0, 0, 0, 0, 0]}
+        self.assertIsNone(eval_heldout.best_age_bucket(raw, ["convnext"]))
+        records = [_record(row, 3, 0, 3, dict(raw)) for row in range(4)]
+        report = eval_heldout.score(records, fit_rows=[0, 1], test_rows=[2, 3], seed=0, n_resamples=50,
+                                    extra_age=["convnext"])
+        self.assertEqual(report["age"]["best_shipped"]["bucket_accuracy"]["value"], 0.0)
+        self.assertEqual(sum(report["age"]["best_shipped"]["chosen_backend"].values()), 0)
+        self.assertEqual(report["cache_vs_display_mismatches"]["best_age"], 0)
 
 
 if __name__ == "__main__":

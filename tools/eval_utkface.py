@@ -23,6 +23,7 @@ import os
 import re
 import sys
 import time
+from collections.abc import Sequence
 from datetime import date
 from pathlib import Path
 
@@ -42,6 +43,7 @@ from eval_heldout import (  # noqa: E402
     merge_extra_age,
     read_cache,
     run_extra_age,
+    shipped_age_estimates,
     stratified_sample,
     summarize,
 )
@@ -157,7 +159,7 @@ def run_inference(items: list[dict], data: Path, cache: Path) -> None:
                       f"ETA {elapsed / count * (len(todo) - count) / 60:.0f} min", flush=True)
 
 
-def score(records: list[dict], seed: int, n_resamples: int = 1000) -> dict:
+def score(records: list[dict], seed: int, n_resamples: int = 1000, extra_age: Sequence[str] = ()) -> dict:
     """Bucket accuracy, within-one, MAE and gender accuracy per backend, with paired differences."""
     def summary(values):
         return summarize(values, seed, n_resamples)
@@ -191,7 +193,7 @@ def score(records: list[dict], seed: int, n_resamples: int = 1000) -> dict:
             key: {"bucket_accuracy": summary(right[key] - right["mivolo"]),
                   "within_one_bucket": summary(near[key] - near["mivolo"])}
             for key in present if key != "mivolo"}
-    chosen = [select_age(age_estimates(r["raw"])) for r in detected]
+    chosen = [select_age(shipped_age_estimates(r["raw"], extra_age)) for r in detected]
     headline = [None if c is None else age_to_bucket(float(c[0])) for c in chosen]
     result["age"]["best_shipped"] = {
         "bucket_accuracy": summary([h == t for h, t in zip(headline, truth_bucket, strict=True)]),
@@ -280,7 +282,7 @@ def main() -> None:
         "run": {**meta, "scored_on": date.today().isoformat(),
                 "seconds_per_face_mean": round(float(np.mean(seconds)), 3),
                 "total_inference_minutes": round(sum(seconds) / 60, 1)},
-        "scores": score(records, args.seed, args.resamples),
+        "scores": score(records, args.seed, args.resamples, list(extra)),
     }
     report: dict = {"utkface": utkface}
     if HELDOUT_JSON.exists():

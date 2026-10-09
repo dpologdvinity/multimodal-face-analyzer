@@ -262,9 +262,14 @@ def age_buckets(raw: dict) -> dict[str, int]:
     return out
 
 
-def best_age_bucket(raw: dict) -> tuple[int, str] | None:
+def shipped_age_estimates(raw: dict, extra_age: Sequence[str] = ()) -> dict[str, float]:
+    """The year estimates select_age sees in the app: extra (non-app) age models left out."""
+    return {key: value for key, value in age_estimates(raw).items() if key not in extra_age}
+
+
+def best_age_bucket(raw: dict, extra_age: Sequence[str] = ()) -> tuple[int, str] | None:
     """The app's headline age (select_age) as (FairFace bucket, chosen backend)."""
-    chosen = select_age(age_estimates(raw))
+    chosen = select_age(shipped_age_estimates(raw, extra_age))
     return None if chosen is None else (age_to_bucket(float(chosen[0])), chosen[1])
 
 
@@ -733,7 +738,7 @@ def score(records: list[dict], fit_rows: list[int], test_rows: list[int], seed: 
                                for r in test_faces], float)
             age["minus_mivolo"][key] = {"bucket_accuracy": summary(right - mivolo_right),
                                         "within_one_bucket": summary(near - mivolo_near)}
-    best = [(best_age_bucket(r["raw"]), _truth(r)["age"]) for r in test_faces]
+    best = [(best_age_bucket(r["raw"], extra_age), _truth(r)["age"]) for r in test_faces]
     best_offsets = [abs(chosen[0] - truth) for chosen, truth in best if chosen is not None]
     age["best_shipped"] = {
         "bucket_accuracy": summary([chosen is not None and chosen[0] == truth for chosen, truth in best]),
@@ -801,8 +806,7 @@ def score(records: list[dict], fit_rows: list[int], test_rows: list[int], seed: 
             probs = r["raw"].get(f"race_probs/{key}")
             if probs is not None:
                 mismatches["race"] += shown_top1(out.get(f"race/{key}", "")) != labels[int(np.argmax(probs))]
-        chosen = select_age({key: value for key, value in age_estimates(r["raw"]).items()
-                             if key not in extra_age})
+        chosen = select_age(shipped_age_estimates(r["raw"], extra_age))
         mismatches["best_age"] += out.get("age/best") != (f"{chosen[0]} ({chosen[1]})" if chosen else None)
         mismatches["previous_fused_gender"] += out.get("gender/fused") != previous_fused_gender(r["raw"])
         mismatches["previous_fused_race"] += (out.get("race/fused")
