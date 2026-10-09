@@ -125,6 +125,11 @@ ConvNeXt-Tiny) land on the same accuracy, below a model trained on other data.
 
 The kernels live in `tools/kaggle/age_model/` (each pins the repository commit it ran):
 `prep/` records the crops (CPU), `crops/` rebuilds them (CPU), and the top level trains (GPU).
+The training kernel is public at
+<https://www.kaggle.com/code/kaitlynbassford/face-age-convnext-train>; the run reported here is
+its **version 5** (open the version history, then the Output tab, for the ONNX and the
+selection metrics). Its latest version is a publish-only save with no output, so
+`kaggle kernels output` returns files only after you push and run your own copy.
 
 ```bash
 kaggle kernels push -p tools/kaggle/age_model/prep     # then crops/, then the training kernel
