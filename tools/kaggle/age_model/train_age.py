@@ -265,6 +265,51 @@ print(json.dumps({"cv2": cv2.__version__, "max_abs_diff": float(np.abs(out - ref
 
 
 
+def diagnose(crops: np.ndarray, meta: dict, train_idx: np.ndarray, to_input: GpuInput, batch: int,
+             emit) -> None:
+    """Time the input pipeline and the training step variants separately, then return."""
+    def timed(fn, warmup: int, runs: int) -> float:
+        for _ in range(warmup):
+            fn()
+        torch.cuda.synchronize()
+        t = time.time()
+        for _ in range(runs):
+            fn()
+        torch.cuda.synchronize()
+        return round((time.time() - t) / runs, 3)
+
+    batches = iter(CropBatches(crops, meta, train_idx, batch, shuffle=True))
+    t = time.time()
+    for _ in range(30):
+        x, *_ = next(batches)
+    emit({"event": "diag_data", "s_per_batch": round((time.time() - t) / 30, 3), **memory_note()})
+    emit({"event": "diag_input", "augment_s": timed(lambda: to_input(x, augment=True), 2, 10),
+          "plain_s": timed(lambda: to_input(x), 2, 10)})
+    model = build_model(False, 0.1).cuda()
+    targets = torch.randint(0, N_AGE, (batch,), device="cuda")
+    for bench in (False, True):
+        torch.backends.cudnn.benchmark = bench
+        for layout in ("channels_last", "contiguous"):
+            fmt = torch.channels_last if layout == "channels_last" else torch.contiguous_format
+            model = model.to(memory_format=fmt).train()
+            for gpus in (1, 2):
+                net = nn.DataParallel(model) if gpus == 2 else model
+                opt = torch.optim.AdamW(model.parameters(), lr=1e-5)
+                scaler = torch.amp.GradScaler("cuda")
+                inp = to_input(x).contiguous(memory_format=fmt)
+
+                def step(net=net, inp=inp, opt=opt, scaler=scaler):
+                    with torch.autocast("cuda", dtype=torch.float16):
+                        loss = F.cross_entropy(net(inp)[0].float(), targets)
+                    opt.zero_grad(set_to_none=True)
+                    scaler.scale(loss).backward()
+                    scaler.step(opt)
+                    scaler.update()
+
+                emit({"event": "diag_step", "cudnn_benchmark": bench, "layout": layout, "gpus": gpus,
+                      "s_per_step": timed(step, 2, 5), **memory_note()})
+
+
 def memory_note() -> dict:
     """Host RAM and GPU memory in GB, for the log."""
     out = {}
@@ -297,6 +342,7 @@ def main() -> None:
     parser.add_argument("--ema", type=float, default=0.9995)
     parser.add_argument("--time-budget-min", type=float, default=150.0,
                         help="wall-clock budget for setup plus training; the schedule shrinks to fit")
+    parser.add_argument("--diagnose", action="store_true", help="time pipeline parts and step variants")
     parser.add_argument("--max-steps", type=int, default=0, help="timing check: stop after N steps, no export")
     parser.add_argument("--smoke", action="store_true", help="tiny CPU-safe run to check the plumbing")
     args = parser.parse_args()
@@ -343,6 +389,9 @@ def main() -> None:
     if blob_diff > 1e-5:
         raise SystemExit("GPU input normalization differs from the app's")
 
+    if args.diagnose:
+        diagnose(crops, meta, train_idx, to_input, args.batch, emit)
+        return
     train_batches = CropBatches(crops, meta, train_idx, args.batch, shuffle=True)
     select_batches = CropBatches(crops, meta, select_idx, 256, shuffle=False)
 

@@ -10,6 +10,6 @@
   "machine_shape": "NvidiaTeslaT4",
   "dataset_sources": [],
   "competition_sources": [],
-  "kernel_sources": ["kaitlynbassford/face-age-prep"],
+  "kernel_sources": ["kaitlynbassford/face-age-prep", "kaitlynbassford/face-age-crops"],
   "model_sources": []
 }
