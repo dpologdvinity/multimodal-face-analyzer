@@ -1,6 +1,7 @@
 """Model loading and initialization routines for facial analysis backends."""
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import cv2
@@ -108,6 +109,19 @@ except ImportError:
 
 
 _LFS_POINTER_PREFIX = b"version https://git-lfs"
+# Caps ONNX Runtime's per-session thread pool when set; unset keeps its default of one per core.
+ORT_THREADS_ENV_VAR = "FACE_ANALYZER_ORT_THREADS"
+
+
+def _ort_session(path: Path):
+    """Create a CPU ONNX Runtime session, limited to FACE_ANALYZER_ORT_THREADS threads when set."""
+    options = None
+    threads = os.environ.get(ORT_THREADS_ENV_VAR, "").strip()
+    if threads:
+        options = onnxruntime.SessionOptions()
+        options.intra_op_num_threads = int(threads)
+        options.inter_op_num_threads = 1
+    return onnxruntime.InferenceSession(str(path), sess_options=options, providers=["CPUExecutionProvider"])
 
 
 def _present(*paths: Path) -> bool:
@@ -135,15 +149,15 @@ def load_models() -> Models:
 
     yolo_face_nets = {}
     if native_model_selected("YOLO_FACE_MODEL", "yolo") and ONNXRUNTIME_SUPPORTED and _present(YOLO_FACE_MODEL):
-        yolo_face_nets["yolo"] = onnxruntime.InferenceSession(str(YOLO_FACE_MODEL), providers=["CPUExecutionProvider"])
+        yolo_face_nets["yolo"] = _ort_session(YOLO_FACE_MODEL)
 
     scrfd_face_nets = {}
     if native_model_selected("SCRFD_FACE_MODEL", "scrfd") and ONNXRUNTIME_SUPPORTED and _present(SCRFD_FACE_MODEL):
-        scrfd_face_nets["scrfd"] = onnxruntime.InferenceSession(str(SCRFD_FACE_MODEL), providers=["CPUExecutionProvider"])
+        scrfd_face_nets["scrfd"] = _ort_session(SCRFD_FACE_MODEL)
 
     retinaface_nets = {}
     if native_model_selected("RETINAFACE_MODEL", "retinaface") and ONNXRUNTIME_SUPPORTED and _present(RETINAFACE_MODEL):
-        retinaface_nets["retinaface"] = onnxruntime.InferenceSession(str(RETINAFACE_MODEL), providers=["CPUExecutionProvider"])
+        retinaface_nets["retinaface"] = _ort_session(RETINAFACE_MODEL)
 
     if face_net is None and not (yolo_face_nets or scrfd_face_nets or retinaface_nets):
         if is_demo_mode():
@@ -252,7 +266,7 @@ def load_models() -> Models:
 
     glasses_nets = {}
     if native_model_selected("GLASSES_MODEL", "mobilenet") and ONNXRUNTIME_SUPPORTED and _present(GLASSES_MODEL):
-        glasses_nets["mobilenet"] = onnxruntime.InferenceSession(str(GLASSES_MODEL), providers=["CPUExecutionProvider"])
+        glasses_nets["mobilenet"] = _ort_session(GLASSES_MODEL)
 
     mask_nets = {}
     if native_model_selected("MASK_MODEL", "mobilenetv2") and TF_SUPPORTED and _present(MASK_MODEL):

@@ -476,6 +476,8 @@ def run_inference(rows: list[int], labels: dict, parquet: Path, cache: Path,
             os.environ[name] = ""
     if not mediapipe:
         os.environ["FACE_LANDMARKS_MODEL"] = ""
+    # ONNX Runtime otherwise starts one thread per core and pins them past any taskset limit.
+    os.environ.setdefault("FACE_ANALYZER_ORT_THREADS", "2")
     import cv2
     import pyarrow.parquet as pq
 

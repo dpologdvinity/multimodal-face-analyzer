@@ -102,3 +102,18 @@ def test_detect_faces_falls_back_to_retinaface_without_ssd():
 
 def test_bare_none_detector_returns_no_faces():
     assert detect_faces(None, np.zeros((32, 32, 3), np.uint8)) == []
+
+
+def test_ort_thread_cap_applies_only_when_set(monkeypatch, tmp_path):
+    runtime = _fake_onnxruntime(monkeypatch)
+    model = tmp_path / "model.onnx"
+
+    monkeypatch.delenv("FACE_ANALYZER_ORT_THREADS", raising=False)
+    loader._ort_session(model)
+    assert runtime.InferenceSession.call_args.kwargs["sess_options"] is None
+
+    monkeypatch.setenv("FACE_ANALYZER_ORT_THREADS", "2")
+    loader._ort_session(model)
+    options = runtime.SessionOptions.return_value
+    assert runtime.InferenceSession.call_args.kwargs["sess_options"] is options
+    assert (options.intra_op_num_threads, options.inter_op_num_threads) == (2, 1)
