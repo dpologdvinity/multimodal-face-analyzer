@@ -1,0 +1,404 @@
+{
+  "dataset": {
+    "repo_id": "HuggingFaceM4/FairFace",
+    "revision": "54d573cdb8b5af490ba8da9da2799628f6e5c496",
+    "config": "1.25",
+    "split": "validation",
+    "file": "validation-00000-of-00001-09e3e67bb00ab4ec.parquet",
+    "sha256": "ce47863c011f355ef7ab63d70420d9d4b36fce03cf1621a26597955da21968bb",
+    "license": "CC BY 4.0",
+    "n_validation": 10954
+  },
+  "sample": {
+    "n": 2000,
+    "seed": 0,
+    "fit": 998,
+    "test": 1002,
+    "stratified_by": "race",
+    "allocation": "proportional",
+    "bootstrap_resamples": 1000
+  },
+  "run": {
+    "backends": {
+      "age": [
+        "fairface"
+      ],
+      "gender": [
+        "fairface"
+      ],
+      "race": [
+        "fairface"
+      ],
+      "emotion": [
+        "ferplus"
+      ]
+    },
+    "excluded": [],
+    "detector": "retinaface",
+    "conf_threshold": 0.5,
+    "mediapipe_landmarks": false,
+    "demo_mode": true,
+    "model_dir": "/home/kaitlyn/git/multimodal-face-analyzer/models",
+    "versions": {
+      "python": "3.11.17",
+      "numpy": "2.4.6",
+      "opencv-python-headless": "4.14.0.94",
+      "torch": "2.14.1+cpu",
+      "tensorflow-cpu": "2.21.0",
+      "tf-keras": "2.21.0",
+      "onnxruntime": "1.30.0",
+      "mediapipe": "1.1.0",
+      "ultralytics": "8.1.0",
+      "timm": "0.8.13.dev0",
+      "git_commit": "7bb4639"
+    },
+    "date": "2026-10-09",
+    "scored_on": "2026-10-09",
+    "scoring_git_commit": "dfa43ac",
+    "seconds_per_image_mean": 0.672,
+    "seconds_per_image_median": 0.752,
+    "total_inference_minutes": 22.4
+  },
+  "emotion": "not evaluated: FairFace has no emotion labels",
+  "scores": {
+    "detection_recall": {
+      "test": {
+        "value": 1.0,
+        "ci95": [
+          1.0,
+          1.0
+        ],
+        "n": 1002
+      },
+      "all": {
+        "value": 1.0,
+        "ci95": [
+          1.0,
+          1.0
+        ],
+        "n": 2000
+      },
+      "errors": 0
+    },
+    "fusion": {
+      "method": "log((K-1)*acc/(1-acc)) of each backend's fit-half top-1 accuracy, clipped at 0",
+      "gender": {
+        "previous_weights": {
+          "fairface": 2.0
+        },
+        "fit_half_accuracy": {
+          "fairface": 0.9289
+        },
+        "fitted_weights": {
+          "fairface": 2.569
+        },
+        "test_previous": {
+          "value": 0.0,
+          "ci95": [
+            0.0,
+            0.0
+          ],
+          "n": 1002
+        },
+        "test_fitted": {
+          "value": 0.0,
+          "ci95": [
+            0.0,
+            0.0
+          ],
+          "n": 1002
+        },
+        "test_fitted_minus_previous": {
+          "value": 0.0,
+          "ci95": [
+            0.0,
+            0.0
+          ],
+          "n": 1002
+        },
+        "test_best_shipped": {
+          "value": 0.0,
+          "ci95": [
+            0.0,
+            0.0
+          ],
+          "n": 1002
+        },
+        "test_best_minus_fitted": {
+          "value": 0.0,
+          "ci95": [
+            0.0,
+            0.0
+          ],
+          "n": 1002
+        }
+      },
+      "race": {
+        "previous_weights": {
+          "fairface": 1.0
+        },
+        "fit_half_accuracy": {
+          "fairface": 0.7244
+        },
+        "fitted_weights": {
+          "fairface": 2.576
+        },
+        "test_previous": {
+          "value": 0.0,
+          "ci95": [
+            0.0,
+            0.0
+          ],
+          "n": 1002
+        },
+        "test_fitted": {
+          "value": 0.0,
+          "ci95": [
+            0.0,
+            0.0
+          ],
+          "n": 1002
+        },
+        "test_fitted_minus_previous": {
+          "value": 0.0,
+          "ci95": [
+            0.0,
+            0.0
+          ],
+          "n": 1002
+        },
+        "test_best_shipped": {
+          "value": 0.0,
+          "ci95": [
+            0.0,
+            0.0
+          ],
+          "n": 1002
+        },
+        "test_best_minus_fitted": {
+          "value": 0.0,
+          "ci95": [
+            0.0,
+            0.0
+          ],
+          "n": 1002
+        }
+      }
+    },
+    "cache_vs_display_mismatches": {
+      "gender": 0,
+      "race": 0,
+      "best_age": 0,
+      "previous_fused_gender": 0,
+      "previous_fused_race": 0
+    },
+    "fairface_landmark_alignment_share": 0.9935,
+    "gender": {
+      "backends": {
+        "fairface": {
+          "value": 0.9232,
+          "ci95": [
+            0.9062,
+            0.9401
+          ],
+          "n": 1002
+        }
+      },
+      "best_shipped": {
+        "value": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "n": 1002,
+        "chosen_backend": {
+          "mivolo": 0,
+          "fairface": 0,
+          "caffe": 0,
+          "deepface": 0
+        }
+      },
+      "fused_previous": {
+        "value": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "n": 1002
+      },
+      "best_minus_fused_previous": {
+        "value": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "n": 1002
+      },
+      "fused_fitted": {
+        "value": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "n": 1002
+      }
+    },
+    "race": {
+      "backends": {
+        "fairface": {
+          "value": 0.7535,
+          "ci95": [
+            0.7285,
+            0.7815
+          ],
+          "n": 1002
+        }
+      },
+      "per_class_recall": {
+        "white": {
+          "n": 191,
+          "fairface": 0.7382,
+          "best_shipped": 0.0,
+          "fused_previous": 0.0
+        },
+        "black": {
+          "n": 142,
+          "fairface": 0.8732,
+          "best_shipped": 0.0,
+          "fused_previous": 0.0
+        },
+        "asian": {
+          "n": 271,
+          "fairface": 0.8819,
+          "best_shipped": 0.0,
+          "fused_previous": 0.0
+        },
+        "indian": {
+          "n": 139,
+          "fairface": 0.6906,
+          "best_shipped": 0.0,
+          "fused_previous": 0.0
+        },
+        "latino": {
+          "n": 148,
+          "fairface": 0.5338,
+          "best_shipped": 0.0,
+          "fused_previous": 0.0
+        },
+        "middle_eastern": {
+          "n": 111,
+          "fairface": 0.6847,
+          "best_shipped": 0.0,
+          "fused_previous": 0.0
+        }
+      },
+      "fairface_7class": {
+        "value": 0.6966,
+        "ci95": [
+          0.6677,
+          0.7265
+        ],
+        "n": 1002
+      },
+      "best_shipped": {
+        "value": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "n": 1002,
+        "chosen_backend": {
+          "fairface": 0,
+          "deepface": 0
+        }
+      },
+      "fused_previous": {
+        "value": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "n": 1002
+      },
+      "best_minus_fused_previous": {
+        "value": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "n": 1002
+      },
+      "fused_fitted": {
+        "value": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "n": 1002
+      }
+    },
+    "age": {
+      "backends": {
+        "fairface": {
+          "bucket_accuracy": {
+            "value": 0.5908,
+            "ci95": [
+              0.5628,
+              0.6208
+            ],
+            "n": 1002
+          },
+          "mean_bucket_offset": {
+            "value": 0.475,
+            "ci95": [
+              0.4351,
+              0.517
+            ],
+            "n": 1002
+          },
+          "within_one_bucket": {
+            "value": 0.9531,
+            "ci95": [
+              0.9371,
+              0.9651
+            ],
+            "n": 1002
+          }
+        }
+      },
+      "best_shipped": {
+        "bucket_accuracy": {
+          "value": 0.0,
+          "ci95": [
+            0.0,
+            0.0
+          ],
+          "n": 1002
+        },
+        "mean_bucket_offset": {
+          "value": NaN,
+          "ci95": [
+            NaN,
+            NaN
+          ],
+          "n": 0
+        },
+        "within_one_bucket": {
+          "value": NaN,
+          "ci95": [
+            NaN,
+            NaN
+          ],
+          "n": 0
+        },
+        "chosen_backend": {
+          "convnext": 0,
+          "mivolo": 0,
+          "fairface": 0,
+          "dex": 0,
+          "caffe": 0
+        }
+      }
+    }
+  }
+}

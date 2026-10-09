@@ -37,7 +37,10 @@ FairFace age, gender, and race use the existing MediaPipe landmarks when availab
 to the four eye corners and nose used by [dlib's five-point face chip](https://github.com/davisking/dlib/blob/master/dlib/image_transforms/interpolation.h).
 The similarity crop uses [FairFace's padding of 0.25](https://github.com/dchen236/FairFace/blob/master/predict.py).
 MediaPipe is an approximation of the original dlib landmark detector, not an identical
-replacement. Missing or degenerate landmarks retain the bbox crop. Geometry and pipeline
+replacement. Without MediaPipe landmarks (the public demo has no mediapipe), FairFace aligns on
+the RetinaFace or SCRFD detector's eye centers and nose tip, fitted to the same reference with
+each eye's two corners merged into its center ([held-out effect](eval/heldout_fairface.md#demo-configuration)).
+Missing or degenerate landmarks retain the bbox crop. Geometry and pipeline
 tests verify the contract; accuracy gains still require a labeled photo benchmark.
 
 `dex` (Deep EXpectation, Rothe et al. ICCV 2015) is a VGG-16 trained on IMDB-WIKI, a heavy age option (539MB caffemodel). The authors state that IMDB-WIKI is for academic research only and state no separate license for the pretrained models; treat it as research use only. Weight-file details: [models/dex_age.md](models/dex_age.md).

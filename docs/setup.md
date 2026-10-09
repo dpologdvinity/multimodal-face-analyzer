@@ -169,6 +169,12 @@ still rewrites the tracked `docs/eval/heldout_fairface.json`, and `scored_on` an
 `scoring_git_commit` change on every run. For checks that should leave the JSON alone, add
 `--output <path>`.
 
+`--detector` picks another face detector and `--no-mediapipe` leaves MediaPipe's landmarker
+unloaded; [heldout_fairface.md](eval/heldout_fairface.md#demo-configuration) has the command for
+the public demo's configuration. The eval caps ONNX Runtime at two threads per session through
+`FACE_ANALYZER_ORT_THREADS`, which the app also honors; unset, ONNX Runtime starts one thread per
+core and pins them, past any `taskset` limit.
+
 `--extra-age KEY=model.onnx` also runs an age model that is not an app backend on the same
 detections and aligned faces, cached separately in `data/eval_cache/<config>/extra_age_KEY.jsonl`;
 the committed JSON includes `convnext` this way, so re-score it with

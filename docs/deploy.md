@@ -56,6 +56,10 @@ Demo mode changes the following:
   [Dependencies](#dependencies)). The SSD detector is never loaded in demo mode, because its
   weights have no stated license.
 
+  Without MediaPipe, FairFace aligns each face on RetinaFace's own eye and nose landmarks, which
+  holds the demo within noise of the full app's `fairface` on held-out FairFace (gender 92.3%,
+  race 75.3%, age bucket 59.1%; see [the demo row](eval/heldout_fairface.md#demo-configuration)).
+
 ## Streamlit Community Cloud
 
 Community Cloud is free, gives each app about 2.7 GB of RAM and 2 CPU cores, and installs the
