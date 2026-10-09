@@ -68,6 +68,18 @@ def theme_tokens() -> dict[str, dict[str, str]]:
     return {name: {**tokens[DEFAULT_THEME], **tokens[name]} for name in THEME_NAMES}
 
 
+def _bgr(hex_color: str) -> tuple[int, int, int]:
+    """Convert #rrggbb to the BGR tuple OpenCV draws with."""
+    return tuple(int(hex_color[i:i + 2], 16) for i in (5, 3, 1))
+
+
+def box_style(name: str) -> dict[str, tuple[int, int, int]]:
+    """Return the AnalysisConfig face-box colours (BGR) for a theme's --box tokens."""
+    tokens = theme_tokens()[resolve_theme(name)]
+    box = _bgr(tokens["box"])
+    return {"box_color": box, "box_outline": _bgr(tokens["box-outline"]), "label_color": box}
+
+
 def theme_accent(name: str) -> str:
     """Return a theme's accent colour; unknown names get the default theme's."""
     return theme_tokens()[resolve_theme(name)]["accent"]

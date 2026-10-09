@@ -6,6 +6,7 @@ from face_analyzer.ui.theme import (
     DEFAULT_THEME,
     THEME_MARKER_CLASSES,
     THEME_NAMES,
+    box_style,
     stylesheet,
     theme_accent,
     theme_label,
@@ -14,7 +15,7 @@ from face_analyzer.ui.theme import (
 
 REQUIRED_TOKENS = {
     "bg", "surface", "surface-raised", "line", "line-strong",
-    "text", "muted", "accent", "accent-ink", "ok", "warn", "alert",
+    "text", "muted", "accent", "accent-ink", "ok", "warn", "alert", "box", "box-outline",
 }
 SURFACES = ("bg", "surface", "surface-raised")
 REMOVED_THEMES = ("Brutalist", "Light cyberpunk", "Synthwave", "Phosphor Green", "Midnight Enterprise")
@@ -75,6 +76,22 @@ def test_control_borders_and_accent_meet_ui_contrast(name):
     for surface in ("bg", "surface"):
         assert contrast(tokens["line-strong"], tokens[surface]) >= 3, f"{name}: line-strong on {surface}"
         assert contrast(tokens["accent"], tokens[surface]) >= 3, f"{name}: accent on {surface}"
+
+
+@pytest.mark.parametrize("name", THEME_NAMES)
+def test_face_box_stands_out_from_its_rim(name):
+    # The rim keeps the box visible where the box colour matches the photo underneath.
+    tokens = theme_tokens()[name]
+    assert contrast(tokens["box"], tokens["box-outline"]) >= 3
+
+
+def test_box_style_converts_theme_tokens_to_bgr():
+    tokens = theme_tokens()["Safelight"]
+    assert tokens["box"] == "#ffb547"
+    assert box_style("Safelight") == {
+        "box_color": (0x47, 0xb5, 0xff), "box_outline": (0x02, 0x14, 0x22), "label_color": (0x47, 0xb5, 0xff),
+    }
+    assert box_style("Brutalist") == box_style(DEFAULT_THEME)
 
 
 def test_removed_themes_are_gone_from_the_stylesheet():

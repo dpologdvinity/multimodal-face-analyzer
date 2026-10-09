@@ -19,7 +19,7 @@ from .. import inference
 from ..demo import BUSY_NOTE, DemoBusyError, analysis_slot, is_demo_mode
 from .adjustments import adjustment_sliders
 from .sidebar import SidebarState
-from .theme import theme_accent
+from .theme import box_style, theme_accent
 
 IMAGE_DISPLAY_WIDTH = 900
 
@@ -197,6 +197,7 @@ def process_and_display(
                     gallery=st.session_state.get("gallery", {}),
                     global_adjustments={name: values[2] for name, values in inference.IMAGE_ADJUSTMENT_RANGES.items()},
                     face_adjustments=face_adjustments,
+                    **box_style(theme),
                 ),
             )
     except DemoBusyError as exc:

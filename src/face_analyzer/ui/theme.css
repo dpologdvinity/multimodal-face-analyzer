@@ -2,7 +2,8 @@
 
 /* Theme tokens. Each theme is one block of custom properties keyed off the marker element
    that apply_theme() renders; Umbra doubles as :root so the page never renders unthemed.
-   Colour tokens are plain #rrggbb so tests/test_theme.py can check their contrast. */
+   Colour tokens are plain #rrggbb so tests/test_theme.py can check their contrast.
+   --box and --box-outline are also drawn into the annotated image (theme.box_style()). */
 :root,
 body:has(.theme-umbra) {
     --bg: #101416;
@@ -14,6 +15,8 @@ body:has(.theme-umbra) {
     --muted: #9db0ae;
     --accent: #5cc8b9;
     --accent-ink: #062420;
+    --box: #5cc8b9;
+    --box-outline: #062420;
     --ok: #7fcf8e;
     --warn: #e9b65c;
     --alert: #f28b78;
@@ -39,6 +42,8 @@ body:has(.theme-lumen) {
     --muted: #4f605d;
     --accent: #0a7368;
     --accent-ink: #ffffff;
+    --box: #0f9b8b;
+    --box-outline: #ffffff;
     --ok: #1d7a3a;
     --warn: #8a5a00;
     --alert: #b3261e;
@@ -57,6 +62,8 @@ body:has(.theme-safelight) {
     --muted: #c39e6c;
     --accent: #ffb547;
     --accent-ink: #221402;
+    --box: #ffb547;
+    --box-outline: #221402;
     --ok: #a9d27a;
     --warn: #ffd36b;
     --alert: #ff8a6b;
@@ -83,6 +90,8 @@ body:has(.theme-cyanotype) {
     --muted: #46597a;
     --accent: #1b4fae;
     --accent-ink: #ffffff;
+    --box: #f4f7fb;
+    --box-outline: #1b4fae;
     --ok: #1f6f43;
     --warn: #7f5600;
     --alert: #a8231c;
@@ -646,7 +655,7 @@ section[data-testid="stSidebar"] :is(label, p) { line-height: 1.45; }
 .face-hover-target:hover,
 .face-hover-target:focus-visible {
     z-index: 3;
-    outline: 2px solid var(--accent);
+    outline: 2px solid var(--box);
     outline-offset: 3px;
     background: color-mix(in srgb, var(--accent) 14%, transparent);
 }
@@ -675,7 +684,8 @@ section[data-testid="stSidebar"] :is(label, p) { line-height: 1.45; }
     left: 0;
     transform: translateY(-100%);
     background: var(--surface);
-    border-left: 2px solid var(--accent);
+    border: 1px solid var(--box-outline);
+    border-left: 3px solid var(--box);
     color: var(--text);
     font-family: var(--font-data);
     font-size: 0.64rem;

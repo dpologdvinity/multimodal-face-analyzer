@@ -29,6 +29,11 @@ class AnalysisConfig:
     tracker: Any | None = None
     liveness_tracker: Any | None = None
     active_liveness: set[str] | None = None
+    # Face box drawing, in BGR. The UI passes its theme's colours; everyone else keeps the
+    # original green box, yellow number and no outline.
+    box_color: tuple[int, int, int] = (0, 255, 0)
+    box_outline: tuple[int, int, int] | None = None
+    label_color: tuple[int, int, int] = (0, 255, 255)
 
 
 __all__ = ["AnalysisConfig"]

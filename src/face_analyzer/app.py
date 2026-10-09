@@ -146,7 +146,7 @@ with tab_webcam:
     else:
         render_live_tab(
             models, sidebar, live_session,
-            global_adjustments=global_adjustments, face_adjustments=face_adjustments,
+            global_adjustments=global_adjustments, face_adjustments=face_adjustments, theme=theme,
         )
 
 if demo:
