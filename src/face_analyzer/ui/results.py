@@ -19,7 +19,7 @@ from .. import inference
 from ..demo import BUSY_NOTE, DemoBusyError, analysis_slot, is_demo_mode
 from .adjustments import adjustment_sliders
 from .sidebar import SidebarState
-from .theme import THEME_ACCENTS
+from .theme import theme_accent
 
 IMAGE_DISPLAY_WIDTH = 900
 
@@ -122,7 +122,7 @@ def _render_photo_editor(
         if editing:
             source = Image.fromarray(cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB))
             cropped = st_cropper(
-                source, realtime_update=True, box_color=THEME_ACCENTS.get(theme, "#76dfb1"), aspect_ratio=None,
+                source, realtime_update=True, box_color=theme_accent(theme), aspect_ratio=None,
                 return_type="image", key=f"cropper_{identifier}",
             )
             edited_bgr = cv2.cvtColor(np.asarray(cropped), cv2.COLOR_RGB2BGR)
