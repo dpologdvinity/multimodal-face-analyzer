@@ -204,5 +204,33 @@ class TestRaceHeadline(unittest.TestCase):
         self.assertEqual(aggregate_demographics([rec])["race"]["best"], {"White (fairface)": 1})
 
 
+class TestGenderHeadline(unittest.TestCase):
+    """Verify the gender headline flows from _gender_task through _face_record."""
+
+    def test_gender_headline_names_mivolo_over_three_disagreeing_backends(self):
+        """Name mivolo as the gender headline even when every other backend says otherwise."""
+        probs = {"fairface": np.array([.9, .1]), "caffe": np.array([.9, .1]), "deepface": np.array([.1, .9])}
+        face = np.zeros((8, 8, 3), np.uint8)
+        inputs = SimpleNamespace(face=face, crop_frame=face, crop_box=(0, 0, 8, 8), fairface_landmarks=None,
+                                 box=(0, 0, 8, 8), track_id=None, blob227=None, mivolo_result=(30.0, "Female"))
+        backends = {"caffe", "deepface", "fairface", "mivolo"}
+        models = SimpleNamespace(gender_nets={key: object() for key in backends})
+        with patch.object(face_tasks, "_cached_face_predict", side_effect=lambda f, key, *_: probs[key]):
+            gender = face_tasks._gender_task(models, AnalysisConfig(active_gender=backends), inputs)
+        self.assertEqual(sorted(gender[0]), [("caffe", "Male"), ("deepface", "Male"), ("fairface", "Male"),
+                                             ("mivolo", "Female")])
+        self.assertEqual(gender[1], ("Female", "mivolo"))
+        e = ([], None)
+        rec = _face_record(0, {"inputs": inputs, "age": e, "gender": gender, "emotion": e, "race": e,
+                               "gaze": [], "head_pose": [], "recognition": e, "glasses": [], "mask": [],
+                               "hair_color": [], "eye_color": [], "liveness": e})
+        self.assertEqual(rec["headline"]["gender"], "Female")
+        self.assertEqual(rec["raw_columns"]["gender_best"], "Female (mivolo)")
+        self.assertNotIn("gender_fused", rec["raw_columns"])
+        self.assertEqual(rec["model_results"][0],
+                         {"Feature": "GENDER", "Model": "best", "Output": "Female (mivolo)"})
+        self.assertEqual(aggregate_demographics([rec])["gender"]["best"], {"Female (mivolo)": 1})
+
+
 if __name__ == "__main__":
     unittest.main()

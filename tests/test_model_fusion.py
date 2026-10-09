@@ -32,14 +32,16 @@ class SelectAgeTests(unittest.TestCase):
         )
 
 
-class FuseGenderTests(unittest.TestCase):
-    def test_weights_the_more_accurate_model_higher(self):
-        # caffe (weight 0.5) is confidently wrong, mivolo (weight 3.0) is confidently right.
-        self.assertEqual(inference.fuse_gender({"mivolo": 1.0, "caffe": 0.0}), "Male")
-        self.assertEqual(inference.fuse_gender({"mivolo": 0.0, "caffe": 1.0}), "Female")
+class SelectGenderTests(unittest.TestCase):
+    """Gender names its most reliable model rather than blending -- see GENDER_MODEL_RELIABILITY."""
+
+    def test_picks_mivolo_over_fairface(self):
+        self.assertEqual(
+            inference.select_gender({"fairface": "Female", "mivolo": "Male"}), ("Male", "mivolo"),
+        )
 
     def test_needs_at_least_two_models(self):
-        self.assertIsNone(inference.fuse_gender({"mivolo": 1.0}))
+        self.assertIsNone(inference.select_gender({"mivolo": "Male"}))
 
 
 class CanonicalRaceTests(unittest.TestCase):

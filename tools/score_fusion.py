@@ -1,4 +1,4 @@
-"""Score inference.py's combined answers (fuse_*, select_age, select_race) against tmp/predictions.json.
+"""Score inference.py's combined answers (fuse_emotion, select_*) against tmp/predictions.json.
 
 Uses the shipped fusion functions, not a copy of them, so a rule that scores well here is the
 rule the app actually runs. Re-run tools/dump_predictions.py first if a model changed.
@@ -34,6 +34,11 @@ def age_estimates(record: dict) -> dict[str, float]:
     return estimates
 
 
+def gender_labels(record: dict) -> dict[str, str]:
+    """Rebuild the per-model displayed gender labels (from P(Male)) analyze_frame feeds to select_gender."""
+    return {key: "Male" if probability >= 0.5 else "Female" for key, probability in record["gender"].items()}
+
+
 def race_labels(record: dict) -> dict[str, str]:
     """Rebuild the per-model displayed race labels analyze_frame feeds to select_race."""
     out = {}
@@ -66,8 +71,9 @@ def main() -> None:
             if not correct:
                 scores["age"][2].append(f"{record['id']}={fused} want {low}-{high}")
         if "gender" in truth:
-            fused = inf.fuse_gender(record["gender"])
-            correct = fused == truth["gender"]
+            chosen = inf.select_gender(gender_labels(record))
+            fused = None if chosen is None else f"{chosen[0]} ({chosen[1]})"
+            correct = chosen is not None and chosen[0] == truth["gender"]
             scores["gender"][1] += 1
             scores["gender"][0] += int(correct)
             if not correct:

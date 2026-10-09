@@ -26,7 +26,7 @@
     "eye_contact": [],
     "gaze": [],
     "gender": [
-      "Male",
+      "Male (fairface)",
       "Male",
       "Male"
     ],
@@ -89,17 +89,17 @@
       },
       {
         "Feature": "GENDER",
+        "Model": "best",
+        "Output": "Male (fairface)"
+      },
+      {
+        "Feature": "GENDER",
         "Model": "caffe",
         "Output": "Male"
       },
       {
         "Feature": "GENDER",
         "Model": "fairface",
-        "Output": "Male"
-      },
-      {
-        "Feature": "GENDER",
-        "Model": "fused",
         "Output": "Male"
       },
       {
@@ -125,9 +125,9 @@
       "emotion_fused": "happy",
       "emotion_hsemotion": "happiness",
       "eye_color_colorimetric": "unknown",
+      "gender_best": "Male (fairface)",
       "gender_caffe": "Male",
       "gender_fairface": "Male",
-      "gender_fused": "Male",
       "hair_color_colorimetric": "brown",
       "race_fairface": "East Asian"
     },
@@ -162,7 +162,7 @@
     "eye_contact": [],
     "gaze": [],
     "gender": [
-      "Male",
+      "Male (fairface)",
       "Male",
       "Male"
     ],
@@ -225,17 +225,17 @@
       },
       {
         "Feature": "GENDER",
+        "Model": "best",
+        "Output": "Male (fairface)"
+      },
+      {
+        "Feature": "GENDER",
         "Model": "caffe",
         "Output": "Male"
       },
       {
         "Feature": "GENDER",
         "Model": "fairface",
-        "Output": "Male"
-      },
-      {
-        "Feature": "GENDER",
-        "Model": "fused",
         "Output": "Male"
       },
       {
@@ -261,9 +261,9 @@
       "emotion_fused": "happy",
       "emotion_hsemotion": "happiness",
       "eye_color_colorimetric": "hazel",
+      "gender_best": "Male (fairface)",
       "gender_caffe": "Male",
       "gender_fairface": "Male",
-      "gender_fused": "Male",
       "hair_color_colorimetric": "brown",
       "race_fairface": "White"
     },
@@ -298,7 +298,7 @@
     "eye_contact": [],
     "gaze": [],
     "gender": [
-      "Male",
+      "Male (fairface)",
       "Male",
       "Male"
     ],
@@ -361,17 +361,17 @@
       },
       {
         "Feature": "GENDER",
+        "Model": "best",
+        "Output": "Male (fairface)"
+      },
+      {
+        "Feature": "GENDER",
         "Model": "caffe",
         "Output": "Male"
       },
       {
         "Feature": "GENDER",
         "Model": "fairface",
-        "Output": "Male"
-      },
-      {
-        "Feature": "GENDER",
-        "Model": "fused",
         "Output": "Male"
       },
       {
@@ -397,9 +397,9 @@
       "emotion_fused": "happy",
       "emotion_hsemotion": "happiness",
       "eye_color_colorimetric": "hazel",
+      "gender_best": "Male (fairface)",
       "gender_caffe": "Male",
       "gender_fairface": "Male",
-      "gender_fused": "Male",
       "hair_color_colorimetric": "brown",
       "race_fairface": "White (43%)/Latino_Hispanic (37%)"
     },
@@ -434,7 +434,7 @@
     "eye_contact": [],
     "gaze": [],
     "gender": [
-      "Male",
+      "Male (fairface)",
       "Male",
       "Male"
     ],
@@ -497,17 +497,17 @@
       },
       {
         "Feature": "GENDER",
+        "Model": "best",
+        "Output": "Male (fairface)"
+      },
+      {
+        "Feature": "GENDER",
         "Model": "caffe",
         "Output": "Male"
       },
       {
         "Feature": "GENDER",
         "Model": "fairface",
-        "Output": "Male"
-      },
-      {
-        "Feature": "GENDER",
-        "Model": "fused",
         "Output": "Male"
       },
       {
@@ -533,9 +533,9 @@
       "emotion_fused": "contempt",
       "emotion_hsemotion": "contempt",
       "eye_color_colorimetric": "hazel",
+      "gender_best": "Male (fairface)",
       "gender_caffe": "Male",
       "gender_fairface": "Male",
-      "gender_fused": "Male",
       "hair_color_colorimetric": "brown",
       "race_fairface": "East Asian (36%)/White (27%)"
     },
@@ -570,7 +570,7 @@
     "eye_contact": [],
     "gaze": [],
     "gender": [
-      "Male",
+      "Male (fairface)",
       "Male",
       "Male"
     ],
@@ -633,17 +633,17 @@
       },
       {
         "Feature": "GENDER",
+        "Model": "best",
+        "Output": "Male (fairface)"
+      },
+      {
+        "Feature": "GENDER",
         "Model": "caffe",
         "Output": "Male"
       },
       {
         "Feature": "GENDER",
         "Model": "fairface",
-        "Output": "Male"
-      },
-      {
-        "Feature": "GENDER",
-        "Model": "fused",
         "Output": "Male"
       },
       {
@@ -669,9 +669,9 @@
       "emotion_fused": "happy",
       "emotion_hsemotion": "happiness",
       "eye_color_colorimetric": "hazel",
+      "gender_best": "Male (fairface)",
       "gender_caffe": "Male",
       "gender_fairface": "Male",
-      "gender_fused": "Male",
       "hair_color_colorimetric": "black",
       "race_fairface": "White"
     },
@@ -706,7 +706,7 @@
     "eye_contact": [],
     "gaze": [],
     "gender": [
-      "Female",
+      "Female (fairface)",
       "Female",
       "Female"
     ],
@@ -769,17 +769,17 @@
       },
       {
         "Feature": "GENDER",
+        "Model": "best",
+        "Output": "Female (fairface)"
+      },
+      {
+        "Feature": "GENDER",
         "Model": "caffe",
         "Output": "Female"
       },
       {
         "Feature": "GENDER",
         "Model": "fairface",
-        "Output": "Female"
-      },
-      {
-        "Feature": "GENDER",
-        "Model": "fused",
         "Output": "Female"
       },
       {
@@ -805,9 +805,9 @@
       "emotion_fused": "happy",
       "emotion_hsemotion": "happiness",
       "eye_color_colorimetric": "hazel",
+      "gender_best": "Female (fairface)",
       "gender_caffe": "Female",
       "gender_fairface": "Female",
-      "gender_fused": "Female",
       "hair_color_colorimetric": "black",
       "race_fairface": "White (46%)/East Asian (41%)"
     },

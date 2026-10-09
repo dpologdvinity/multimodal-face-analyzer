@@ -303,7 +303,7 @@ def _face_record(idx: int, analysis: dict) -> dict:
     """Assemble one face's result dict: headlines, formatted outputs and table rows."""
     inputs: _FaceInputs = analysis["inputs"]
     age_pairs, best_age = analysis["age"]
-    gender_pairs, fused_gender = analysis["gender"]
+    gender_pairs, best_gender = analysis["gender"]
     emotion_pairs, fused_emotion = analysis["emotion"]
     race_pairs, best_race = analysis["race"]
     gaze_pairs = analysis["gaze"]
@@ -322,7 +322,11 @@ def _face_record(idx: int, analysis: dict) -> dict:
         f"{best_age[0]} ({best_age[1]})" if best_age else None,
         BEST_MODEL_KEY,
     )
-    gender_pairs = with_headline(gender_pairs, fused_gender)
+    gender_pairs = with_headline(
+        gender_pairs,
+        f"{best_gender[0]} ({best_gender[1]})" if best_gender else None,
+        BEST_MODEL_KEY,
+    )
     race_pairs = with_headline(
         race_pairs,
         f"{best_race[0]} ({best_race[1]})" if best_race else None,
@@ -361,7 +365,7 @@ def _face_record(idx: int, analysis: dict) -> dict:
         "age": _format_results(age_pairs),
         "headline": {
             "age": best_age[0] if best_age else None,
-            "gender": fused_gender,
+            "gender": best_gender[0] if best_gender else None,
             "race": best_race[0] if best_race else None,
             "emotion": fused_emotion,
         },

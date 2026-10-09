@@ -11,13 +11,13 @@ from ..core.constants import (
 from .ensembles import (
     canonical_race_probabilities,
     fuse_emotion,
-    fuse_gender,
 )
 from .ranking import (
     _format_results,
     _gather_face_results,
     _sanitize_column_name,
     select_age,
+    select_gender,
     select_race,
     with_headline,
 )
@@ -25,13 +25,13 @@ from .ranking import (
 __all__ = [
     # ranking
     "select_age",
+    "select_gender",
     "select_race",
     "with_headline",
     "_format_results",
     "_sanitize_column_name",
     "_gather_face_results",
     # ensembles
-    "fuse_gender",
     "canonical_race_probabilities",
     "fuse_emotion",
     # constants re-exported for backward compatibility

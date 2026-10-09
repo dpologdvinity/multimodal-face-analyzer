@@ -161,7 +161,9 @@ AGE_MODEL_RELIABILITY = ("mivolo", "fairface", "dex", "caffe")
 # Ordered by held-out FairFace accuracy; see docs/eval/heldout_fairface.md. Not fused, because
 # deepface's near one-hot probabilities dominated any blend and dragged it below fairface alone.
 RACE_MODEL_RELIABILITY = ("fairface", "deepface")
-GENDER_FUSION_WEIGHTS = {"mivolo": 3.0, "fairface": 2.0, "caffe": 0.5, "deepface": 0.5}
+# Ordered by held-out FairFace accuracy. Not fused: the previous weighted fusion always returned
+# mivolo's hard label, and a learned stacker did no better than mivolo alone on held-out data.
+GENDER_MODEL_RELIABILITY = ("mivolo", "fairface", "deepface", "caffe")
 EMOTION_FUSION_WEIGHTS = {"dan": 3.0, "hsemotion": 3.0, "ferplus": 2.0, "mini_xception": 1.0}
 
 FAIRFACE_AGE_RANGES = [

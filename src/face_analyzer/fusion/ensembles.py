@@ -6,7 +6,6 @@ import numpy as np
 from ..core.constants import (
     EMOTION_CANONICAL,
     EMOTION_FUSION_WEIGHTS,
-    GENDER_FUSION_WEIGHTS,
     RACE_CANONICAL_LABELS,
     RACE_CLOSE_MARGIN,
     RACE_LABEL_TO_CANONICAL,
@@ -20,17 +19,6 @@ def _format_race_label(probs: np.ndarray, labels: list[str]) -> str:
     if probs[top1] - probs[top2] < RACE_CLOSE_MARGIN:
         return f"{labels[top1]} ({probs[top1] * 100:.0f}%)/{labels[top2]} ({probs[top2] * 100:.0f}%)"
     return labels[top1]
-
-
-def fuse_gender(male_probabilities: dict[str, float]) -> str | None:
-    """Combine per-model P(Male) into one weighted-mean gender label."""
-    usable = {key: value for key, value in male_probabilities.items()
-              if value is not None and np.isfinite(value)}
-    if len(usable) < 2:
-        return None
-    weights = np.array([GENDER_FUSION_WEIGHTS.get(key, 1.0) for key in usable])
-    probability = float(np.array(list(usable.values())) @ weights / weights.sum())
-    return "Male" if probability >= 0.5 else "Female"
 
 
 def canonical_race_probabilities(probs: np.ndarray, labels: list[str]) -> dict[str, float]:
