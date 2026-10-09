@@ -9,7 +9,7 @@ import subprocess
 import sys
 
 REPO = "https://github.com/dpologdvinity/multimodal-face-analyzer.git"
-COMMIT = "COMMIT_PLACEHOLDER"
+COMMIT = "a7498aac6f2066f10c91e169ccd92669b3b1d529"
 SRC = "/tmp/age/src"
 
 
