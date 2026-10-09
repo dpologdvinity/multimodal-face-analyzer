@@ -149,6 +149,25 @@ class FairFaceAlignmentTests(unittest.TestCase):
         detect.assert_called()
         np.testing.assert_array_equal(net.blob, expected)
 
+    def test_near_profile_check_gets_the_detector_box_width(self):
+        """Pass the box width (x2 - x1) to the near-profile check along with the landmarks."""
+        frame = np.tile(self.frame, (2, 2, 1))
+        box = (80, 90, 240, 280)
+        points = np.array([[130, 150], [190, 150], [160, 185], [135, 220], [185, 220]], dtype=np.float32)
+        models = inference.Models(face_net=None, retinaface_nets={"retinaface": object()},
+                                  age_nets={"fairface": RecordingNet()})
+        with patch("face_analyzer.pipeline.stages.detect_faces_retinaface_landmarks",
+                   return_value=([list(box)], [points])), \
+             patch("face_analyzer.pipeline.stages.fairface_landmarks_from_detector",
+                   wraps=inference.fairface_landmarks_from_detector) as convert:
+            inference.analyze_frame(
+                models, frame, inference.AnalysisConfig(active_age={"fairface"}, face_detector="retinaface"),
+            )
+        convert.assert_called_once()
+        landmarks, box_width = convert.call_args.args
+        np.testing.assert_array_equal(landmarks, points)
+        self.assertEqual(box_width, box[2] - box[0])
+
 
 if __name__ == "__main__":
     unittest.main()
