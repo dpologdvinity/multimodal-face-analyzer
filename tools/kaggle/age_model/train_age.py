@@ -330,7 +330,7 @@ def main() -> None:
     parser.add_argument("--prep", type=Path, required=True, help="prep kernel output directory")
     parser.add_argument("--crops", type=Path, required=True, help="crops kernel output directory")
     parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--epochs", type=int, default=14)
+    parser.add_argument("--epochs", type=int, default=12)
     parser.add_argument("--patience", type=int, default=4)
     parser.add_argument("--batch", type=int, default=128)
     parser.add_argument("--lr", type=float, default=2e-4, help="peak learning rate of the trunk")
@@ -340,7 +340,7 @@ def main() -> None:
     parser.add_argument("--sigma", type=float, default=0.5, help="ordinal label spread, in buckets")
     parser.add_argument("--aux-weight", type=float, default=0.0, help="gender+race loss weight; 0 = off")
     parser.add_argument("--ema", type=float, default=0.9995)
-    parser.add_argument("--time-budget-min", type=float, default=150.0,
+    parser.add_argument("--time-budget-min", type=float, default=120.0,
                         help="wall-clock budget for setup plus training; the schedule shrinks to fit")
     parser.add_argument("--diagnose", action="store_true", help="time pipeline parts and step variants")
     parser.add_argument("--max-steps", type=int, default=0, help="timing check: stop after N steps, no export")
@@ -368,6 +368,14 @@ def main() -> None:
     crops = np.load(args.crops / "crops_train.npy", mmap_mode="r")
     if crops.shape != (len(prep["row"]), SIZE, SIZE, 3):
         raise SystemExit(f"crops shape {crops.shape} does not match {len(prep['row'])} records")
+    if not args.diagnose and not args.smoke:
+        # Random-row reads from the mounted input ran at about 0.7 s per batch; read it once instead.
+        loaded = np.empty(crops.shape, np.uint8)
+        t = time.time()
+        for a in range(0, len(crops), 4096):
+            loaded[a:a + 4096] = crops[a:a + 4096]
+        crops = loaded
+        emit({"event": "crops_in_ram", "minutes": round((time.time() - t) / 60, 1), **memory_note()})
     detected = np.flatnonzero(prep["detected"])
     train_idx, select_idx = selection_split(meta["age"][detected], meta["race"][detected], SEED)
     train_idx, select_idx = detected[train_idx], detected[select_idx]
@@ -411,7 +419,8 @@ def main() -> None:
         group["base_lr"] = group["lr"]
     optimizer = torch.optim.AdamW(groups, lr=args.lr, weight_decay=args.weight_decay)
     scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda")
-    parallel = nn.DataParallel(model) if torch.cuda.device_count() > 1 else model
+    # One GPU: DataParallel measured 6-10 s/step on 2xT4 against 0.55 s/step on one (--diagnose).
+    parallel = model
     steps_per_epoch = len(train_batches)
     total_steps, warmup = steps_per_epoch * args.epochs, steps_per_epoch
     emit({"event": "start", "device": torch.cuda.get_device_name(0) if device.type == "cuda" else "cpu",
@@ -533,7 +542,7 @@ def main() -> None:
         "versions": {"python": sys.version.split()[0], "torch": torch.__version__, "timm": timm.__version__,
                      "opencv": cv2.__version__, "numpy": np.__version__, "onnx": metadata.version("onnx")},
         "device": torch.cuda.get_device_name(0) if device.type == "cuda" else "cpu",
-        "gpus": torch.cuda.device_count(), "minutes": round((time.time() - started) / 60, 1),
+        "gpus_used": 1, "minutes": round((time.time() - started) / 60, 1),
     }
     (args.out / "selection_metrics.json").write_text(json.dumps(summary, indent=2) + "\n")
     emit({"event": "done", **{k: summary[k] for k in ("best", "select_final", "cv2_check", "minutes")}})
