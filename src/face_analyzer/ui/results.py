@@ -104,7 +104,7 @@ def _summary_html(identifier: str, faces: list[dict], model_count: int, detector
     """Render the per-image summary: the face count as a stat block beside the file and run details."""
     moods = Counter(value for face in faces for feature, value, _ in _headline_rows(face) if feature == "Emotion")
     noun = "face" if len(faces) == 1 else "faces"
-    caption = f"{noun} found." + (f" Mostly {escape(moods.most_common(1)[0][0])}." if moods else "")
+    caption = f"{noun} found." + (f" Top mood: {escape(moods.most_common(1)[0][0])}." if moods else "")
     return (
         '<div class="wrap-summary">'
         f'<div class="wrap-summary-stat"><span class="wrap-kicker">Results</span>'
@@ -160,18 +160,20 @@ def _render_bounded_image(image_rgb: np.ndarray, caption: str, key: str, width: 
 
 
 def _render_photo_editor(
-    frame_bgr: np.ndarray, identifier: str, adjustment_key: str, caption: str, *, theme: str,
+    frame_bgr: np.ndarray, identifier: str, adjustment_key: str, *, theme: str,
 ) -> np.ndarray:
-    """Show an optional mouse crop and image-adjustment panel beside the source image."""
+    """Show an "Edit image" toggle that opens a mouse crop and adjustment panel over the source image."""
     cropped_key = f"cropped_photo_{identifier}"
     if cropped_key in st.session_state:
         frame_bgr = st.session_state[cropped_key]
     editing_key = f"photo_editor_{identifier}"
-    image_col, editor_col = st.columns([3, 2])
+    if st.button("Close editor" if st.session_state.get(editing_key) else "Edit image", key=f"edit_image_{identifier}"):
+        st.session_state[editing_key] = not st.session_state.get(editing_key, False)
+        st.rerun()
+    editing = st.session_state.get(editing_key, False)
+    # The annotated result below already shows the photo, so the source appears only while editing.
+    image_col, editor_col = st.columns([3, 2]) if editing else (nullcontext(), nullcontext())
     with editor_col:
-        if st.button("Edit image", key=f"edit_image_{identifier}"):
-            st.session_state[editing_key] = not st.session_state.get(editing_key, False)
-        editing = st.session_state.get(editing_key, False)
         if editing:
             st.caption("Drag the crop rectangle, then adjust the preview before analysis.")
             adjustments = adjustment_sliders(
@@ -195,7 +197,6 @@ def _render_photo_editor(
                 st.rerun()
         else:
             edited_bgr = frame_bgr
-            _render_bounded_image(cv2.cvtColor(edited_bgr, cv2.COLOR_BGR2RGB), caption, f"source_{identifier}")
     # Only run the expensive image adjustment if at least one slider is non-zero (non-default).
     if any(adjustments.values()):
         edited_bgr = inference.apply_image_adjustments(edited_bgr, adjustments)
@@ -233,7 +234,7 @@ def process_and_display(
     theme: str, face_adjustments: dict,
 ) -> None:
     """Run detection/inference on frame and render result in Streamlit."""
-    frame = _render_photo_editor(frame, identifier, "global_adj", "Source photo", theme=theme)
+    frame = _render_photo_editor(frame, identifier, "global_adj", theme=theme)
 
     active_labels = [
         name for name, active in (
