@@ -372,29 +372,33 @@ def process_and_display(
             else:
                 st.text(f"#{face['idx']}: Unrecognized")
 
-    cols = st.columns(min(len(cropped_faces), FACE_COLUMNS))
+    column_count = min(len(cropped_faces), FACE_COLUMNS)
     for i, face in enumerate(cropped_faces):
-        with cols[i % len(cols)]:
+        # One st.columns row per line of cards, so phones (which stack columns) keep face order.
+        if i % column_count == 0:
+            cols = st.columns(column_count)
+        with cols[i % column_count]:
             st.markdown(face_story_html(face, i), unsafe_allow_html=True)
-            st.download_button(
-                "Save card", share_card_png(face, i, theme), f"face_{face['idx']:02d}_card.png", "image/png",
-                key=f"card_dl_{identifier}_{face['idx']}", icon=":material/ios_share:",
-            )
             face_bgr = cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR)
             face_editor_open_key = f"face_editor_open_{identifier}_{face['idx']}"
             st.session_state.setdefault(face_editor_open_key, False)
-            # The card already shows the crop; the editor opens a full-size preview beside its controls.
-            face_preview_col, face_editor_col = (
-                st.columns([3, 2]) if st.session_state[face_editor_open_key] else (nullcontext(), nullcontext())
-            )
-            op_key = f"image_op_result_{identifier}_{face['idx']}"
-            with face_editor_col:
+            with st.container(horizontal=True):
+                st.download_button(
+                    "Save card", share_card_png(face, i, theme), f"face_{face['idx']:02d}_card.png", "image/png",
+                    key=f"card_dl_{identifier}_{face['idx']}", icon=":material/ios_share:",
+                )
                 if st.button(
                     "Close editor" if st.session_state[face_editor_open_key] else "Edit face",
                     key=f"edit_face_toggle_{identifier}_{face['idx']}",
                 ):
                     st.session_state[face_editor_open_key] = not st.session_state[face_editor_open_key]
                     st.rerun()
+            # The card already shows the crop; the editor opens a full-size preview beside its controls.
+            face_preview_col, face_editor_col = (
+                st.columns([3, 2]) if st.session_state[face_editor_open_key] else (nullcontext(), nullcontext())
+            )
+            op_key = f"image_op_result_{identifier}_{face['idx']}"
+            with face_editor_col:
                 if st.session_state[face_editor_open_key]:
                     individual_adjustments = adjustment_sliders(
                         "Edit this crop only. Analysis labels use the detected crop.",
