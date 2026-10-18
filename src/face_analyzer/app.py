@@ -14,6 +14,7 @@ from face_analyzer.demo import (
     demo_attribution,
     is_demo_mode,
 )
+from face_analyzer.ui import SAMPLE_PHOTO, SAMPLE_PHOTO_CREDIT, SAMPLE_PHOTO_NAME
 from face_analyzer.ui.live import new_live_session, render_live_tab
 from face_analyzer.ui.results import process_and_display
 from face_analyzer.ui.sidebar import render_sidebar
@@ -104,6 +105,22 @@ with tab_upload:
         accept_multiple_files=True,
         max_upload_size=DEMO_MAX_UPLOAD_MB if demo else None,
     )
+
+    # The sample stays on across reruns (theme changes, editing) until hidden or replaced by an upload.
+    if uploaded_files:
+        st.session_state["show_sample"] = False
+    else:
+        showing = st.session_state.get("show_sample", False)
+        if st.button("Hide the sample photo" if showing else "No photo? Try a sample",
+                     icon=":material/photo_library:", key="sample_photo_btn"):
+            st.session_state["show_sample"] = not showing
+            st.rerun()
+        if showing:
+            st.caption(SAMPLE_PHOTO_CREDIT)
+            process_and_display(
+                models, sidebar, decode_image_bytes(SAMPLE_PHOTO.read_bytes()), SAMPLE_PHOTO_NAME,
+                theme=theme, face_adjustments=face_adjustments,
+            )
 
     if uploaded_files:
         if demo and len(uploaded_files) > DEMO_MAX_FILES:

@@ -244,3 +244,15 @@ def test_prediction_cache_survives_concurrent_eviction(monkeypatch):
         thread.join()
     assert not errors
     assert len(cache._PREDICTION_CACHE) <= 2
+
+
+def test_sample_photo_runs_without_an_upload_and_can_be_hidden(stubbed_app, monkeypatch):
+    monkeypatch.setenv("FACE_ANALYZER_DEMO", "1")
+    at = AppTest.from_file(APP, default_timeout=60).run()
+    assert not _shows_results(at)
+    at.button(key="sample_photo_btn").click().run()
+    assert not at.exception
+    assert _shows_results(at)
+    assert any("public domain" in caption.value for caption in at.caption)
+    at.button(key="sample_photo_btn").click().run()
+    assert not _shows_results(at)

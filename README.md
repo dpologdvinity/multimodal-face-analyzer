@@ -8,7 +8,8 @@ detectors, and held-out-tested ways of combining interchangeable backends.
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Live demo](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://multimodal-face-analyzer.streamlit.app/)
 
-**[Try the live demo](https://multimodal-face-analyzer.streamlit.app/)**: upload a photo and read
+**[Try the live demo](https://multimodal-face-analyzer.streamlit.app/)**: upload a photo (or press
+*Try a sample* for NASA's Expedition 59 crew portrait) and read
 each face's age, gender, race, emotion and eye color. It runs a reduced, CPU-only model set
 ([docs/deploy.md](docs/deploy.md)) and may take a minute to wake up.
 
