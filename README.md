@@ -7,7 +7,9 @@ detectors, and held-out-tested ways of combining interchangeable backends.
 ![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-<!-- LIVE DEMO: add the Streamlit Community Cloud URL here once deployed (docs/deploy.md). -->
+[![Live demo](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://multimodal-face-analyzer.streamlit.app/)
+
+**Live demo:** <https://multimodal-face-analyzer.streamlit.app/> (upload a photo; a reduced, CPU-only model set, see [docs/deploy.md](docs/deploy.md)). It may take a minute to wake up.
 
 <!-- DEMO: record 5-10s of LIVE mode (age/gender/emotion/landmarks on, change expression once),
      export ≤5 MB, ~800px wide → docs/media/demo.gif; full-UI screenshot → docs/media/screenshot.png -->
