@@ -12,7 +12,7 @@ detectors, and held-out-tested ways of combining interchangeable backends.
 each face's age, gender, race, emotion and eye color. It runs a reduced, CPU-only model set
 ([docs/deploy.md](docs/deploy.md)) and may take a minute to wake up.
 
-![The public demo on a NASA crew portrait: six faces boxed and numbered, with the readouts for faces 1 and 2](docs/media/hero.jpg)
+![The public demo on a NASA crew portrait: six faces boxed and numbered, and the colour cards for faces 1 and 2](docs/media/hero.jpg)
 
 <!-- DEMO: record 5-10s of LIVE mode (age/gender/emotion/landmarks on, change expression once),
      export ≤5 MB, ~800px wide → docs/media/demo.gif -->
