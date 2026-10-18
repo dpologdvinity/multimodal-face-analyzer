@@ -323,13 +323,13 @@ def process_and_display(
                 _show_fullscreen_image(cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB), identifier)
         st.markdown(_hoverable_face_image(annotated_frame, cropped_faces), unsafe_allow_html=True)
 
-    export_col_json, export_col_csv = st.columns(2)
+    export_col_json, export_col_csv, _ = st.columns([1, 1, 3])
     export_col_json.download_button(
-        "Download results as JSON", export_json, f"{identifier}_results.json", "application/json",
+        "Download JSON", export_json, f"{identifier}_results.json", "application/json",
         key=f"json_dl_{identifier}",
     )
     export_col_csv.download_button(
-        "Download results as CSV", csv_buffer.getvalue(), f"{identifier}_results.csv", "text/csv",
+        "Download CSV", csv_buffer.getvalue(), f"{identifier}_results.csv", "text/csv",
         key=f"csv_dl_{identifier}",
     )
 
