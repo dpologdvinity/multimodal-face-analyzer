@@ -6,13 +6,16 @@ detectors, and held-out-tested ways of combining interchangeable backends.
 [![CI](https://github.com/dpologdvinity/multimodal-face-analyzer/actions/workflows/ci.yml/badge.svg)](https://github.com/dpologdvinity/multimodal-face-analyzer/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-
 [![Live demo](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://multimodal-face-analyzer.streamlit.app/)
 
-**Live demo:** <https://multimodal-face-analyzer.streamlit.app/> (upload a photo; a reduced, CPU-only model set, see [docs/deploy.md](docs/deploy.md)). It may take a minute to wake up.
+**[Try the live demo](https://multimodal-face-analyzer.streamlit.app/)**: upload a photo and read
+each face's age, gender, race, emotion and eye color. It runs a reduced, CPU-only model set
+([docs/deploy.md](docs/deploy.md)) and may take a minute to wake up.
+
+![The public demo on a NASA crew portrait: six faces boxed and numbered, with the readouts for faces 1 and 2](docs/media/hero.jpg)
 
 <!-- DEMO: record 5-10s of LIVE mode (age/gender/emotion/landmarks on, change expression once),
-     export ≤5 MB, ~800px wide → docs/media/demo.gif; full-UI screenshot → docs/media/screenshot.png -->
+     export ≤5 MB, ~800px wide → docs/media/demo.gif -->
 
 A Streamlit app, with upload and live-webcam tabs, that detects faces in an uploaded image or webcam feed and runs any combination
 of attribute models on each face: age, gender, race, emotion, gaze, liveness, recognition, and
@@ -25,12 +28,10 @@ their answers.
   shape in `src/face_analyzer/detectors/`, selected per frame by a factory with SSD as the fallback.
 - **Fusion across label taxonomies.** Emotion backends are fused by weighted vote, after their
   labels are mapped onto shared canonical classes (`happy` and `happiness` are one vote).
-- **Fusion rejected where the evidence says so.** Age, gender and race name their most reliable
-  model instead of fusing or stacking, each chosen by held-out evidence: every age fusion rule
-  tried scored at or below MiVOLO alone, the race blend trailed `fairface` alone, the old gender
-  fusion could only ever return MiVOLO's answer, and a learned stacker (logistic regression over
-  every backend's output) beat the best single model by no more than noise for any of the three
-  (the largest gain, +0.5 points for age, has an interval spanning zero), so none ships.
+- **Fusion rejected where the evidence says so.** On 1,002 held-out FairFace faces, the old race
+  fusion scored 63.3% against 76.5% for its best model, and neither fusion nor a learned stacker
+  beat the best single model for age or gender. So those three name their best model
+  ([Results](#results)).
 - **Concurrent, cached inference.** Per-face attribute models run in parallel on a thread pool,
   outputs are memoized on a hash of the exact model input, and LIVE mode shows FPS and
   per-model latency.
