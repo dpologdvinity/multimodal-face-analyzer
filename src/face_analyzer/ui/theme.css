@@ -750,6 +750,7 @@ section[data-testid="stSidebar"] :is(label, p) { line-height: 1.45; }
 @media (max-width: 640px) {
     .block-container { padding: 4.5rem 1rem 3rem; }
     .wrap-hero-intro::after { display: none; }
+    .stApp .wrap-summary-meta h3 { font-size: 1.5rem; }
     .target-card-row { display: block; }
     .target-card-row .v { display: block; text-align: left; margin-top: 0.15rem; }
 }
