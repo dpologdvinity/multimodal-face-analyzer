@@ -4,6 +4,7 @@ from streamlit.testing.v1 import AppTest
 
 from face_analyzer.ui.theme import (
     DEFAULT_THEME,
+    POP_COUNT,
     THEME_MARKER_CLASSES,
     THEME_NAMES,
     box_style,
@@ -18,7 +19,9 @@ REQUIRED_TOKENS = {
     "text", "muted", "accent", "accent-ink", "ok", "warn", "alert", "box", "box-outline",
 }
 SURFACES = ("bg", "surface", "surface-raised")
-REMOVED_THEMES = ("Brutalist", "Light cyberpunk", "Synthwave", "Phosphor Green", "Midnight Enterprise")
+FILLS = [("hero", "hero-ink"), ("stat", "stat-ink")] + [(f"pop-{n}", f"pop-{n}-ink") for n in range(1, POP_COUNT + 1)]
+REMOVED_THEMES = ("Brutalist", "Light cyberpunk", "Synthwave", "Phosphor Green", "Midnight Enterprise",
+                  "Umbra", "Safelight", "Optical Bench", "Amber Terminal")
 
 
 def _luminance(hex_color: str) -> float:
@@ -39,12 +42,10 @@ def test_contrast_helper_matches_known_ratios():
     assert contrast("#777777", "#ffffff") == pytest.approx(4.48, abs=0.01)
 
 
-def test_exactly_the_four_themes_with_dark_first():
-    assert THEME_NAMES == ["Umbra", "Lumen", "Safelight", "Cyanotype"]
+def test_a_dark_and_a_light_theme_with_dark_first():
+    assert THEME_NAMES == ["Night", "Day"]
     assert DEFAULT_THEME == THEME_NAMES[0]
-    assert [theme_label(name) for name in THEME_NAMES] == [
-        "Umbra (dark)", "Lumen (light)", "Safelight (dark amber)", "Cyanotype (light blue)",
-    ]
+    assert [theme_label(name) for name in THEME_NAMES] == ["Night (dark)", "Day (light)"]
 
 
 @pytest.mark.parametrize("name", THEME_NAMES)
@@ -62,6 +63,13 @@ def test_text_tokens_meet_aa_on_every_surface(name, foreground):
     for surface in SURFACES:
         ratio = contrast(tokens[foreground], tokens[surface])
         assert ratio >= 4.5, f"{name}: {foreground} on {surface} is {ratio:.2f}:1"
+
+
+@pytest.mark.parametrize("name", THEME_NAMES)
+@pytest.mark.parametrize(("fill", "ink"), FILLS)
+def test_text_on_colour_blocks_meets_aa(name, fill, ink):
+    tokens = theme_tokens()[name]
+    assert contrast(tokens[ink], tokens[fill]) >= 4.5, f"{name}: {ink} on {fill}"
 
 
 @pytest.mark.parametrize("name", THEME_NAMES)
@@ -86,17 +94,18 @@ def test_face_box_stands_out_from_its_rim(name):
 
 
 def test_box_style_converts_theme_tokens_to_bgr():
-    tokens = theme_tokens()["Safelight"]
-    assert tokens["box"] == "#ffb547"
-    assert box_style("Safelight") == {
-        "box_color": (0x47, 0xb5, 0xff), "box_outline": (0x02, 0x14, 0x22), "label_color": (0x47, 0xb5, 0xff),
+    tokens = theme_tokens()["Day"]
+    assert tokens["box"] == "#4b3cff"
+    assert box_style("Day") == {
+        "box_color": (0xff, 0x3c, 0x4b), "box_outline": (0xff, 0xff, 0xff), "label_color": (0xff, 0x3c, 0x4b),
     }
     assert box_style("Brutalist") == box_style(DEFAULT_THEME)
 
 
 def test_removed_themes_are_gone_from_the_stylesheet():
     css = stylesheet().lower()
-    for marker in ("light-theme", "amber-theme", "synthwave", "phosphor", "brutalist", "corporate-theme", "midnight"):
+    for marker in ("light-theme", "amber-theme", "synthwave", "phosphor", "brutalist", "corporate-theme", "midnight",
+                   "theme-umbra", "theme-lumen", "theme-safelight", "theme-cyanotype"):
         assert marker not in css
 
 
@@ -143,7 +152,7 @@ def test_a_stale_session_theme_falls_back_to_dark(stale):
 
 
 @pytest.mark.parametrize(("former", "successor"), [
-    ("Optical Bench", "Umbra"), ("Amber Terminal", "Safelight"), ("Corporate Slate", "Cyanotype"),
+    ("Lumen", "Day"), ("Cyanotype", "Day"), ("Corporate Slate", "Day"), ("Umbra", "Night"), ("Safelight", "Night"),
 ])
 def test_reworked_themes_map_to_their_successors(former, successor):
     assert _render(former).sidebar.selectbox[0].value == successor
@@ -151,4 +160,4 @@ def test_reworked_themes_map_to_their_successors(former, successor):
 
 def test_unknown_theme_accent_is_the_default_accent():
     assert theme_accent("Brutalist") == theme_tokens()[DEFAULT_THEME]["accent"]
-    assert theme_accent("Lumen") == theme_tokens()["Lumen"]["accent"]
+    assert theme_accent("Day") == theme_tokens()["Day"]["accent"]
