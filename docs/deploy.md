@@ -77,8 +77,8 @@ root `requirements.txt`. The steps below are for the repository owner.
    - **Secrets:** leave empty. `streamlit_app.py` turns demo mode on itself, and the weights
      come from a public Hugging Face repo, so no token is needed.
 5. Click **Deploy**.
-6. When the app is up, put its URL in the `LIVE DEMO` comment near the top of `README.md` as a
-   visible link.
+6. When the app is up, link its URL near the top of `README.md`. The live instance is
+   <https://multimodal-face-analyzer.streamlit.app/>.
 
 What happens on first boot:
 
