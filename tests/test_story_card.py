@@ -51,6 +51,6 @@ def test_story_card_without_any_model_says_so():
 def test_summary_counts_faces_and_names_the_common_mood():
     html = _summary_html("a<b>.jpg", [_face(1), _face(2)], 3, "RETINAFACE")
     assert '<span class="wrap-big">2</span>' in html
-    assert "faces found. Mostly happy." in html
+    assert "faces found. Top mood: happy." in html
     assert "a&lt;b&gt;.jpg" in html
     assert '"wrap-caption">face found.<' in _summary_html("x.jpg", [_face(results=[])], 0, "SSD")
