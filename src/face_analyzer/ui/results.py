@@ -5,6 +5,8 @@ import base64
 import csv
 import io
 import json
+import re
+from collections import Counter
 from contextlib import nullcontext
 from html import escape
 from typing import Any
@@ -19,9 +21,13 @@ from .. import inference
 from ..demo import BUSY_NOTE, DemoBusyError, analysis_slot, is_demo_mode
 from .adjustments import adjustment_sliders
 from .sidebar import SidebarState
-from .theme import box_style, theme_accent
+from .theme import POP_COUNT, box_style, theme_accent
 
 IMAGE_DISPLAY_WIDTH = 900
+FACE_COLUMNS = 3
+# A headline answer ends with its source model, e.g. "64 (fairface)"; notes like
+# "uncertain (mean 40, SD 13)" contain spaces inside the brackets and are left alone.
+_MODEL_SUFFIX = re.compile(r"^(?P<value>.+) \((?P<model>[a-z0-9_]+)\)$")
 
 
 def _model_result_order(row: dict) -> tuple:
@@ -30,8 +36,7 @@ def _model_result_order(row: dict) -> tuple:
 
 
 def target_card_html(face: dict) -> str:
-    """Render one face's results as a HUD-style dossier card (native markup, not pixel text --
-    keeps results legible no matter how many faces are packed into one image)."""
+    """Render every model's answer for one face as rows (the hover preview and the story card's full list)."""
     rows = ""
     for result in sorted(face.get("model_results", []), key=_model_result_order):
         feature = result["Feature"]
@@ -43,15 +48,73 @@ def target_card_html(face: dict) -> str:
     return f'<div class="target-card"><div class="target-card-id">FACE {face["idx"]:02d}</div>{rows}</div>'
 
 
-def _one_line_summary(face: dict) -> str:
-    """Compact always-visible label for a face box -- feature: output pairs, no model names."""
-    seen = {}
+def _headline_rows(face: dict) -> list[tuple[str, str, str]]:
+    """Return (feature, value, model) for each feature's leading answer, its source model split out."""
+    leading = {}
     for result in sorted(face.get("model_results", []), key=_model_result_order):
-        seen.setdefault(result["Feature"], result["Output"])
-    if not seen:
-        return f"F{face['idx']:02d}"
-    parts = "  ".join(f"{feature}: {output}" for feature, output in seen.items())
-    return f"F{face['idx']:02d}  {parts}"
+        leading.setdefault(result["Feature"], result)
+    rows = []
+    for feature, result in leading.items():
+        value, model = result["Output"], result["Model"]
+        match = _MODEL_SUFFIX.match(value)
+        if model in inference.HEADLINE_MODEL_KEYS and match:
+            value, model = match["value"], match["model"]
+        rows.append((feature.capitalize(), value, "" if model == "derived" else model))
+    return rows
+
+
+def _face_thumbnail(face_rgb: np.ndarray, size: int = 208) -> str:
+    """Return a face crop as a square JPEG data URI for the story card."""
+    thumb = cv2.resize(cv2.cvtColor(face_rgb, cv2.COLOR_RGB2BGR), (size, size), interpolation=cv2.INTER_AREA)
+    return "data:image/jpeg;base64," + base64.b64encode(cv2.imencode(".jpg", thumb)[1]).decode("ascii")
+
+
+def face_story_html(face: dict, position: int) -> str:
+    """Render one face as a solid-colour story card: its crop, age in large type, the other answers below."""
+    label = f"Face {face['idx']:02d}"
+    rows = _headline_rows(face)
+    lead = next((row for row in rows if row[0] == "Age"), rows[0] if rows else None)
+    head = (
+        f'<div class="story-head"><span class="wrap-kicker">{label}</span>'
+        f'<img class="story-face" src="{_face_thumbnail(face["image"])}" alt="{label} crop"></div>'
+    )
+    if lead is None:
+        body = '<div class="story-big">No reading</div><div class="story-model">no model is switched on</div>'
+    else:
+        feature, value, model = lead
+        body = (
+            f'<div class="story-label">{escape(feature)}</div><div class="story-big">{escape(value)}</div>'
+            f'<div class="story-model">{escape(model)}</div>'
+        )
+    others = "".join(
+        f'<div class="story-row"><b>{escape(value)}</b><span>{escape(feature.lower())}'
+        f'{" · " + escape(model) if model else ""}</span></div>'
+        for feature, value, model in rows if (feature, value, model) != lead
+    )
+    details = ""
+    if len(face.get("model_results", [])) > len(rows):
+        details = f'<details><summary>Every model\'s answer</summary>{target_card_html(face)}</details>'
+    return (
+        f'<div class="story-card pop-{position % POP_COUNT + 1}" style="--i:{position}">'
+        f'{head}{body}<div class="story-rows">{others}{details}</div></div>'
+    )
+
+
+def _summary_html(identifier: str, faces: list[dict], model_count: int, detector: str) -> str:
+    """Render the per-image summary: the face count as a stat block beside the file and run details."""
+    moods = Counter(value for face in faces for feature, value, _ in _headline_rows(face) if feature == "Emotion")
+    noun = "face" if len(faces) == 1 else "faces"
+    caption = f"{noun} found." + (f" Mostly {escape(moods.most_common(1)[0][0])}." if moods else "")
+    return (
+        '<div class="wrap-summary">'
+        f'<div class="wrap-summary-stat"><span class="wrap-kicker">Results</span>'
+        f'<span class="wrap-big">{len(faces)}</span><span class="wrap-caption">{caption}</span></div>'
+        f'<div class="wrap-summary-meta"><h3>{escape(identifier)}</h3>'
+        f'<div class="wrap-chips"><span class="wrap-chip"><b>{model_count}</b> models</span>'
+        f'<span class="wrap-chip">{escape(detector)} detector</span></div>'
+        '<p>These outputs are model estimates, not biometric proof. '
+        'Do not use them as the sole basis for high-impact decisions.</p></div></div>'
+    )
 
 
 def _hoverable_face_image(frame_bgr: np.ndarray, faces: list[dict]) -> str:
@@ -71,7 +134,7 @@ def _hoverable_face_image(frame_bgr: np.ndarray, faces: list[dict]) -> str:
         targets.append(
             f'<div class="face-hover-target{placement}" style="{style}" tabindex="0" '
             f'aria-label="Face {face["idx"]}: hover or focus for details">'
-            f'<div class="face-hover-label">{escape(_one_line_summary(face))}</div>'
+            f'<div class="face-hover-label">{face["idx"]:02d}</div>'
             f'<div class="face-hover-info">{target_card_html(face)}</div></div>'
         )
     return (
@@ -220,20 +283,10 @@ def process_and_display(
             )
         return
 
-    st.markdown(f"### Results for `{identifier}`")
-
-    with st.container(border=True):
-        summary_cols = st.columns(3)
-        summary_cols[0].metric("Faces detected", len(cropped_faces))
-        summary_cols[1].metric("Models active", len(active_labels))
-        summary_cols[2].metric("Detector", sidebar.face_detector.upper())
-
-    with st.container(border=True):
-        st.caption("Model limitations")
-        st.write(
-            "These outputs are model estimates, not biometric proof. "
-            "Do not use them as the sole basis for high-impact decisions."
-        )
+    st.markdown(
+        _summary_html(identifier, cropped_faces, len(active_labels), sidebar.face_detector.upper()),
+        unsafe_allow_html=True,
+    )
 
     export_rows = []
     for face in cropped_faces:
@@ -279,7 +332,7 @@ def process_and_display(
         key=f"csv_dl_{identifier}",
     )
 
-    st.markdown("### Face details")
+    st.markdown('<h2 class="wrap-section">Face by face</h2>', unsafe_allow_html=True)
 
     # Demo mode hides every action that reads or writes the saved-face database or galleries,
     # which a public deployment would share across visitors.
@@ -300,13 +353,17 @@ def process_and_display(
             else:
                 st.text(f"#{face['idx']}: Unrecognized")
 
-    cols = st.columns(min(len(cropped_faces), 2))
+    cols = st.columns(min(len(cropped_faces), FACE_COLUMNS))
     for i, face in enumerate(cropped_faces):
         with cols[i % len(cols)]:
-            face_preview_col, face_editor_col = st.columns([3, 2])
+            st.markdown(face_story_html(face, i), unsafe_allow_html=True)
             face_bgr = cv2.cvtColor(face["image"], cv2.COLOR_RGB2BGR)
             face_editor_open_key = f"face_editor_open_{identifier}_{face['idx']}"
             st.session_state.setdefault(face_editor_open_key, False)
+            # The card already shows the crop; the editor opens a full-size preview beside its controls.
+            face_preview_col, face_editor_col = (
+                st.columns([3, 2]) if st.session_state[face_editor_open_key] else (nullcontext(), nullcontext())
+            )
             op_key = f"image_op_result_{identifier}_{face['idx']}"
             with face_editor_col:
                 if st.button(
@@ -350,10 +407,11 @@ def process_and_display(
                     if st.button("Apply image operation", key=f"image_op_btn_{identifier}_{face['idx']}"):
                         st.session_state[op_key] = inference.apply_image_op(edited_face_bgr, op, **op_params)
             with face_preview_col:
-                _render_bounded_image(
-                    cv2.cvtColor(edited_face_bgr, cv2.COLOR_BGR2RGB), f"Face {face['idx']:02d}",
-                    f"face_{identifier}_{face['idx']}", width=360,
-                )
+                if st.session_state[face_editor_open_key]:
+                    _render_bounded_image(
+                        cv2.cvtColor(edited_face_bgr, cv2.COLOR_BGR2RGB), f"Face {face['idx']:02d}",
+                        f"face_{identifier}_{face['idx']}", width=360,
+                    )
                 if st.session_state[face_editor_open_key] and op_key in st.session_state:
                     result = st.session_state[op_key]
                     _render_bounded_image(
@@ -363,7 +421,6 @@ def process_and_display(
                     st.download_button("Download face PNG", cv2.imencode(".png", result)[1].tobytes(),
                                        file_name=f"face_{face['idx']}_processed.png", mime="image/png",
                                        key=f"image_op_dl_{identifier}_{face['idx']}")
-            st.markdown(target_card_html(face), unsafe_allow_html=True)
 
             if not demo:
                 _search_and_save_buttons(face, identifier, sidebar)

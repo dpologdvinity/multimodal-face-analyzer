@@ -76,6 +76,11 @@ def _upload_one_face(at: AppTest, data: bytes | None = None) -> AppTest:
     return at.run()
 
 
+def _shows_results(at: AppTest) -> bool:
+    """Return whether the run rendered a results summary (the upload reached analysis)."""
+    return any('class="wrap-summary"' in md.value for md in at.markdown)
+
+
 def _tiny_hdr() -> bytes:
     """Return a 4x4 Radiance HDR image, which cv2 decodes as float32 and Pillow cannot read."""
     return cv2.imencode(".hdr", np.ones((4, 4, 3), np.float32))[1].tobytes()
@@ -94,7 +99,7 @@ def test_demo_mode_hides_persistence_controls_and_live_mode(stubbed_app, monkeyp
     at = _upload_one_face(at)
 
     assert not at.exception and not at.error
-    assert any(metric.label == "Faces detected" for metric in at.metric)
+    assert _shows_results(at)
     assert not PERSISTENCE_BUTTONS & {button.label for button in at.button}
     assert not [text for text in at.text_input if text.label in {"Enroll as", "Search directory (optional)"}]
     assert st.get_option("client.showErrorDetails") == "none"
@@ -135,7 +140,7 @@ def test_demo_mode_rejects_a_renamed_hdr_before_decoding(stubbed_app, monkeypatc
     at = _upload_one_face(AppTest.from_file(APP, default_timeout=60).run(), _tiny_hdr())
     assert not at.exception
     assert any("face.png" in error.value for error in at.error)
-    assert not at.metric, "the file must not reach analysis"
+    assert not _shows_results(at), "the file must not reach analysis"
 
 
 def test_pixel_cap_rejects_unreadable_and_non_photo_formats():
@@ -182,10 +187,10 @@ def test_demo_upload_queues_behind_another_analysis(stubbed_app, monkeypatch):
         demo_module._ANALYSIS_SLOT.release()
     assert not at.exception
     assert any("busy" in warning.value for warning in at.warning)
-    assert not at.metric
+    assert not _shows_results(at)
 
     at = at.run()
-    assert any(metric.label == "Faces detected" for metric in at.metric)
+    assert _shows_results(at)
 
 
 @pytest.mark.parametrize("writer", [

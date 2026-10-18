@@ -70,12 +70,13 @@ except Exception as e:
     st.stop()
 
 st.markdown(
-    '<div class="app-hero">'
-    '<div class="app-hero-heading"><h1>Multimodal Face Analyzer</h1>'
-    '<p>Upload a photo or open your webcam, turn on the detectors you want, '
-    'then read each face\'s results below.</p></div>'
-    f'<div class="app-hero-readout">DETECTORS READY<br/>'
-    f'<strong>{models.loaded_feature_count} / {models.total_feature_count}</strong></div>'
+    '<div class="wrap-hero">'
+    '<div class="wrap-hero-intro"><h1>Every face,<br/>read back.</h1>'
+    '<p>Upload a photo. Each face gets its own card, and every answer names the model that gave '
+    'it. Age, gender and race come from the model that scored best on 1,002 held-out faces.</p></div>'
+    '<div class="wrap-hero-stat"><span class="wrap-kicker">Multimodal Face Analyzer</span>'
+    f'<span class="wrap-big">{models.loaded_feature_count}</span>'
+    f'<span class="wrap-caption">of {models.total_feature_count} detectors loaded</span></div>'
     '</div>',
     unsafe_allow_html=True,
 )
