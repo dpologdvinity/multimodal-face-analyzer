@@ -15,7 +15,7 @@ dependencies = { file = ["requirements.txt"] }
 where = ["src"]
 
 [tool.setuptools.package-data]
-"face_analyzer.ui" = ["theme.css"]
+"face_analyzer.ui" = ["theme.css", "sample_photo.jpg"]
 "face_analyzer.nets.mivolo" = ["LICENSE_MIVOLO"]
 
 [tool.pytest.ini_options]
