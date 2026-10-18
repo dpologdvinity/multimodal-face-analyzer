@@ -46,7 +46,7 @@ def target_card_html(face: dict) -> str:
         rows += f'<div class="target-card-row"><span class="k">{escape(label)}</span><span class="v">{escape(result["Output"])}</span></div>'
     if not rows:
         rows = '<div class="target-card-row"><span class="k">STATUS</span><span class="v">no model output</span></div>'
-    return f'<div class="target-card"><div class="target-card-id">FACE {face["idx"]:02d}</div>{rows}</div>'
+    return f'<div class="target-card"><div class="target-card-id">{face["idx"]:02d}</div>{rows}</div>'
 
 
 def _headline_rows(face: dict) -> list[tuple[str, str, str]]:
