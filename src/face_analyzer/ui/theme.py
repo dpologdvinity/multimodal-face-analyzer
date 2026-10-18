@@ -7,22 +7,15 @@ from pathlib import Path
 
 import streamlit as st
 
-DEFAULT_THEME = "Umbra"
-THEME_NAMES = ["Umbra", "Lumen", "Safelight", "Cyanotype"]
-THEME_HINTS = {
-    "Umbra": "dark",
-    "Lumen": "light",
-    "Safelight": "dark amber",
-    "Cyanotype": "light blue",
-}
+DEFAULT_THEME = "Night"
+THEME_NAMES = ["Night", "Day"]
+THEME_HINTS = {"Night": "dark", "Day": "light"}
 THEME_MARKER_CLASSES = {name: f"theme-{name.lower()}" for name in THEME_NAMES}
-# Sessions that predate the redesign may still hold an old name; the three themes that were
-# reworked rather than dropped map to their successors, everything else to the default.
-_FORMER_THEME_NAMES = {
-    "Optical Bench": "Umbra",
-    "Amber Terminal": "Safelight",
-    "Corporate Slate": "Cyanotype",
-}
+# Sessions that predate a redesign may still hold an old name; light themes map to Day, every
+# other name (dark or unknown) to the default.
+_FORMER_THEME_NAMES = {"Lumen": "Day", "Cyanotype": "Day", "Corporate Slate": "Day"}
+# Each face's story card takes the next of these fills (theme.css --pop-N / --pop-N-ink).
+POP_COUNT = 5
 
 _STYLESHEET = Path(__file__).with_name("theme.css")
 _COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)
@@ -38,7 +31,7 @@ def resolve_theme(name: object) -> str:
 
 
 def theme_label(name: str) -> str:
-    """Return the picker label for a theme, e.g. "Umbra (dark)"."""
+    """Return the picker label for a theme, e.g. "Night (dark)"."""
     return f"{name} ({THEME_HINTS[name]})"
 
 

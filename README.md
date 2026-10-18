@@ -203,16 +203,15 @@ LIVE mode. Per-model details: [docs/models.md](docs/models.md).
 
 ### Themes
 
-Four themes, picked in the sidebar: **Umbra** (dark, the default), **Lumen** (its light
-counterpart), **Safelight** (darkroom amber) and **Cyanotype** (blueprint blue on paper). Each is
-one block of colour tokens in `src/face_analyzer/ui/theme.css`; `tests/test_theme.py` checks every
-text and accent token against WCAG AA contrast.
+Two themes, picked in the sidebar: **Night** (dark, the default) and **Day** (light). Results come
+back as one solid-colour card per face, with the age in large type and every other answer
+labelled with the model that gave it. Each theme is one block of colour tokens in
+`src/face_analyzer/ui/theme.css`; `tests/test_theme.py` checks every text, accent and card colour
+against WCAG AA contrast.
 
-| Umbra | Lumen |
-| ----- | ----- |
-| ![Umbra theme](docs/media/themes/umbra.png) | ![Lumen theme](docs/media/themes/lumen.png) |
-| **Safelight** | **Cyanotype** |
-| ![Safelight theme](docs/media/themes/safelight.png) | ![Cyanotype theme](docs/media/themes/cyanotype.png) |
+| Night | Day |
+| ----- | --- |
+| ![Night theme](docs/media/themes/night.png) | ![Day theme](docs/media/themes/day.png) |
 
 ## Responsible use
 
