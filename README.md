@@ -206,7 +206,7 @@ LIVE mode. Per-model details: [docs/models.md](docs/models.md).
 
 Two themes, picked in the sidebar: **Night** (dark, the default) and **Day** (light). Results come
 back as one solid-colour card per face, with the age in large type and every other answer
-labelled with the model that gave it. Each theme is one block of colour tokens in
+labelled with the model that gave it; **Save card** downloads any card as a 1080x1350 PNG. Each theme is one block of colour tokens in
 `src/face_analyzer/ui/theme.css`; `tests/test_theme.py` checks every text, accent and card colour
 against WCAG AA contrast.
 
@@ -231,3 +231,5 @@ against WCAG AA contrast.
 The code is MIT-licensed; see [LICENSE](LICENSE). Vendored architectures in `src/face_analyzer/nets/` keep
 their upstream licenses. The model weights are third-party files under their own terms, several
 of them non-commercial or with no stated license; see [MODEL_LICENSES.md](MODEL_LICENSES.md).
+The Bricolage Grotesque font in `src/face_analyzer/ui/fonts/`, used to draw the shareable face
+cards, is under the SIL Open Font License 1.1 ([OFL.txt](src/face_analyzer/ui/fonts/OFL.txt)).
