@@ -516,6 +516,7 @@ section[data-testid="stSidebar"] :is(label, p) { line-height: 1.45; }
     margin: var(--space-4) 0 0;
     opacity: 0.92;
 }
+.stApp .wrap-hero-intro strong { color: var(--hero-ink); }
 .wrap-hero-stat,
 .wrap-summary-stat {
     display: flex;
