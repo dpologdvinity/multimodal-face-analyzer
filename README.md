@@ -1,14 +1,14 @@
-# Multimodal Face Analyzer
+# Multimodel Face Analyzer
 
 Real-time multi-model face analysis: 15 per-face and whole-frame features, four pluggable face
 detectors, and held-out-tested ways of combining interchangeable backends.
 
-[![CI](https://github.com/dpologdvinity/multimodal-face-analyzer/actions/workflows/ci.yml/badge.svg)](https://github.com/dpologdvinity/multimodal-face-analyzer/actions/workflows/ci.yml)
+[![CI](https://github.com/dpologdvinity/multimodel-face-analyzer/actions/workflows/ci.yml/badge.svg)](https://github.com/dpologdvinity/multimodel-face-analyzer/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Live demo](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://multimodal-face-analyzer.streamlit.app/)
+[![Live demo](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://multimodel-face-analyzer.streamlit.app/)
 
-**[Try the live demo](https://multimodal-face-analyzer.streamlit.app/)**: upload a photo (or press
+**[Try the live demo](https://multimodel-face-analyzer.streamlit.app/)**: upload a photo (or press
 *Try a sample* for NASA's Expedition 59 crew portrait) and read
 each face's age, gender, race, emotion and eye color. It runs a reduced, CPU-only model set
 ([docs/deploy.md](docs/deploy.md)) and may take a minute to wake up.
@@ -142,16 +142,16 @@ the bring-your-own `dan` and `deep3d` files that cannot be downloaded again. Run
 Native, with the guided installer (Debian/Ubuntu), which fetches the weights you pick:
 
 ```bash
-git clone https://github.com/dpologdvinity/multimodal-face-analyzer.git
-cd multimodal-face-analyzer
+git clone https://github.com/dpologdvinity/multimodel-face-analyzer.git
+cd multimodel-face-analyzer
 ./install-and-run.sh          # pick backends, then open http://localhost:8501
 ```
 
 Docker, which downloads the selected weights during the build:
 
 ```bash
-git clone https://github.com/dpologdvinity/multimodal-face-analyzer.git
-cd multimodal-face-analyzer
+git clone https://github.com/dpologdvinity/multimodel-face-analyzer.git
+cd multimodel-face-analyzer
 docker build -t face-analyzer .          # or ./build-and-run.sh for guided model selection
 docker run -d -p 127.0.0.1:8501:8501 --name face_analyzer_container face-analyzer
 ```

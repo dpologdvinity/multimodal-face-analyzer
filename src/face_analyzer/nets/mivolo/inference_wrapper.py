@@ -1,5 +1,5 @@
 """
-High-level inference wrapper for MiVOLO integration into multimodal-face-analyzer.
+High-level inference wrapper for MiVOLO integration into multimodel-face-analyzer.
 
 This module provides a simplified interface to MiVOLO's age and gender estimation
 without requiring knowledge of the internal YOLOv8 detector or dual-input pipeline.

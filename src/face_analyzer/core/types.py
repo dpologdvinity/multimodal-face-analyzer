@@ -1,4 +1,4 @@
-"""Core data types and structures for the multimodal face analyzer."""
+"""Core data types and structures for the multimodel face analyzer."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field

@@ -33,7 +33,7 @@ live_session = new_live_session()
 
 # Page setup and visual system
 st.set_page_config(
-    page_title="Multimodal Face Analyzer",
+    page_title="Multimodel Face Analyzer",
     page_icon=":material/face:",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -71,7 +71,7 @@ except Exception as e:
     st.stop()
 
 st.markdown(
-    '<div class="app-bar"><div><h1>Multimodal Face Analyzer</h1>'
+    '<div class="app-bar"><div><h1>Multimodel Face Analyzer</h1>'
     '<p>Every face, read back: one card per face, each answer credited to the model that gave it.</p></div>'
     f'<span class="app-bar-chip"><b>{models.loaded_feature_count}</b> of '
     f'{models.total_feature_count} analyses ready</span></div>',

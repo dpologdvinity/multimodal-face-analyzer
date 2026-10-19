@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Guided native setup + run for the multimodal face analyzer.
+# Guided native setup + run for the multimodel face analyzer.
 # Prompts for model selections, installs the matching dependencies, and runs Streamlit.
 set -euo pipefail
 

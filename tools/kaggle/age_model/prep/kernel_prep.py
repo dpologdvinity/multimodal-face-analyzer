@@ -6,7 +6,7 @@ landmark code in a Python 3.11 environment with the app's pins, so the crops mat
 import subprocess
 import sys
 
-REPO = "https://github.com/dpologdvinity/multimodal-face-analyzer.git"
+REPO = "https://github.com/dpologdvinity/multimodel-face-analyzer.git"
 COMMIT = "36dff9185c400410d343ddcd4395045e4e747fdb"
 SRC = "/tmp/age/src"
 ENV = "/tmp/age/env"

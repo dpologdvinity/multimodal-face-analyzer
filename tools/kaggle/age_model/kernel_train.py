@@ -8,7 +8,7 @@ import os
 import subprocess
 import sys
 
-REPO = "https://github.com/dpologdvinity/multimodal-face-analyzer.git"
+REPO = "https://github.com/dpologdvinity/multimodel-face-analyzer.git"
 COMMIT = "ecb8e824b6a42751ad1ae88c75359b9c58d66460"
 SRC = "/tmp/age/src"
 EXTRA_ARGS = []

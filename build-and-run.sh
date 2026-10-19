@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Guided Docker build + run for the multimodal face analyzer.
+# Guided Docker build + run for the multimodel face analyzer.
 # Prompts for which model(s) to build in per feature, then builds and runs the image.
 set -euo pipefail
 
