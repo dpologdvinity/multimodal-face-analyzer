@@ -115,6 +115,19 @@ class SidebarState:
         )
 
 
+_FEATURE_LABELS = {
+    "RECONSTRUCTION_3D": "3D reconstruction",
+    "FACE_DETECTOR_YOLO": "YOLO face detector",
+    "FACE_DETECTOR_SCRFD": "SCRFD face detector",
+    "FACE_DETECTOR_RETINAFACE": "RetinaFace face detector",
+}
+
+
+def feature_label(feature: str) -> str:
+    """Return a readable label for a feature constant, e.g. FACE_LANDMARKS -> "Face landmarks"."""
+    return _FEATURE_LABELS.get(feature, feature.replace("_", " ").capitalize())
+
+
 def render_sidebar(models: Any) -> SidebarState:
     """Render the model-selection, gallery, identity-search and control-panel sidebar sections."""
     demo = is_demo_mode()
@@ -124,7 +137,7 @@ def render_sidebar(models: Any) -> SidebarState:
             "Not part of the public demo; run the app locally for every feature."
             if demo else "Model file or dependency missing."
         )
-        st.sidebar.caption(f"Unavailable: {', '.join(models.offline_features)}. {reason}")
+        st.sidebar.caption(f"Unavailable: {', '.join(map(feature_label, models.offline_features))}. {reason}")
 
     with st.sidebar.expander("Detection", expanded=True):
         preferred = DEMO_FACE_DETECTOR if demo else "yolo"
@@ -136,6 +149,8 @@ def render_sidebar(models: Any) -> SidebarState:
                 format_func=display_model_name,
                 help="One detector runs per frame. YOLO is preferred when loaded; SSD is the fallback when present.",
             )
+        else:
+            st.caption(f"Face detector: {display_model_name(active_face_detector)}")
 
     with st.sidebar.expander("Classification", expanded=True):
         active_age = _model_checkboxes("AGE", models.age_nets, st, help="Estimated age per detected face.")
