@@ -253,6 +253,6 @@ def test_sample_photo_runs_without_an_upload_and_can_be_hidden(stubbed_app, monk
     at.button(key="sample_photo_btn").click().run()
     assert not at.exception
     assert _shows_results(at)
-    assert any("public domain" in caption.value for caption in at.caption)
+    assert any("public domain" in md.value for md in at.markdown)
     at.button(key="sample_photo_btn").click().run()
     assert not _shows_results(at)

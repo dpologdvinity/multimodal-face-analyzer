@@ -348,7 +348,7 @@ def process_and_display(
             "CSV", csv_buffer.getvalue(), f"{identifier}_results.csv", "text/csv",
             key=f"csv_dl_{identifier}", icon=":material/download:",
         )
-    st.caption("Hover or tap a numbered box on the photo for that face's answers.")
+    st.markdown('<p class="wrap-note">Hover or tap a numbered box on the photo for that face\'s answers.</p>', unsafe_allow_html=True)
 
     st.markdown('<h2 class="wrap-section">Face by face</h2>', unsafe_allow_html=True)
 

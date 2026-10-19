@@ -100,6 +100,7 @@ with tab_upload:
         type=["jpg", "jpeg", "png", "webp"],
         accept_multiple_files=True,
         max_upload_size=DEMO_MAX_UPLOAD_MB if demo else None,
+        label_visibility="collapsed",
     )
 
     # The sample stays on across reruns (theme changes, editing) until hidden or replaced by an upload.
@@ -107,12 +108,13 @@ with tab_upload:
         st.session_state["show_sample"] = False
     else:
         showing = st.session_state.get("show_sample", False)
-        if st.button("Hide the sample photo" if showing else "No photo? Try a sample",
-                     icon=":material/photo_library:", key="sample_photo_btn"):
-            st.session_state["show_sample"] = not showing
-            st.rerun()
+        with st.container(horizontal=True, horizontal_alignment="center"):
+            if st.button("Hide the sample photo" if showing else "No photo? Try a sample",
+                         icon=":material/photo_library:", key="sample_photo_btn"):
+                st.session_state["show_sample"] = not showing
+                st.rerun()
         if showing:
-            st.caption(SAMPLE_PHOTO_CREDIT)
+            st.markdown(f'<p class="wrap-note">{SAMPLE_PHOTO_CREDIT}</p>', unsafe_allow_html=True)
             process_and_display(
                 models, sidebar, decode_image_bytes(SAMPLE_PHOTO.read_bytes()), SAMPLE_PHOTO_NAME,
                 theme=theme, face_adjustments=face_adjustments,
