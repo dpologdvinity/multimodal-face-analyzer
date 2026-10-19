@@ -78,8 +78,9 @@ def _card_rows(face: dict) -> list[tuple[str, str, str]]:
 
 
 def _credit(feature: str, model: str) -> str:
-    """Return the small "feature · model" credit under an answer."""
-    return f"{feature.lower()} · {model}" if model else feature.lower()
+    """Return the small escaped "feature · model" credit under an answer, the model name in mono."""
+    label = escape(feature.lower())
+    return f'{label} · <span class="credit-model">{escape(model)}</span>' if model else label
 
 
 def face_story_html(face: dict, position: int) -> str:
@@ -92,11 +93,11 @@ def face_story_html(face: dict, position: int) -> str:
     )
     if rows:
         feature, value, model = rows[0]
-        body = f'<div class="story-big">{escape(value)}</div><div class="story-model">{escape(_credit(feature, model))}</div>'
+        body = f'<div class="story-big">{escape(value)}</div><div class="story-model">{_credit(feature, model)}</div>'
     else:
         body = '<div class="story-big">No reading</div><div class="story-model">no model is switched on</div>'
     others = "".join(
-        f'<div class="story-row"><b>{escape(value)}</b><span>{escape(_credit(feature, model))}</span></div>'
+        f'<div class="story-row"><b>{escape(value)}</b><span>{_credit(feature, model)}</span></div>'
         for feature, value, model in rows[1:]
     )
     details = ""

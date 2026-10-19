@@ -615,7 +615,8 @@ section[data-testid="stSidebar"] :is(label, p) { line-height: 1.45; }
     line-height: 0.85;
     overflow-wrap: anywhere;
 }
-.story-model { font-family: var(--font-data); font-size: 0.8rem; opacity: 0.85; margin-top: var(--space-2); }
+.story-model { font-size: 0.8rem; opacity: 0.85; margin-top: var(--space-2); }
+.credit-model { font-family: var(--font-data); }
 .story-rows { margin-top: auto; display: grid; gap: var(--space-2); }
 .story-row {
     display: flex;
