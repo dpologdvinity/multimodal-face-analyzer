@@ -187,9 +187,10 @@ def _render_photo_editor(
     if cropped_key in st.session_state:
         frame_bgr = st.session_state[cropped_key]
     editing_key = f"photo_editor_{identifier}"
-    if st.button("Close editor" if st.session_state.get(editing_key) else "Edit image", key=f"edit_image_{identifier}"):
-        st.session_state[editing_key] = not st.session_state.get(editing_key, False)
-        st.rerun()
+    with st.container(horizontal=True, horizontal_alignment="center"):
+        if st.button("Close editor" if st.session_state.get(editing_key) else "Edit image", key=f"edit_image_{identifier}"):
+            st.session_state[editing_key] = not st.session_state.get(editing_key, False)
+            st.rerun()
     editing = st.session_state.get(editing_key, False)
     # The annotated result below already shows the photo, so the source appears only while editing.
     image_col, editor_col = st.columns([3, 2]) if editing else (nullcontext(), nullcontext())
