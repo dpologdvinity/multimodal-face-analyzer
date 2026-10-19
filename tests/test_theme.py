@@ -19,7 +19,7 @@ REQUIRED_TOKENS = {
     "text", "muted", "accent", "accent-ink", "ok", "warn", "alert", "box", "box-outline",
 }
 SURFACES = ("bg", "surface", "surface-raised")
-FILLS = [("hero", "hero-ink"), ("stat", "stat-ink")] + [(f"pop-{n}", f"pop-{n}-ink") for n in range(1, POP_COUNT + 1)]
+FILLS = [(f"pop-{n}", f"pop-{n}-ink") for n in range(1, POP_COUNT + 1)]
 REMOVED_THEMES = ("Brutalist", "Light cyberpunk", "Synthwave", "Phosphor Green", "Midnight Enterprise",
                   "Umbra", "Safelight", "Optical Bench", "Amber Terminal")
 

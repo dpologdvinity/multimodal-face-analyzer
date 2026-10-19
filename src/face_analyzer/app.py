@@ -71,14 +71,10 @@ except Exception as e:
     st.stop()
 
 st.markdown(
-    '<div class="wrap-hero">'
-    '<div class="wrap-hero-intro"><h1>Every face,<br/>read back.</h1>'
-    '<p><strong>Multimodal Face Analyzer.</strong> Upload a photo. Each face gets its own card, '
-    'and every answer names the model that gave '
-    'it. Age, gender and race come from the model that scored best on 1,002 held-out faces.</p></div>'
-    f'<div class="wrap-hero-stat"><span class="wrap-big">{models.loaded_feature_count}</span>'
-    f'<span class="wrap-caption">of {models.total_feature_count} analyses ready</span></div>'
-    '</div>',
+    '<div class="app-bar"><div><h1>Multimodal Face Analyzer</h1>'
+    '<p>Every face, read back: one card per face, each answer credited to the model that gave it.</p></div>'
+    f'<span class="app-bar-chip"><b>{models.loaded_feature_count}</b> of '
+    f'{models.total_feature_count} analyses ready</span></div>',
     unsafe_allow_html=True,
 )
 

@@ -31,11 +31,6 @@ body:has(.theme-night) {
     --pop-4-ink: #121212;
     --pop-5: #a98bff;
     --pop-5-ink: #121212;
-    --hero: #4b3cff;
-    --hero-ink: #ffffff;
-    --hero-shape: #ff5ec4;
-    --stat: #c6f432;
-    --stat-ink: #121212;
     --font-display: 'Bricolage Grotesque', sans-serif;
     --font-body: 'Bricolage Grotesque', sans-serif;
     --font-data: 'JetBrains Mono', monospace;
@@ -94,8 +89,8 @@ body {
 .stApp ::selection { background: color-mix(in srgb, var(--accent) 30%, transparent); }
 .stApp, section[data-testid="stSidebar"] { scrollbar-color: var(--line-strong) transparent; }
 .block-container {
-    max-width: 1440px;
-    padding-top: 5.25rem;
+    max-width: 1180px;
+    padding-top: 4.5rem;
     padding-bottom: 5rem;
 }
 .stApp :is(h1, h2, h3, h4) {
@@ -457,97 +452,74 @@ section[data-testid="stSidebar"] :is(label, p) { line-height: 1.45; }
 
 /* App markup: the intro, the results summary, the per-face story cards, and the hoverable
    annotated image. Solid colour blocks with oversized condensed type are the one motif. */
-.wrap-hero {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(14rem, 22rem);
-    gap: var(--space-4);
-    margin: 0 0 var(--space-5);
+.app-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-3) var(--space-5);
+    margin: 0 0 var(--space-4);
 }
-.wrap-hero-intro,
-.wrap-hero-stat,
-.wrap-summary-stat {
-    position: relative;
-    overflow: hidden;
-    border-radius: var(--radius-lg);
-    padding: clamp(1.5rem, 1rem + 2vw, 2.5rem);
-}
-.wrap-hero-intro { background: var(--hero); color: var(--hero-ink); }
-.wrap-hero-intro::after {
-    content: "";
-    position: absolute;
-    right: -6rem;
-    bottom: -7rem;
-    width: 17rem;
-    height: 17rem;
-    border-radius: 50%;
-    background: var(--hero-shape);
-    pointer-events: none;
-}
-.stApp .wrap-hero-intro h1 {
-    position: relative;
-    z-index: 1;
-    color: var(--hero-ink);
-    font-size: clamp(2.6rem, 1.4rem + 4vw, 5rem);
-    line-height: 0.9;
-    letter-spacing: -0.035em;
+.stApp .app-bar h1 {
+    font-size: clamp(1.6rem, 1.1rem + 1.4vw, 2.4rem);
+    line-height: 1;
+    letter-spacing: -0.03em;
     margin: 0;
     padding: 0;
 }
-.stApp .wrap-hero-intro p {
-    position: relative;
-    z-index: 1;
-    color: var(--hero-ink);
-    font-size: 1.1rem;
-    line-height: 1.45;
-    max-width: 34rem;
-    margin: var(--space-4) 0 0;
-    opacity: 0.92;
+.stApp .app-bar p { color: var(--muted); font-size: 0.9rem; margin: var(--space-2) 0 0; }
+.app-bar-chip {
+    background: var(--accent);
+    color: var(--accent-ink);
+    border-radius: 999px;
+    padding: 0.35rem 0.9rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    white-space: nowrap;
 }
-.stApp .wrap-hero-intro strong { color: var(--hero-ink); }
-.wrap-hero-stat,
-.wrap-summary-stat {
-    display: flex;
+.app-bar-chip b { font-weight: 800; }
+
+/* The photo or camera is the centre of the page: a tall, centred drop area and a centred camera. */
+.stApp [data-testid="stTabs"] [role="tablist"] { justify-content: center; }
+.stApp [data-testid="stFileUploaderDropzone"] {
+    min-height: clamp(14rem, 34vh, 22rem);
     flex-direction: column;
-    justify-content: space-between;
-    gap: var(--space-4);
-    background: var(--stat);
-    color: var(--stat-ink);
+    justify-content: center;
+    gap: var(--space-3);
+    text-align: center;
 }
+.stApp [data-testid="stFileUploaderDropzone"] [data-testid="stBaseButton-secondary"] {
+    padding: 0.7rem 1.6rem;
+    font-size: 1rem;
+}
+.stApp [data-testid="stCameraInput"] { max-width: 960px; margin: 0 auto; }
+.stApp [class*="st-key-sample_photo_btn"] { display: flex; justify-content: center; }
+
+.wrap-summary {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: var(--space-3) var(--space-5);
+    margin: var(--space-4) auto var(--space-3);
+    max-width: 1100px;
+}
+.wrap-count { display: flex; align-items: baseline; gap: var(--space-3); }
 .wrap-big {
     font-family: var(--font-display);
     font-stretch: 75%;
     font-weight: 800;
-    font-size: clamp(5rem, 3rem + 6vw, 8.5rem);
+    font-size: clamp(3rem, 2rem + 2.5vw, 4.5rem);
     font-variant-numeric: tabular-nums;
     letter-spacing: -0.04em;
     line-height: 0.8;
+    color: var(--accent);
 }
 .wrap-caption {
     font-size: 1.35rem;
     font-weight: 700;
     line-height: 1.1;
     letter-spacing: -0.01em;
-}
-
-.wrap-summary {
-    display: grid;
-    gap: var(--space-4);
-    margin: 0 0 var(--space-4);
-}
-.wrap-summary-meta {
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    gap: var(--space-4);
-    background: var(--surface);
-    border-radius: var(--radius-lg);
-    padding: clamp(1.25rem, 1rem + 1.5vw, 2rem);
-}
-.stApp .wrap-summary-meta h3 {
-    font-size: clamp(1.6rem, 1.1rem + 1.4vw, 2.4rem);
-    line-height: 0.95;
-    margin: 0;
-    padding: 0;
 }
 .wrap-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .wrap-chip {
@@ -559,7 +531,7 @@ section[data-testid="stSidebar"] :is(label, p) { line-height: 1.45; }
     font-size: 0.9rem;
 }
 .wrap-chip b { color: var(--accent); }
-.stApp .wrap-summary-meta p { color: var(--muted); font-size: 0.9rem; margin: 0; }
+.stApp .wrap-note { color: var(--muted); font-size: 0.8rem; text-align: center; margin: 0 0 var(--space-3); }
 .stApp .wrap-section {
     font-size: clamp(1.8rem, 1.3rem + 1.6vw, 2.6rem);
     line-height: 1;
@@ -675,8 +647,8 @@ section[data-testid="stSidebar"] :is(label, p) { line-height: 1.45; }
 
 .face-hover-image {
     position: relative;
-    width: min(100%, 900px);
-    margin-bottom: var(--space-4);
+    width: min(100%, 1100px);
+    margin: 0 auto var(--space-2);
 }
 .face-hover-image > img {
     display: block;
@@ -733,13 +705,9 @@ section[data-testid="stSidebar"] :is(label, p) { line-height: 1.45; }
     z-index: 2;
 }
 
-@media (max-width: 900px) {
-    .wrap-hero, .wrap-summary { grid-template-columns: 1fr; }
-}
 @media (max-width: 640px) {
     .block-container { padding: 4.5rem 1rem 3rem; }
-    .wrap-hero-intro::after { display: none; }
-    .stApp .wrap-summary-meta h3 { font-size: 1.35rem; }
+
     .target-card-row { display: block; }
     .target-card-row .v { display: block; text-align: left; margin-top: 0.15rem; }
 }
