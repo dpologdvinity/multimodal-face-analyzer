@@ -38,9 +38,9 @@ def test_story_card_leads_with_age_and_lists_every_model_on_request():
     html = face_story_html(_face(), 0)
     assert 'class="story-card pop-1"' in html
     assert '<div class="story-big">64</div>' in html
-    assert '<div class="story-model">age · fairface</div>' in html
+    assert '<div class="story-model">age · <span class="credit-model">fairface</span></div>' in html
     assert '<span class="story-num">01</span>' in html
-    assert "<b>happy</b><span>emotion · fused</span>" in html
+    assert '<b>happy</b><span>emotion · <span class="credit-model">fused</span></span>' in html
     assert "<details>" in html and "dex" in html
 
 
