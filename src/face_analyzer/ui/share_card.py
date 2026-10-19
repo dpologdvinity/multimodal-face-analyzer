@@ -12,7 +12,7 @@ from PIL import Image, ImageDraw, ImageFont
 CARD_SIZE = (1080, 1350)
 _FONT = Path(__file__).with_name("fonts") / "BricolageGrotesque.ttf"
 _MARGIN = 72
-_CREDIT = "multimodal-face-analyzer.streamlit.app"
+_CREDIT = "multimodel-face-analyzer.streamlit.app"
 
 
 @functools.cache

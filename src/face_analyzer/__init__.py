@@ -1,1 +1,1 @@
-"""Multimodal face analysis: detection, attribute models, pipeline and Streamlit UI."""
+"""Multi-model face analysis: detection, attribute models, pipeline and Streamlit UI."""

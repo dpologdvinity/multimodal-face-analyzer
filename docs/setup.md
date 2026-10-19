@@ -345,7 +345,7 @@ authentication boundary.
 ## Repository layout
 
 ```text
-multimodal-face-analyzer/
+multimodel-face-analyzer/
 ├── Dockerfile, build-and-run.sh   # per-feature Docker build + guided wrapper
 ├── install-and-run.sh             # guided native install
 ├── requirements*.txt, pyproject.toml

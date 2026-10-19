@@ -68,7 +68,7 @@ root `requirements.txt`. The steps below are for the repository owner.
    Authorize Streamlit to see the `dpologdvinity` repositories when asked.
 2. Click **Create app**, then choose to deploy a public app from GitHub.
 3. Fill in the form:
-   - **Repository:** `dpologdvinity/multimodal-face-analyzer`
+   - **Repository:** `dpologdvinity/multimodel-face-analyzer`
    - **Branch:** `master`
    - **Main file path:** `streamlit_app.py`
    - **App URL:** optional, a custom subdomain such as `face-analyzer-demo`.
@@ -78,7 +78,7 @@ root `requirements.txt`. The steps below are for the repository owner.
      come from a public Hugging Face repo, so no token is needed.
 5. Click **Deploy**.
 6. When the app is up, link its URL near the top of `README.md`. The live instance is
-   <https://multimodal-face-analyzer.streamlit.app/>.
+   <https://multimodel-face-analyzer.streamlit.app/>.
 
 What happens on first boot:
 
