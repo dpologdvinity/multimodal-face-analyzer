@@ -429,7 +429,7 @@ section[data-testid="stSidebar"] :is(label, p) { line-height: 1.45; }
 .stApp [data-testid="stAlertContainer"]:has([data-testid="stAlertContentSuccess"]) { --alert-tone: var(--ok); }
 .stApp [data-testid="stAlertContainer"]:has([data-testid="stAlertContentWarning"]) { --alert-tone: var(--warn); }
 .stApp [data-testid="stAlertContainer"]:has([data-testid="stAlertContentError"]) { --alert-tone: var(--alert); }
-.stApp [data-testid="stAlertContainer"] :is(p, li, div[data-testid="stMarkdownContainer"]) { color: var(--text) !important; }
+.stApp [data-testid="stAlertContainer"] :is(p, li, div[data-testid="stMarkdownContainer"]) { color: var(--text) !important; font-size: 0.9rem; }
 .stApp [data-testid="stAlertContainer"] [data-testid="stIconMaterial"] { color: var(--alert-tone, var(--accent)) !important; }
 
 .stApp [data-testid="stImage"] img {
@@ -485,15 +485,27 @@ section[data-testid="stSidebar"] :is(label, p) { line-height: 1.45; }
     min-height: clamp(14rem, 34vh, 22rem);
     flex-direction: column;
     justify-content: center;
+    align-items: center;
     gap: var(--space-3);
     text-align: center;
 }
+.stApp [data-testid="stFileUploaderDropzone"]::before {
+    content: "Drop a photo here";
+    font-family: var(--font-display);
+    font-stretch: 78%;
+    font-weight: 800;
+    font-size: clamp(1.8rem, 1.2rem + 2vw, 2.6rem);
+    letter-spacing: -0.02em;
+    color: var(--text);
+}
+/* Once a photo is on screen, the drop area shrinks so the result takes its place. */
+body:has(.face-hover-image) .stApp [data-testid="stFileUploaderDropzone"] { min-height: 0; flex-direction: row; }
+body:has(.face-hover-image) .stApp [data-testid="stFileUploaderDropzone"]::before { content: none; }
 .stApp [data-testid="stFileUploaderDropzone"] [data-testid="stBaseButton-secondary"] {
     padding: 0.7rem 1.6rem;
     font-size: 1rem;
 }
 .stApp [data-testid="stCameraInput"] { max-width: 960px; margin: 0 auto; }
-.stApp [class*="st-key-sample_photo_btn"] { display: flex; justify-content: center; }
 
 .wrap-summary {
     display: flex;
