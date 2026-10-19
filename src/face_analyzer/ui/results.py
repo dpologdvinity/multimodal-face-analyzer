@@ -117,23 +117,23 @@ def share_card_png(face: dict, position: int, theme: str) -> bytes:
 
 
 def _summary_html(identifier: str, faces: list[dict], model_count: int, detector: str, *, note: bool) -> str:
-    """Render the per-image summary: the face count as a stat block over the file and run details."""
+    """Render the per-image summary strip under the photo: face count, top mood, file and run details."""
     moods = Counter(value for face in faces for feature, value, _ in _headline_rows(face) if feature == "Emotion")
     noun = "face" if len(faces) == 1 else "faces"
     caption = f"{noun} found." + (f" Top mood: {escape(moods.most_common(1)[0][0])}." if moods else "")
     # Break opportunities after underscores and before the extension keep long names whole on phones.
     name = escape(identifier).replace("_", "_<wbr>").replace(".", "<wbr>.")
     limits = (
-        '<p>These outputs are model estimates, not biometric proof. '
+        '<p class="wrap-note">These outputs are model estimates, not biometric proof. '
         'Do not use them as the sole basis for high-impact decisions.</p>'
     ) if note else ""
     return (
         '<div class="wrap-summary">'
-        f'<div class="wrap-summary-stat"><span class="wrap-big">{len(faces)}</span>'
+        f'<div class="wrap-count"><span class="wrap-big">{len(faces)}</span>'
         f'<span class="wrap-caption">{caption}</span></div>'
-        f'<div class="wrap-summary-meta"><h3>{name}</h3>'
-        f'<div class="wrap-chips"><span class="wrap-chip"><b>{model_count}</b> models</span>'
-        f'<span class="wrap-chip">{escape(detector)} detector</span></div>{limits}</div></div>'
+        f'<div class="wrap-chips"><span class="wrap-chip wrap-file">{name}</span>'
+        f'<span class="wrap-chip"><b>{model_count}</b> models</span>'
+        f'<span class="wrap-chip">{escape(detector)} detector</span></div></div>{limits}'
     )
 
 
@@ -327,30 +327,28 @@ def process_and_display(
                     st.caption(f"{feature.upper()} ({model_key})")
                     st.bar_chart(counts)
 
-    photo_col, summary_col = st.columns([3, 2], gap="large")
-    with photo_col:
-        st.markdown(_hoverable_face_image(annotated_frame, cropped_faces), unsafe_allow_html=True)
-        st.caption("Hover or tap a numbered box for that face's answers.")
-    with summary_col:
-        # The demo's responsible-use banner already says this, so only the full app repeats it here.
-        st.markdown(
-            _summary_html(
-                identifier, cropped_faces, len(active_labels),
-                display_model_name(sidebar.face_detector), note=not demo,
-            ),
-            unsafe_allow_html=True,
+    # The annotated photo is the centre of the page; its summary and actions sit in a strip below.
+    st.markdown(_hoverable_face_image(annotated_frame, cropped_faces), unsafe_allow_html=True)
+    # The demo's responsible-use banner already says this, so only the full app repeats it here.
+    st.markdown(
+        _summary_html(
+            identifier, cropped_faces, len(active_labels),
+            display_model_name(sidebar.face_detector), note=not demo,
+        ),
+        unsafe_allow_html=True,
+    )
+    with st.container(horizontal=True, horizontal_alignment="center"):
+        if st.button("Open image", key=f"fullscreen_annotated_{identifier}", help="Open the full-resolution image"):
+            _show_fullscreen_image(cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB), identifier)
+        st.download_button(
+            "JSON", export_json, f"{identifier}_results.json", "application/json",
+            key=f"json_dl_{identifier}", icon=":material/download:",
         )
-        with st.container(horizontal=True):
-            if st.button("Open image", key=f"fullscreen_annotated_{identifier}", help="Open the full-resolution image"):
-                _show_fullscreen_image(cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB), identifier)
-            st.download_button(
-                "JSON", export_json, f"{identifier}_results.json", "application/json",
-                key=f"json_dl_{identifier}", icon=":material/download:",
-            )
-            st.download_button(
-                "CSV", csv_buffer.getvalue(), f"{identifier}_results.csv", "text/csv",
-                key=f"csv_dl_{identifier}", icon=":material/download:",
-            )
+        st.download_button(
+            "CSV", csv_buffer.getvalue(), f"{identifier}_results.csv", "text/csv",
+            key=f"csv_dl_{identifier}", icon=":material/download:",
+        )
+    st.caption("Hover or tap a numbered box on the photo for that face's answers.")
 
     st.markdown('<h2 class="wrap-section">Face by face</h2>', unsafe_allow_html=True)
 
