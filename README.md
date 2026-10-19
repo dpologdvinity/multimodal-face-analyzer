@@ -212,7 +212,7 @@ against WCAG AA contrast.
 
 | Night | Day |
 | ----- | --- |
-| ![Night theme](docs/media/themes/night.png) | ![Day theme](docs/media/themes/day.png) |
+| ![Night theme](docs/media/themes/night.jpg) | ![Day theme](docs/media/themes/day.jpg) |
 
 ## Responsible use
 
